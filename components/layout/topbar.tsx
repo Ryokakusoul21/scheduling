@@ -4,11 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useTheme } from "@/lib/theme/theme-provider";
-import { Menu, Moon, Sun, Laptop, LogOut, User as UserIcon, Bell, Search, Sparkles } from "lucide-react";
+import { Menu, Moon, Sun, Laptop, LogOut, User as UserIcon, Bell, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -85,11 +84,6 @@ export function Topbar({
         </Sheet>
 
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <Badge className="border-none bg-primary/10 text-[10px] font-semibold text-primary">
-              <Sparkles className="size-3" /> AI-Powered
-            </Badge>
-          </div>
           <h1 className="truncate text-lg font-semibold tracking-tight">Scheduling Management System</h1>
           <p className="hidden truncate text-xs text-muted-foreground sm:block">
             Smarter Scheduling. Better Learning. Greater Efficiency.
