@@ -1,0 +1,549 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  SUPER_ADMIN
+  ADMINISTRATOR
+  REGISTRAR
+  SCHEDULER
+  FACULTY
+  STUDENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum RoomType {
+  LECTURE_ROOM
+  COMPUTER_LABORATORY
+  SCIENCE_LABORATORY
+  CONFERENCE_ROOM
+  OTHER
+}
+
+enum RoomStatus {
+  AVAILABLE
+  UNDER_MAINTENANCE
+  UNAVAILABLE
+}
+
+enum SubjectComponent {
+  LECTURE
+  LABORATORY
+}
+
+enum SemesterType {
+  FIRST
+  SECOND
+  SUMMER
+}
+
+enum YearLevel {
+  FIRST
+  SECOND
+  THIRD
+  FOURTH
+  FIFTH
+}
+
+enum FacultyStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  GRADUATED
+  DROPPED
+}
+
+enum ScheduleStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum RequestType {
+  NEW_SCHEDULE
+  CHANGE_TIME
+  CHANGE_ROOM
+  CHANGE_FACULTY
+  CANCEL_SCHEDULE
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum ConflictType {
+  FACULTY_CONFLICT
+  ROOM_CONFLICT
+  SECTION_CONFLICT
+  CAPACITY_CONFLICT
+  AVAILABILITY_CONFLICT
+  SUBJECT_REQUIREMENT_CONFLICT
+}
+
+enum ConflictSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ConflictStatus {
+  OPEN
+  RESOLVED
+  IGNORED
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  name         String
+  role         Role
+  status       UserStatus @default(ACTIVE)
+  image        String?
+
+  facultyId String?  @unique
+  faculty   Faculty? @relation(fields: [facultyId], references: [id])
+
+  studentId String?  @unique
+  student   Student? @relation(fields: [studentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+  requestsMade     ScheduleRequest[] @relation("RequestedBy")
+  requestsReviewed ScheduleRequest[] @relation("ReviewedBy")
+  aiConversations  AIConversation[]
+
+  @@index([role])
+}
+
+// ---------------------------------------------------------------------------
+// Academic structure
+// ---------------------------------------------------------------------------
+
+model Department {
+  id   String @id @default(cuid())
+  code String @unique
+  name String
+
+  programs Program[]
+  faculty  Faculty[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Program {
+  id           String @id @default(cuid())
+  code         String @unique
+  name         String
+  departmentId String
+
+  department Department @relation(fields: [departmentId], references: [id])
+  sections   Section[]
+  subjects   Subject[]
+  students   Student[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AcademicYear {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(false)
+
+  semesters Semester[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Semester {
+  id             String       @id @default(cuid())
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  type           SemesterType
+  name           String
+  startDate      DateTime
+  endDate        DateTime
+  isActive       Boolean      @default(false)
+
+  sections  Section[]
+  schedules Schedule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([academicYearId, type])
+}
+
+model Subject {
+  id               String    @id @default(cuid())
+  code             String    @unique
+  name             String
+  description      String?
+  units            Float
+  lectureHours     Float     @default(0)
+  labHours         Float     @default(0)
+  requiredRoomType RoomType  @default(LECTURE_ROOM)
+  yearLevel        YearLevel?
+
+  programId String?
+  program   Program? @relation(fields: [programId], references: [id])
+
+  schedules Schedule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Section {
+  id           String    @id @default(cuid())
+  name         String
+  yearLevel    YearLevel
+  studentCount Int       @default(0)
+
+  programId String
+  program   Program @relation(fields: [programId], references: [id])
+
+  semesterId String?
+  semester   Semester? @relation(fields: [semesterId], references: [id])
+
+  students  Student[]
+  schedules Schedule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, semesterId])
+}
+
+// ---------------------------------------------------------------------------
+// People
+// ---------------------------------------------------------------------------
+
+model Faculty {
+  id             String        @id @default(cuid())
+  employeeId     String        @unique
+  fullName       String
+  email          String        @unique
+  position       String?
+  specialization String?
+  maxHours       Int           @default(24)
+  status         FacultyStatus @default(ACTIVE)
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  user         User?
+  availability FacultyAvailability[]
+  schedules    Schedule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FacultyAvailability {
+  id        String    @id @default(cuid())
+  facultyId String
+  faculty   Faculty   @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  dayOfWeek DayOfWeek
+  startMin  Int
+  endMin    Int
+
+  @@index([facultyId])
+}
+
+model Student {
+  id            String        @id @default(cuid())
+  studentNumber String        @unique
+  fullName      String
+  email         String        @unique
+  yearLevel     YearLevel?
+  status        StudentStatus @default(ACTIVE)
+
+  programId String?
+  program   Program? @relation(fields: [programId], references: [id])
+
+  sectionId String?
+  section   Section? @relation(fields: [sectionId], references: [id])
+
+  user User?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Facilities
+// ---------------------------------------------------------------------------
+
+model Room {
+  id         String     @id @default(cuid())
+  roomNumber String     @unique
+  roomName   String
+  building   String?
+  capacity   Int
+  roomType   RoomType
+  equipment  String[]
+  status     RoomStatus @default(AVAILABLE)
+
+  availability RoomAvailability[]
+  schedules    Schedule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RoomAvailability {
+  id        String    @id @default(cuid())
+  roomId    String
+  room      Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  dayOfWeek DayOfWeek
+  startMin  Int
+  endMin    Int
+
+  @@index([roomId])
+}
+
+model TimeSlot {
+  id       String @id @default(cuid())
+  label    String
+  startMin Int
+  endMin   Int
+
+  @@unique([startMin, endMin])
+}
+
+// ---------------------------------------------------------------------------
+// Scheduling
+// ---------------------------------------------------------------------------
+
+model Schedule {
+  id String @id @default(cuid())
+
+  semesterId String
+  semester   Semester @relation(fields: [semesterId], references: [id])
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  sectionId String
+  section   Section @relation(fields: [sectionId], references: [id])
+
+  facultyId String
+  faculty   Faculty @relation(fields: [facultyId], references: [id])
+
+  roomId String
+  room   Room   @relation(fields: [roomId], references: [id])
+
+  component SubjectComponent
+  dayOfWeek DayOfWeek
+  startMin  Int
+  endMin    Int
+
+  status      ScheduleStatus @default(DRAFT)
+  version     Int            @default(1)
+  generatedBy String? // "AI" or a userId
+  score       Float?
+  notes       String?
+
+  conflicts Conflict[]
+  requests  ScheduleRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([semesterId])
+  @@index([facultyId])
+  @@index([roomId])
+  @@index([sectionId])
+  @@index([dayOfWeek])
+}
+
+model Conflict {
+  id          String           @id @default(cuid())
+  type        ConflictType
+  severity    ConflictSeverity
+  description String
+  status      ConflictStatus   @default(OPEN)
+
+  scheduleId String
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  relatedScheduleId String?
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([scheduleId])
+  @@index([status])
+}
+
+model ScheduleRequest {
+  id     String        @id @default(cuid())
+  type   RequestType
+  status RequestStatus @default(PENDING)
+
+  scheduleId String?
+  schedule   Schedule? @relation(fields: [scheduleId], references: [id])
+
+  requestedById String
+  requestedBy   User   @relation("RequestedBy", fields: [requestedById], references: [id])
+
+  reviewedById String?
+  reviewedBy   User?   @relation("ReviewedBy", fields: [reviewedById], references: [id])
+
+  details    Json
+  reason     String?
+  reviewNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+model Notification {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type    NotificationType @default(INFO)
+  title   String
+  message String
+  isRead  Boolean          @default(false)
+  link    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  action    String
+  entity    String
+  entityId  String?
+  oldValue  Json?
+  newValue  Json?
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity])
+}
+
+model SchedulingConstraint {
+  id       String  @id @default(cuid())
+  name     String  @unique
+  type     String
+  weight   Float   @default(1)
+  isActive Boolean @default(true)
+  config   Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AIConversation {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title    String?
+  messages AIMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AIMessage {
+  id String @id @default(cuid())
+
+  conversationId String
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  role    String
+  content String
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId])
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+/// One row per calendar day of key dashboard counts, used to compute real
+/// day-over-day trend indicators (never fabricated percentages).
+model DailyStat {
+  id             String   @id @default(cuid())
+  date           DateTime @unique @db.Date
+  totalStudents  Int
+  totalFaculty   Int
+  totalSubjects  Int
+  totalRooms     Int
+  openConflicts  Int
+  createdAt      DateTime @default(now())
+}
