@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useTheme } from "@/lib/theme/theme-provider";
-import { Menu, Moon, Sun, Laptop, LogOut, User as UserIcon, Bell, Search } from "lucide-react";
+import { Menu, Moon, Sun, Laptop, LogOut, User as UserIcon, Bell } from "lucide-react";
+import { GlobalSearch } from "./global-search";
 
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -92,14 +93,7 @@ export function Topbar({
       </div>
 
       <div className="order-3 w-full md:order-none md:max-w-sm md:flex-1">
-        <div className="group relative">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
-          <input
-            type="search"
-            placeholder="Search subject, faculty, room, section..."
-            className="h-10 w-full rounded-xl border border-transparent bg-muted/70 pl-10 pr-3 text-sm text-foreground outline-none ring-1 ring-inset ring-black/[0.04] transition-all placeholder:text-muted-foreground/70 hover:bg-muted focus-visible:border-primary/30 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 dark:ring-white/[0.04]"
-          />
-        </div>
+        <GlobalSearch />
       </div>
 
       <div className="flex items-center gap-1.5">

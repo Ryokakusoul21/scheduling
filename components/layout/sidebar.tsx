@@ -14,6 +14,11 @@ export function Sidebar({ role }: { role: AppRole }) {
   const [collapsed, setCollapsed] = useState(false);
   const groups = filterNavForRole(role);
 
+  const allHrefs = groups.flatMap((g) => g.items.map((item) => item.href));
+  const activeHref = allHrefs
+    .filter((href) => pathname === href || pathname.startsWith(href + "/"))
+    .sort((a, b) => b.length - a.length)[0];
+
   return (
     <aside
       className={cn(
@@ -52,7 +57,7 @@ export function Sidebar({ role }: { role: AppRole }) {
             )}
             <ul className="space-y-1">
               {group.items.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(item.href + "/");
+                const active = item.href === activeHref;
                 const Icon = item.icon;
                 return (
                   <li key={item.href}>
