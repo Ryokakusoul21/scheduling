@@ -239,6 +239,7 @@ export function EntityCrud<T extends { id: string }>({
                       )}
                       <AlertDialog>
                         <AlertDialogTrigger
+                          nativeButton={false}
                           render={<DropdownMenuItem variant="destructive" onClick={(e) => e.preventDefault()} />}
                         >
                           <Trash2 className="size-4" /> Delete

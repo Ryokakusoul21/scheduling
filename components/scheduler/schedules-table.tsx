@@ -356,6 +356,7 @@ export function SchedulesTable({
                       <DropdownMenuSeparator />
                       <AlertDialog>
                         <AlertDialogTrigger
+                          nativeButton={false}
                           render={
                             <DropdownMenuItem
                               variant="destructive"

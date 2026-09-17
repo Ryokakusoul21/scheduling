@@ -169,7 +169,10 @@ export function UsersManager({ users }: { users: Row[] }) {
                         <KeyRound className="size-4" /> Reset Password
                       </DropdownMenuItem>
                       <AlertDialog>
-                        <AlertDialogTrigger render={<DropdownMenuItem variant="destructive" onClick={(e) => e.preventDefault()} />}>
+                        <AlertDialogTrigger
+                          nativeButton={false}
+                          render={<DropdownMenuItem variant="destructive" onClick={(e) => e.preventDefault()} />}
+                        >
                           <Trash2 className="size-4" /> Delete
                         </AlertDialogTrigger>
                         <AlertDialogContent>
