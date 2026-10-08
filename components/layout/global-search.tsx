@@ -17,6 +17,7 @@ export function GlobalSearch() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [pending, startTransition] = useTransition();
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -34,6 +35,7 @@ export function GlobalSearch() {
   function handleChange(value: string) {
     setQuery(value);
     setOpen(true);
+    setActiveIndex(-1);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (value.trim().length < 2) {
       setResults([]);
@@ -58,16 +60,43 @@ export function GlobalSearch() {
     (acc[r.group] ??= []).push(r);
     return acc;
   }, {});
+  // Flat list in display order, for arrow-key navigation.
+  const flat = Object.values(grouped).flat();
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown" && flat.length) {
+      e.preventDefault();
+      setOpen(true);
+      setActiveIndex((i) => (i + 1) % flat.length);
+    } else if (e.key === "ArrowUp" && flat.length) {
+      e.preventDefault();
+      setActiveIndex((i) => (i <= 0 ? flat.length - 1 : i - 1));
+    } else if (e.key === "Enter" && activeIndex >= 0 && flat[activeIndex]) {
+      e.preventDefault();
+      handleSelect(flat[activeIndex]);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      if (open) setOpen(false);
+      else e.currentTarget.blur();
+    }
+  }
 
   return (
     <div ref={containerRef} className="group relative">
       <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
       <input
+        id="global-search"
         type="search"
+        role="combobox"
+        aria-expanded={open && query.trim().length >= 2}
+        aria-controls="global-search-results"
+        aria-activedescendant={activeIndex >= 0 ? `search-result-${activeIndex}` : undefined}
+        aria-label="Search subjects, faculty, rooms, and sections"
+        onKeyDown={handleKeyDown}
         value={query}
         onChange={(e) => handleChange(e.target.value)}
         onFocus={() => query.trim().length >= 2 && setOpen(true)}
-        placeholder="Search subject, faculty, room, section..."
+        placeholder="Search subject, faculty, room, section…  ( / )"
         className="h-10 w-full rounded-xl border border-transparent bg-muted/70 pl-10 pr-9 text-sm text-foreground outline-none ring-1 ring-inset ring-black/[0.04] transition-all placeholder:text-muted-foreground/70 hover:bg-muted focus-visible:border-primary/30 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 dark:ring-white/[0.04]"
       />
       {pending && (
@@ -75,7 +104,7 @@ export function GlobalSearch() {
       )}
 
       {open && query.trim().length >= 2 && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1.5 max-h-80 overflow-y-auto rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-lg">
+        <div id="global-search-results" role="listbox" className="absolute left-0 right-0 top-full z-50 mt-1.5 max-h-80 overflow-y-auto rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-lg">
           {results.length === 0 && !pending && (
             <p className="px-3 py-4 text-center text-sm text-muted-foreground">No results for &quot;{query}&quot;</p>
           )}
@@ -86,12 +115,19 @@ export function GlobalSearch() {
               </p>
               {items.map((r) => {
                 const Icon = GROUP_ICONS[r.group];
+                const index = flat.indexOf(r);
                 return (
                   <button
                     key={`${r.group}-${r.id}`}
+                    id={`search-result-${index}`}
+                    role="option"
+                    aria-selected={index === activeIndex}
                     type="button"
+                    tabIndex={-1}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onMouseEnter={() => setActiveIndex(index)}
                     onClick={() => handleSelect(r)}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent"
+                    className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent ${index === activeIndex ? "bg-accent" : ""}`}
                   >
                     <Icon className="size-4 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1 truncate">{r.label}</span>

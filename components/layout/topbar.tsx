@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useTheme } from "@/lib/theme/theme-provider";
-import { List as Menu, Moon, Sun, Laptop, SignOut as LogOut, User as UserIcon, Bell } from "@phosphor-icons/react/ssr";
+import { List as Menu, Moon, Sun, Laptop, SignOut as LogOut, User as UserIcon, Bell, Keyboard } from "@phosphor-icons/react/ssr";
+import { useShortcuts } from "@/components/ux/shortcuts";
 import { GlobalSearch } from "./global-search";
 
 import { Button } from "@/components/ui/button";
@@ -47,12 +48,13 @@ export function Topbar({
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const groups = filterNavForRole(role);
+  const { openHelp } = useShortcuts();
 
   return (
     <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-black/10 bg-card px-4 py-2 md:flex-nowrap md:px-6">
       <div className="flex min-w-0 items-center gap-3">
         <Sheet open={open} onOpenChange={setOpen}>
-          <SheetTrigger render={<Button variant="ghost" size="icon" className="md:hidden" />}>
+          <SheetTrigger render={<Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation" />}>
             <Menu className="size-5" />
           </SheetTrigger>
           <SheetContent side="left" className="w-72 bg-sidebar p-0 text-sidebar-foreground">
@@ -97,14 +99,29 @@ export function Topbar({
       </div>
 
       <div className="flex items-center gap-1.5">
-        <Link href="/notifications">
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="size-5" />
-            {unreadNotifications > 0 && (
-              <span className="absolute right-1.5 top-1.5 flex size-2 rounded-full bg-destructive" />
-            )}
-          </Button>
-        </Link>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="hidden sm:inline-flex"
+          aria-label="Keyboard shortcuts (?)"
+          title="Keyboard shortcuts (?)"
+          onClick={openHelp}
+        >
+          <Keyboard className="size-5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          nativeButton={false}
+          aria-label={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : "Notifications"}
+          render={<Link href="/notifications" />}
+        >
+          <Bell className="size-5" />
+          {unreadNotifications > 0 && (
+            <span className="absolute right-1.5 top-1.5 flex size-2 rounded-full bg-destructive" />
+          )}
+        </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="ghost" size="icon" />}>

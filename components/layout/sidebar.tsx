@@ -7,12 +7,14 @@ import { useState } from "react";
 import { CaretDoubleLeft as ChevronsLeft, CaretDoubleRight as ChevronsRight } from "@phosphor-icons/react/ssr";
 import { cn } from "@/lib/utils";
 import { filterNavForRole } from "./nav-config";
+import { useShortcuts } from "@/components/ux/shortcuts";
 import type { AppRole } from "@/lib/permissions/roles";
 
 export function Sidebar({ role }: { role: AppRole }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const groups = filterNavForRole(role);
+  const { openHelp } = useShortcuts();
 
   const allHrefs = groups.flatMap((g) => g.items.map((item) => item.href));
   const activeHref = allHrefs
@@ -47,7 +49,7 @@ export function Sidebar({ role }: { role: AppRole }) {
         )}
       </div>
 
-      <nav className="sidebar-scroll flex-1 space-y-5 overflow-y-auto px-3 py-4">
+      <nav aria-label="Main navigation" className="sidebar-scroll flex-1 space-y-5 overflow-y-auto px-3 py-4">
         {groups.map((group, i) => (
           <div key={i} className={cn(i > 0 && "border-t border-white/[0.06] pt-4")}>
             {group.label && !collapsed && (
@@ -63,9 +65,11 @@ export function Sidebar({ role }: { role: AppRole }) {
                   <li key={item.href}>
                     <Link
                       href={item.href}
-                      title={collapsed ? item.label : undefined}
+                      title={collapsed ? item.label : item.shortcut ? `${item.label} (${item.shortcut})` : undefined}
+                      aria-current={active ? "page" : undefined}
+                      aria-keyshortcuts={item.shortcut}
                       className={cn(
-                        "group flex items-center gap-3 rounded-lg px-2 py-2 text-[13px] font-medium transition-all duration-150",
+                        "group flex items-center gap-3 rounded-lg px-2 py-2 text-[13px] font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-gold",
                         collapsed && "justify-center px-0",
                         active
                           ? "bg-gold text-gold-foreground"
@@ -112,7 +116,20 @@ export function Sidebar({ role }: { role: AppRole }) {
         </div>
       )}
 
+      {!collapsed && (
+        <button
+          type="button"
+          onClick={openHelp}
+          className="flex items-center justify-center gap-1.5 border-t border-black/10 px-4 py-2 text-[11px] text-sidebar-foreground/55 outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-gold"
+        >
+          Press <kbd className="rounded border border-white/20 px-1 font-sans">?</kbd> for keyboard shortcuts
+        </button>
+      )}
+
       <button
+        type="button"
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-expanded={!collapsed}
         onClick={() => setCollapsed((c) => !c)}
         className="flex items-center justify-center gap-2 border-t border-black/10 px-4 py-3 text-xs font-medium text-sidebar-foreground/60 transition-colors hover:bg-white/[0.06] hover:text-sidebar-foreground"
       >

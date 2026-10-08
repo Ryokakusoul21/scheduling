@@ -170,3 +170,24 @@
 
 @layer base {
 }
+/* Keyboard accessibility: a clear, consistent focus ring for anything focusable
+   that doesn't define its own (rows, cards, timetable blocks, links). */
+@layer base {
+  :where(a, button, [tabindex], [role="button"], summary):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  [data-roving]:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
