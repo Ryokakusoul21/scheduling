@@ -84,7 +84,8 @@ export function FormDialog({
       }}
     >
       <DialogContent className={cn("max-h-[90vh] overflow-y-auto", twoColumns ? "sm:max-w-2xl" : "sm:max-w-md")}>
-        <form action={submit}>
+        {/* Inputs are uncontrolled; remount when switching items so defaults reset cleanly. */}
+        <form action={submit} key={JSON.stringify(values)}>
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             {description && <DialogDescription>{description}</DialogDescription>}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -56,6 +56,8 @@ export function SortableList<T extends { id: string }>({
   /** Optional wrapper (e.g. <tbody>) — receives the rendered items. */
   children?: (rendered: React.ReactNode) => React.ReactNode;
 }) {
+  // Stable id so dnd-kit's aria-describedby matches between server and client render.
+  const dndId = useId();
   const [order, setOrder] = useState(items);
   const [synced, setSynced] = useState(items);
   const [, startTransition] = useTransition();
@@ -110,10 +112,13 @@ export function SortableList<T extends { id: string }>({
 
   return (
     <DndContext
+      id={dndId}
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragEnd={handleDragEnd}
       accessibility={{
+        // Live region/instructions render after mount; portal them so they never land inside a <table>.
+        container: typeof document === "undefined" ? undefined : document.body,
         announcements,
         screenReaderInstructions: {
           draggable: "To reorder, press Space to pick up. Use the arrow keys to move, Space to drop, or Escape to cancel.",

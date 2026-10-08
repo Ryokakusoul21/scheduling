@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -122,6 +122,7 @@ export function SchedulerWorkspace({
     defaults
   );
 
+  const dndId = useId();
   const [view, setView] = useState<"timetable" | "table">("timetable");
   const [panel, setPanel] = useState<"conflicts" | "todo">("conflicts");
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
@@ -585,6 +586,7 @@ export function SchedulerWorkspace({
 
   return (
     <DndContext
+      id={dndId}
       sensors={sensors}
       collisionDetection={collision}
       onDragStart={onDragStart}
@@ -595,6 +597,7 @@ export function SchedulerWorkspace({
         setPreview(null);
       }}
       accessibility={{
+        container: typeof document === "undefined" ? undefined : document.body,
         screenReaderInstructions: {
           draggable:
             "Press Space to pick up this class. Use the arrow keys to move it by 30 minutes or by one day, Space to drop, or Escape to cancel. Press Enter to edit.",
