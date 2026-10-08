@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "./kbd";
+import { eventToKey } from "@/lib/keyboard";
 
 /**
  * Keyboard shortcut system.
@@ -71,18 +72,6 @@ function isTypingTarget(el: EventTarget | null) {
   if (!(el instanceof HTMLElement)) return false;
   const tag = el.tagName;
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
-}
-
-/** Normalises a KeyboardEvent to the string format used in ShortcutDef.keys. */
-export function eventToKey(e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">) {
-  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase();
-  const parts: string[] = [];
-  if (e.ctrlKey || e.metaKey) parts.push("mod");
-  if (e.altKey) parts.push("alt");
-  // "?" already implies shift; only record shift for non-printable keys.
-  if (e.shiftKey && e.key.length > 1) parts.push("shift");
-  parts.push(key);
-  return parts.join("+");
 }
 
 export function ShortcutProvider({ allowedHrefs, children }: { allowedHrefs?: string[]; children: React.ReactNode }) {
