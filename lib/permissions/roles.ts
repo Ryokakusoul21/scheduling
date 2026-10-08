@@ -20,6 +20,12 @@ export const STAFF_ROLES: AppRole[] = [
 /** Roles that can run the AI scheduler / generate & publish schedules. */
 export const SCHEDULING_ROLES: AppRole[] = ["SUPER_ADMIN", "ADMINISTRATOR", "SCHEDULER"];
 
+/** Roles whose schedule edits apply immediately, with no review/approval step. */
+export const DIRECT_EDIT_ROLES: AppRole[] = ["SUPER_ADMIN"];
+
+/** Roles that can publish schedules (move them out of draft/review). */
+export const PUBLISH_ROLES: AppRole[] = ["SUPER_ADMIN", "ADMINISTRATOR"];
+
 /** Roles that can manage users and system settings. */
 export const ADMIN_ROLES: AppRole[] = ["SUPER_ADMIN", "ADMINISTRATOR"];
 
@@ -46,10 +52,9 @@ export function roleLabel(role: AppRole) {
 export function homeForRole(role: AppRole) {
   switch (role) {
     case "SCHEDULER":
-      return "/schedules";
     case "FACULTY":
     case "STUDENT":
-      return "/calendar";
+      return "/scheduler";
     default:
       return "/dashboard";
   }

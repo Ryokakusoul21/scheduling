@@ -52,8 +52,7 @@ export function DashboardCalendarCard({
       <CardContent>
         {entries.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
-            No published or draft schedule yet for this section. Generate one from the AI Auto
-            Scheduler.
+            No classes scheduled for this section yet. Add them in the Scheduler.
           </p>
         ) : (
           <WeeklyCalendar entries={entries} />

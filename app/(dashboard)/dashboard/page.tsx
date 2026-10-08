@@ -369,7 +369,7 @@ export default async function DashboardPage() {
           </div>
           <div className="flex flex-col items-start gap-1 md:items-end">
             <a
-              href="/schedules"
+              href="/scheduler"
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
               <Sparkles className="size-4" /> Open Scheduler <ArrowRight className="size-4" />
@@ -550,7 +550,7 @@ export default async function DashboardPage() {
                 </li>
               </ul>
               <a
-                href="/schedules"
+                href="/scheduler"
                 className="inline-block rounded-md bg-gold px-3 py-1.5 text-sm font-medium text-gold-foreground hover:opacity-90"
               >
                 Open Scheduler
@@ -686,7 +686,7 @@ export default async function DashboardPage() {
                 </CardHeader>
                 <CardContent className="grid grid-cols-2 gap-2">
                   {[
-                    { label: "Schedule Calendar", href: "/calendar", icon: CalendarBlank },
+                    { label: "Scheduler", href: "/scheduler", icon: CalendarBlank },
                     { label: "Schedule Requests", href: "/requests", icon: ClipboardText },
                     { label: "AI Assistant", href: "/assistant", icon: Bot },
                     { label: "Notifications", href: "/notifications", icon: Bell },
@@ -736,7 +736,7 @@ export default async function DashboardPage() {
                 Let AI handle the complexity, so you can focus on what matters most — quality education.
               </p>
               <a
-                href={canSchedule ? "/schedules" : "/assistant"}
+                href={canSchedule ? "/scheduler" : "/assistant"}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
                 {canSchedule ? "Try AI Scheduler" : "Open AI Assistant"} <ArrowRight className="size-4" />
