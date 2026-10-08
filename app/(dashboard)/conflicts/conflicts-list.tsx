@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, Wand2, Loader2 } from "lucide-react";
+import { Warning as AlertTriangle, CheckCircle as CheckCircle2, MagicWand as Wand2, CircleNotch as Loader2 } from "@phosphor-icons/react/ssr";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

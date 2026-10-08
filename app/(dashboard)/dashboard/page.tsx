@@ -6,26 +6,34 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DashboardCalendarCard } from "@/components/scheduler/dashboard-calendar-card";
 import type { CalendarEntry } from "@/components/scheduler/weekly-calendar";
 import { recordAndGetTrend } from "@/lib/analytics/dailyStat";
+import { canManageScheduling, isStaff, type AppRole } from "@/lib/permissions/roles";
+import { AssistantChat, AssistantHeader } from "@/components/assistant/assistant-chat";
+import { getAssistantHistory } from "../assistant/actions";
 import {
   Users,
-  UserSquare2,
+  UserSquare as UserSquare2,
   BookOpen,
-  Building2,
-  AlertTriangle,
-  Sparkles,
-  CheckCircle2,
+  Buildings as Building2,
+  Warning as AlertTriangle,
+  Sparkle as Sparkles,
+  CheckCircle as CheckCircle2,
   Lightbulb,
   Clock,
   ShieldCheck,
-  Wand2,
+  MagicWand as Wand2,
   DoorOpen,
-  Scale,
-  Radio,
+  Scales as Scale,
+  Broadcast as Radio,
   ArrowUp,
   ArrowDown,
-  Bot,
+  Robot as Bot,
   ArrowRight,
-} from "lucide-react";
+  CalendarBlank,
+  ClipboardText,
+  Bell,
+  Link as LinkIcon,
+  MapPin,
+} from "@phosphor-icons/react/ssr";
 
 const ACCENT_BORDERS = ["border-blue-500", "border-violet-500", "border-emerald-500", "border-amber-500"];
 
@@ -61,6 +69,20 @@ const CAPABILITIES = [
     tint: "bg-red-500/15 text-red-600",
   },
 ];
+
+const WEEK_DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+
+function titleCase(value: string) {
+  return value
+    .split("_")
+    .map((w) => w[0] + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function formatTime(min: number) {
+  const h = Math.floor(min / 60);
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(min % 60).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
+}
 
 export const metadata = { title: "Dashboard · GCST Scheduling" };
 
@@ -157,14 +179,19 @@ function TrendBadge({ value, invert = false }: { value: number | null | undefine
 
 export default async function DashboardPage() {
   const user = await requireUser();
+  const canSchedule = canManageScheduling(user.role as AppRole);
+  const isStudent = user.role === "STUDENT";
   const stats = await getStats();
 
-  const [recentAudit, sectionsWithSchedules, latestSchedule] = await Promise.all([
-    prisma.auditLog.findMany({
-      take: 5,
-      orderBy: { createdAt: "desc" },
-      include: { user: { select: { name: true } } },
-    }),
+  const [recentAudit, sectionsWithSchedules, latestSchedule, ownStudent, assistantHistory, myRequests, myNotifications] = await Promise.all([
+    // Students don't see the activity feed (it's the system audit log).
+    isStudent
+      ? Promise.resolve([])
+      : prisma.auditLog.findMany({
+          take: 5,
+          orderBy: { createdAt: "desc" },
+          include: { user: { select: { name: true } } },
+        }),
     prisma.section.findMany({
       where: { semesterId: stats.activeSemester?.id, schedules: { some: {} } },
       orderBy: { name: "asc" },
@@ -178,6 +205,24 @@ export default async function DashboardPage() {
       },
     }),
     prisma.schedule.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    prisma.student.findFirst({ where: { user: { id: user.id } }, select: { sectionId: true } }),
+    getAssistantHistory(),
+    isStudent
+      ? prisma.scheduleRequest.findMany({
+          where: { requestedById: user.id },
+          take: 4,
+          orderBy: { createdAt: "desc" },
+          select: { id: true, type: true, status: true, createdAt: true },
+        })
+      : Promise.resolve([]),
+    isStudent
+      ? prisma.notification.findMany({
+          where: { userId: user.id },
+          take: 4,
+          orderBy: { createdAt: "desc" },
+          select: { id: true, title: true, message: true, isRead: true, createdAt: true, link: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   const subjectColorIndex = new Map<string, number>();
@@ -205,11 +250,51 @@ export default async function DashboardPage() {
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const todayName = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"][now.getDay()];
-  const upcomingToday = sectionsWithSchedules
+  // Students only care about their own section; staff see every section.
+  const mySection = isStudent ? sectionsWithSchedules.find((s) => s.id === ownStudent?.sectionId) : undefined;
+  const upcomingToday = (isStudent ? (mySection ? [mySection] : []) : sectionsWithSchedules)
     .flatMap((sec) => sec.schedules.map((s) => ({ ...s, sectionName: sec.name })))
     .filter((s) => s.dayOfWeek === todayName && s.endMin >= nowMin)
     .sort((a, b) => a.startMin - b.startMin)
     .slice(0, 4);
+
+  const mySubjects = [
+    ...(mySection?.schedules ?? [])
+      .reduce((map, s) => {
+        const entry = map.get(s.subjectId) ?? {
+          code: s.subject.code,
+          name: s.subject.name,
+          units: s.subject.units,
+          instructors: new Set<string>(),
+          minutes: 0,
+        };
+        entry.instructors.add(s.faculty.fullName);
+        entry.minutes += s.endMin - s.startMin;
+        return map.set(s.subjectId, entry);
+      }, new Map<string, { code: string; name: string; units: number; instructors: Set<string>; minutes: number }>())
+      .values(),
+  ].sort((a, b) => a.code.localeCompare(b.code));
+  const totalUnits = mySubjects.reduce((sum, s) => sum + s.units, 0);
+  const totalWeeklyHours = Math.round((mySubjects.reduce((sum, s) => sum + s.minutes, 0) / 60) * 10) / 10;
+  const myWeek = WEEK_DAYS.map((day) => {
+    const classes = (mySection?.schedules ?? []).filter((s) => s.dayOfWeek === day);
+    const minutes = classes.reduce((sum, s) => sum + (s.endMin - s.startMin), 0);
+    const first = classes.reduce((min, s) => Math.min(min, s.startMin), Infinity);
+    const last = classes.reduce((max, s) => Math.max(max, s.endMin), 0);
+    return { day, count: classes.length, minutes, first, last };
+  });
+  const busiestDayMinutes = Math.max(...myWeek.map((d) => d.minutes), 1);
+
+  // Next class from now, wrapping around to next week if needed.
+  const todayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1; // Monday = 0
+  const nextClass = (mySection?.schedules ?? [])
+    .filter((s) => WEEK_DAYS.includes(s.dayOfWeek))
+    .map((s) => {
+      let daysAhead = (WEEK_DAYS.indexOf(s.dayOfWeek) - todayIndex + 7) % 7;
+      if (daysAhead === 0 && s.startMin <= nowMin) daysAhead = 7;
+      return { ...s, daysAhead, sortKey: daysAhead * 1440 + s.startMin };
+    })
+    .sort((a, b) => a.sortKey - b.sortKey)[0];
 
   const cards = [
     { label: "Total Students", value: stats.totalStudents, icon: Users, tint: "bg-blue-500/15 text-blue-600", trend: stats.trend.totalStudents },
@@ -258,6 +343,7 @@ export default async function DashboardPage() {
         ))}
       </div>
 
+      {canSchedule && (
       <Card>
         <CardContent className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-3">
@@ -292,12 +378,14 @@ export default async function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(380px,32%)] 2xl:grid-cols-[minmax(0,1fr)_minmax(440px,36%)]">
         <div className="space-y-4">
           <DashboardCalendarCard
             sections={sectionsWithSchedules.map((s) => ({ id: s.id, name: s.name }))}
             entriesBySection={entriesBySection}
+            defaultSectionId={ownStudent?.sectionId ?? undefined}
           />
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -313,9 +401,124 @@ export default async function DashboardPage() {
               </Card>
             ))}
           </div>
+
+          {mySection && (
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <BookOpen className="size-4 text-primary" /> My Subjects This Semester
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { label: "Subjects", value: mySubjects.length },
+                      { label: "Total units", value: totalUnits },
+                      { label: "Hours / week", value: totalWeeklyHours },
+                    ].map((s) => (
+                      <div key={s.label} className="rounded-lg bg-muted/60 px-3 py-2">
+                        <p className="text-lg font-semibold tabular-nums leading-tight">{s.value}</p>
+                        <p className="text-[11px] text-muted-foreground">{s.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="divide-y text-sm">
+                    {mySubjects.map((s) => (
+                      <div key={s.code} className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">
+                            <span className="text-primary">{s.code}</span> · {s.name}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">{[...s.instructors].join(", ")}</p>
+                        </div>
+                        <div className="shrink-0 text-right text-xs text-muted-foreground">
+                          <p className="font-medium text-foreground">{s.units} unit{s.units === 1 ? "" : "s"}</p>
+                          <p>{Math.round((s.minutes / 60) * 10) / 10} hrs/wk</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <CalendarBlank className="size-4 text-primary" /> My Week at a Glance
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col gap-2.5">
+                  {myWeek.map((d) => (
+                    <div
+                      key={d.day}
+                      className={`rounded-lg px-3 py-2 ${d.day === todayName ? "bg-primary/10 ring-1 ring-primary/30" : ""}`}
+                    >
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium">
+                          {d.day[0] + d.day.slice(1, 3).toLowerCase()}
+                          {d.day === todayName && <span className="ml-1.5 text-[10px] font-semibold text-primary">TODAY</span>}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {d.count === 0
+                            ? "No classes"
+                            : `${d.count} class${d.count === 1 ? "" : "es"} · ${formatTime(d.first)}–${formatTime(d.last)}`}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{ width: `${(d.minutes / busiestDayMinutes) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {nextClass && (
+                    <div className="mt-auto rounded-xl bg-gradient-to-br from-primary to-violet-500 p-4 text-primary-foreground">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-foreground/80">
+                        Next class ·{" "}
+                        {nextClass.daysAhead === 0
+                          ? "Today"
+                          : nextClass.daysAhead === 1
+                            ? "Tomorrow"
+                            : nextClass.dayOfWeek[0] + nextClass.dayOfWeek.slice(1).toLowerCase()}
+                      </p>
+                      <p className="mt-1 font-semibold leading-snug">
+                        {nextClass.subject.code} · {nextClass.subject.name}
+                      </p>
+                      <div className="mt-2 space-y-0.5 text-xs text-primary-foreground/90">
+                        <p className="flex items-center gap-1.5">
+                          <Clock className="size-3.5" /> {formatTime(nextClass.startMin)}–{formatTime(nextClass.endMin)}
+                        </p>
+                        <p className="flex items-center gap-1.5">
+                          <MapPin className="size-3.5" /> {nextClass.room.roomName}
+                        </p>
+                        <p className="flex items-center gap-1.5">
+                          <UserSquare2 className="size-3.5" /> {nextClass.faculty.fullName}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">
+          <Card className="gap-0 py-0">
+            <div className="border-b p-4">
+              <AssistantHeader />
+            </div>
+            <AssistantChat
+              initialMessages={assistantHistory}
+              userName={user.name}
+              staff={isStaff(user.role as AppRole)}
+              className="h-[min(40rem,75dvh)]"
+            />
+          </Card>
+
+          {canSchedule && (
           <Card className="border-primary/20 bg-gradient-to-br from-primary to-primary/90 text-primary-foreground">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-primary-foreground">
@@ -352,6 +555,7 @@ export default async function DashboardPage() {
               </a>
             </CardContent>
           </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -392,14 +596,114 @@ export default async function DashboardPage() {
                 >
                   <p className="font-medium">{s.subject.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {s.sectionName} · {s.room.roomName} · {String(Math.floor(s.startMin / 60)).padStart(2, "0")}:
-                    {String(s.startMin % 60).padStart(2, "0")}
+                    {s.sectionName} · {s.room.roomName} · {formatTime(s.startMin)}
                   </p>
                 </div>
               ))}
             </CardContent>
           </Card>
 
+          {isStudent && (
+            <>
+              <Card>
+                <CardHeader className="flex-row items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <ClipboardText className="size-4 text-primary" /> My Schedule Requests
+                  </CardTitle>
+                  <a href="/requests" className="text-xs font-medium text-primary hover:underline">
+                    View all
+                  </a>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {myRequests.length === 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">You haven&apos;t submitted any requests.</p>
+                      <a
+                        href="/requests"
+                        className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                      >
+                        Request a schedule change <ArrowRight className="size-3.5" />
+                      </a>
+                    </div>
+                  ) : (
+                    myRequests.map((r) => (
+                      <div key={r.id} className="flex items-center justify-between gap-2 text-sm">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{titleCase(r.type)}</p>
+                          <p className="text-xs text-muted-foreground">{r.createdAt.toLocaleDateString()}</p>
+                        </div>
+                        <Badge
+                          variant={
+                            r.status === "REJECTED"
+                              ? "destructive"
+                              : r.status === "APPROVED" || r.status === "COMPLETED"
+                                ? "default"
+                                : "secondary"
+                          }
+                        >
+                          {titleCase(r.status)}
+                        </Badge>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex-row items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Bell className="size-4 text-primary" /> Notifications
+                  </CardTitle>
+                  <a href="/notifications" className="text-xs font-medium text-primary hover:underline">
+                    View all
+                  </a>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {myNotifications.length === 0 && (
+                    <p className="text-sm text-muted-foreground">You&apos;re all caught up.</p>
+                  )}
+                  {myNotifications.map((n) => (
+                    <a key={n.id} href={n.link || "/notifications"} className="flex gap-2 text-sm hover:opacity-80">
+                      <span
+                        className={`mt-1.5 size-2 shrink-0 rounded-full ${n.isRead ? "bg-muted-foreground/30" : "bg-primary"}`}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{n.title}</span>
+                        <span className="line-clamp-2 text-xs text-muted-foreground">{n.message}</span>
+                      </span>
+                    </a>
+                  ))}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <LinkIcon className="size-4 text-primary" /> Quick Links
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Schedule Calendar", href: "/calendar", icon: CalendarBlank },
+                    { label: "Schedule Requests", href: "/requests", icon: ClipboardText },
+                    { label: "AI Assistant", href: "/assistant", icon: Bot },
+                    { label: "Notifications", href: "/notifications", icon: Bell },
+                  ].map((l) => (
+                    <a
+                      key={l.href}
+                      href={l.href}
+                      className="flex flex-col items-start gap-2 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted"
+                    >
+                      <l.icon className="size-5 text-primary" />
+                      {l.label}
+                    </a>
+                  ))}
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {!isStudent && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Recent Activity</CardTitle>
@@ -418,7 +722,9 @@ export default async function DashboardPage() {
               ))}
             </CardContent>
           </Card>
+          )}
 
+          {!isStudent && (
           <Card className="border-none bg-[oklch(0.18_0.05_264)] text-white">
             <CardContent className="space-y-3 p-4">
               <div className="flex size-9 items-center justify-center rounded-full bg-white/10">
@@ -428,13 +734,14 @@ export default async function DashboardPage() {
                 Let AI handle the complexity, so you can focus on what matters most — quality education.
               </p>
               <a
-                href="/ai-scheduler"
+                href={canSchedule ? "/ai-scheduler" : "/assistant"}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
-                Try AI Scheduler <ArrowRight className="size-4" />
+                {canSchedule ? "Try AI Scheduler" : "Open AI Assistant"} <ArrowRight className="size-4" />
               </a>
             </CardContent>
           </Card>
+          )}
         </div>
       </div>
     </div>

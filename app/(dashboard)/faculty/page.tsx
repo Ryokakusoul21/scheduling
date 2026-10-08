@@ -5,7 +5,7 @@ import { FacultyManager } from "./manager";
 export const metadata = { title: "Faculty · GCST Scheduling" };
 
 export default async function FacultyPage() {
-  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR");
+  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER");
   const [faculty, departments] = await Promise.all([
     prisma.faculty.findMany({
       include: { department: true, schedules: { select: { startMin: true, endMin: true } } },

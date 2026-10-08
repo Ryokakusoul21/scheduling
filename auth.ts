@@ -4,11 +4,36 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { authConfig } from "./auth.config";
 import { prisma } from "@/lib/db/prisma";
+import { AUTH } from "@/lib/auth/config";
+import { LoginError } from "@/lib/auth/errors";
+import { clientIp, isIpRateLimited, recordLoginAttempt } from "@/lib/auth/rate-limit";
+import { verifyCaptcha } from "@/lib/auth/captcha";
+import { decryptSecret } from "@/lib/auth/crypto";
+import { verifyTotp } from "@/lib/auth/totp";
 
 const credentialsSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(1),
+  remember: z.string().optional(),
+  code: z.string().optional(),
+  captchaToken: z.string().optional(),
 });
+
+// Compared against when the email doesn't exist so response timing doesn't
+// reveal which accounts are registered.
+const DUMMY_HASH = "$2b$12$RHdpRhSHROb.ov9d2KvV2ulO9PFsTe8jCVFqYwUEhXznRbec8VSN2";
+
+async function registerFailure(userId: string, failedLoginAttempts: number) {
+  const attempts = failedLoginAttempts + 1;
+  const lock = attempts >= AUTH.maxFailedAttempts;
+  await prisma.user.update({
+    where: { id: userId },
+    data: lock
+      ? { failedLoginAttempts: 0, lockedUntil: new Date(Date.now() + AUTH.lockoutMinutes * 60_000) }
+      : { failedLoginAttempts: attempts },
+  });
+  return lock;
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   ...authConfig,
@@ -18,18 +43,65 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        remember: {},
+        code: {},
+        captchaToken: {},
       },
-      async authorize(rawCredentials) {
+      async authorize(rawCredentials, request) {
         const parsed = credentialsSchema.safeParse(rawCredentials);
-        if (!parsed.success) return null;
+        if (!parsed.success) throw new LoginError("invalid");
+        const { email, password, remember, code, captchaToken } = parsed.data;
+        const ip = clientIp(request.headers);
 
-        const { email, password } = parsed.data;
-        const user = await prisma.user.findUnique({ where: { email } });
-        if (!user) return null;
-        if (user.status !== "ACTIVE") return null;
+        if (!(await verifyCaptcha(captchaToken, ip))) throw new LoginError("captcha");
+        if (await isIpRateLimited(ip)) throw new LoginError("rate_limited");
 
-        const valid = await bcrypt.compare(password, user.passwordHash);
-        if (!valid) return null;
+        const user = await prisma.user.findFirst({
+          where: { email: { equals: email, mode: "insensitive" } },
+        });
+
+        if (!user) {
+          await bcrypt.compare(password, DUMMY_HASH);
+          await recordLoginAttempt(email, ip, false);
+          throw new LoginError("invalid");
+        }
+
+        if (user.lockedUntil && user.lockedUntil > new Date()) {
+          await recordLoginAttempt(email, ip, false);
+          throw new LoginError("locked");
+        }
+
+        if (!(await bcrypt.compare(password, user.passwordHash))) {
+          const locked = await registerFailure(user.id, user.failedLoginAttempts);
+          await recordLoginAttempt(email, ip, false);
+          throw new LoginError(locked ? "locked" : "invalid");
+        }
+
+        // Password is correct from here on, so account-state errors don't leak anything.
+        if (user.twoFactorEnabled && user.twoFactorSecret) {
+          if (!code) throw new LoginError("two_factor_required");
+          if (!verifyTotp(decryptSecret(user.twoFactorSecret), code)) {
+            const locked = await registerFailure(user.id, user.failedLoginAttempts);
+            await recordLoginAttempt(email, ip, false);
+            throw new LoginError(locked ? "locked" : "two_factor_invalid");
+          }
+        }
+
+        if (!user.emailVerified) throw new LoginError("unverified");
+        if (user.status === "PENDING") throw new LoginError("pending");
+        if (user.status !== "ACTIVE") throw new LoginError("inactive");
+
+        // Transparently upgrade hashes created with a lower bcrypt cost.
+        const rehash =
+          bcrypt.getRounds(user.passwordHash) < AUTH.bcryptRounds
+            ? await bcrypt.hash(password, AUTH.bcryptRounds)
+            : undefined;
+
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date(), passwordHash: rehash },
+        });
+        await recordLoginAttempt(email, ip, true);
 
         return {
           id: user.id,
@@ -37,8 +109,45 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           name: user.name,
           role: user.role,
           status: user.status,
+          sessionVersion: user.sessionVersion,
+          remember: remember === "true",
         };
       },
     }),
   ],
+  callbacks: {
+    ...authConfig.callbacks,
+    async jwt(params) {
+      const token = await authConfig.callbacks.jwt(params);
+      if (!token || params.user) return token;
+
+      // Re-validate against the database so password resets, "sign out
+      // everywhere", deactivation and role changes take effect immediately.
+      const current = await prisma.user.findUnique({
+        where: { id: token.id },
+        select: { status: true, role: true, sessionVersion: true },
+      });
+      if (!current || current.status !== "ACTIVE" || current.sessionVersion !== token.sessionVersion) {
+        return null;
+      }
+      token.role = current.role;
+      token.status = current.status;
+      return token;
+    },
+  },
+  events: {
+    async signIn({ user }) {
+      if (!user.id) return;
+      await prisma.auditLog.create({
+        data: { userId: user.id, action: "Signed in", entity: "Auth", entityId: user.id },
+      });
+    },
+    async signOut(message) {
+      const userId = "token" in message ? message.token?.id : undefined;
+      if (!userId) return;
+      await prisma.auditLog
+        .create({ data: { userId, action: "Signed out", entity: "Auth", entityId: userId } })
+        .catch(() => {});
+    },
+  },
 });

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useTheme } from "@/lib/theme/theme-provider";
-import { Menu, Moon, Sun, Laptop, LogOut, User as UserIcon, Bell } from "lucide-react";
+import { List as Menu, Moon, Sun, Laptop, SignOut as LogOut, User as UserIcon, Bell } from "@phosphor-icons/react/ssr";
 import { GlobalSearch } from "./global-search";
 
 import { Button } from "@/components/ui/button";

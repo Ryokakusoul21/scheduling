@@ -2,13 +2,13 @@
 
 import { useTransition } from "react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { CircleNotch as Loader2 } from "@phosphor-icons/react/ssr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { updateInstitutionAction, toggleConstraintAction } from "./actions";
+import { updateInstitutionAction, toggleConstraintAction, setRequireApprovalAction } from "./actions";
 
 interface Constraint {
   id: string;
@@ -21,9 +21,11 @@ interface Constraint {
 export function SettingsManager({
   institution,
   constraints,
+  requireApproval,
 }: {
   institution: { name: string; shortName: string; location: string };
   constraints: Constraint[];
+  requireApproval: boolean;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -67,6 +69,30 @@ export function SettingsManager({
               </Button>
             </FieldGroup>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Registration</CardTitle></CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4 rounded-md border p-3 text-sm">
+            <div>
+              <p className="font-medium">Require admin approval</p>
+              <p className="text-xs text-muted-foreground">
+                Self-registered accounts stay pending until an administrator approves them in User Management.
+              </p>
+            </div>
+            <Switch
+              checked={requireApproval}
+              disabled={pending}
+              onCheckedChange={(v) =>
+                startTransition(async () => {
+                  await setRequireApprovalAction(!!v);
+                  toast.success(v ? "New registrations now require approval." : "New registrations are activated automatically.");
+                })
+              }
+            />
+          </div>
         </CardContent>
       </Card>
 

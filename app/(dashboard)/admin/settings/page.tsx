@@ -1,15 +1,17 @@
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { SettingsManager } from "./manager";
+import { SETTING_REQUIRE_APPROVAL } from "@/lib/auth/config";
 
 export const metadata = { title: "System Settings · GCST Scheduling" };
 
 export default async function SettingsPage() {
   await requireRole("SUPER_ADMIN", "ADMINISTRATOR");
 
-  const [institutionSetting, constraints] = await Promise.all([
+  const [institutionSetting, constraints, approvalSetting] = await Promise.all([
     prisma.systemSetting.findUnique({ where: { key: "institution" } }),
     prisma.schedulingConstraint.findMany({ orderBy: [{ type: "asc" }, { name: "asc" }] }),
+    prisma.systemSetting.findUnique({ where: { key: SETTING_REQUIRE_APPROVAL } }),
   ]);
 
   const institution = (institutionSetting?.value as { name?: string; shortName?: string; location?: string } | undefined) ?? {};
@@ -27,6 +29,7 @@ export default async function SettingsPage() {
           shortName: institution.shortName ?? "GCST",
           location: institution.location ?? "Naic, Cavite",
         }}
+        requireApproval={approvalSetting?.value === true}
         constraints={constraints.map((c) => ({
           id: c.id,
           name: c.name,

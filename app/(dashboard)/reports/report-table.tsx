@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Printer } from "lucide-react";
+import { Printer } from "@phosphor-icons/react/ssr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -64,32 +64,32 @@ export function ScheduleReportTable({
   );
 
   return (
-    <Card>
+    <Card className="print-area">
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 print:hidden">
         <CardTitle>Class Schedule Report</CardTitle>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={semesterId} onValueChange={(v) => setSemesterId(v ?? "ALL")}>
+          <Select items={[{ value: "ALL", label: "All Semesters" }, ...semesters.map((o) => ({ value: o.id, label: o.label }))]} value={semesterId} onValueChange={(v) => setSemesterId(v ?? "ALL")}>
             <SelectTrigger className="w-44"><SelectValue placeholder="Semester" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All Semesters</SelectItem>
               {semesters.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={sectionId} onValueChange={(v) => setSectionId(v ?? "ALL")}>
+          <Select items={[{ value: "ALL", label: "All Sections" }, ...sections.map((o) => ({ value: o.id, label: o.label }))]} value={sectionId} onValueChange={(v) => setSectionId(v ?? "ALL")}>
             <SelectTrigger className="w-36"><SelectValue placeholder="Section" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All Sections</SelectItem>
               {sections.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={facultyId} onValueChange={(v) => setFacultyId(v ?? "ALL")}>
+          <Select items={[{ value: "ALL", label: "All Faculty" }, ...faculty.map((o) => ({ value: o.id, label: o.label }))]} value={facultyId} onValueChange={(v) => setFacultyId(v ?? "ALL")}>
             <SelectTrigger className="w-40"><SelectValue placeholder="Faculty" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All Faculty</SelectItem>
               {faculty.map((f) => <SelectItem key={f.id} value={f.id}>{f.label}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={roomId} onValueChange={(v) => setRoomId(v ?? "ALL")}>
+          <Select items={[{ value: "ALL", label: "All Rooms" }, ...rooms.map((o) => ({ value: o.id, label: o.label }))]} value={roomId} onValueChange={(v) => setRoomId(v ?? "ALL")}>
             <SelectTrigger className="w-36"><SelectValue placeholder="Room" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All Rooms</SelectItem>

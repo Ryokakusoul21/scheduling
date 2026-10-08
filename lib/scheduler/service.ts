@@ -92,7 +92,7 @@ export async function generateScheduleForSections(input: GenerateForSectionsInpu
 
   const { entries: optimizedNewEntries, scoreAfter, movesApplied } = optimizeSchedule(
     generatedEntries,
-    { facultyById, roomById, subjectById, sectionStudentCountById, facultyPool, roomPool },
+    { facultyById, roomById, subjectById, sectionStudentCountById, facultyPool, roomPool, existingEntries },
     3
   );
 

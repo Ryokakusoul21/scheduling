@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 
-const STAFF = ["SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR"] as const;
+const STAFF = ["SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER"] as const;
 
 const schema = z.object({
   academicYearId: z.string().min(1),

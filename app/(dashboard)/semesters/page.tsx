@@ -5,7 +5,7 @@ import { SemestersManager } from "./manager";
 export const metadata = { title: "Semesters · GCST Scheduling" };
 
 export default async function SemestersPage() {
-  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR");
+  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER");
   const [semesters, years] = await Promise.all([
     prisma.semester.findMany({ include: { academicYear: true }, orderBy: { startDate: "desc" } }),
     prisma.academicYear.findMany({ orderBy: { startDate: "desc" } }),

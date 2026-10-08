@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Loader2, BookOpen, UserSquare2, Building2, Layers } from "lucide-react";
+import { MagnifyingGlass as Search, CircleNotch as Loader2, BookOpen, UserSquare as UserSquare2, Buildings as Building2, Stack as Layers } from "@phosphor-icons/react/ssr";
 import { globalSearchAction, type SearchResult } from "./search-actions";
 
 const GROUP_ICONS: Record<SearchResult["group"], typeof BookOpen> = {

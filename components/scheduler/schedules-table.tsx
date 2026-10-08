@@ -4,14 +4,14 @@ import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
   Plus,
-  MoreHorizontal,
-  Upload,
-  Undo2,
+  DotsThree as MoreHorizontal,
+  UploadSimple as Upload,
+  ArrowCounterClockwise as Undo2,
   Archive,
   Copy,
-  Trash2,
-  Loader2,
-} from "lucide-react";
+  Trash as Trash2,
+  CircleNotch as Loader2,
+} from "@phosphor-icons/react/ssr";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -184,7 +184,7 @@ export function SchedulesTable({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={semesterFilter} onValueChange={(v) => setSemesterFilter(v ?? "ALL")}>
+          <Select items={[{ value: "ALL", label: "All Semesters" }, ...semesters.map((o) => ({ value: o.id, label: o.label }))]} value={semesterFilter} onValueChange={(v) => setSemesterFilter(v ?? "ALL")}>
             <SelectTrigger className="w-48"><SelectValue placeholder="Semester" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All Semesters</SelectItem>
@@ -193,7 +193,7 @@ export function SchedulesTable({
               ))}
             </SelectContent>
           </Select>
-          <Select value={sectionFilter} onValueChange={(v) => setSectionFilter(v ?? "ALL")}>
+          <Select items={[{ value: "ALL", label: "All Sections" }, ...sections.map((o) => ({ value: o.id, label: o.label }))]} value={sectionFilter} onValueChange={(v) => setSectionFilter(v ?? "ALL")}>
             <SelectTrigger className="w-40"><SelectValue placeholder="Section" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All Sections</SelectItem>
@@ -202,7 +202,9 @@ export function SchedulesTable({
               ))}
             </SelectContent>
           </Select>
-          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "ALL")}>
+          <Select
+            items={{ ALL: "All Status", DRAFT: "Draft", PUBLISHED: "Published", ARCHIVED: "Archived" }}
+            value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "ALL")}>
             <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All Status</SelectItem>

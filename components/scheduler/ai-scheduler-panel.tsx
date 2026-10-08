@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Sparkles, Loader2, CheckCircle2, AlertTriangle, Upload, Trash2 } from "lucide-react";
+import { Sparkle as Sparkles, CircleNotch as Loader2, CheckCircle as CheckCircle2, Warning as AlertTriangle, UploadSimple as Upload, Trash as Trash2 } from "@phosphor-icons/react/ssr";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
-  generateScheduleAction,
+  generateScheduleWithAIAction,
   publishDraftAction,
   discardDraftAction,
 } from "@/app/(dashboard)/ai-scheduler/actions";
@@ -34,7 +34,7 @@ interface SectionOption {
   studentCount: number;
 }
 
-type GenerateResult = Awaited<ReturnType<typeof generateScheduleAction>>;
+type GenerateResult = Awaited<ReturnType<typeof generateScheduleWithAIAction>>;
 
 export function AiSchedulerPanel({
   semesters,
@@ -47,6 +47,7 @@ export function AiSchedulerPanel({
   const [sectionIds, setSectionIds] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<GenerateResult | null>(null);
+  const [generating, setGenerating] = useState(false);
 
   const allSelected = sectionIds.length === sections.length && sections.length > 0;
 
@@ -59,13 +60,18 @@ export function AiSchedulerPanel({
       toast.error("Select a semester and at least one section.");
       return;
     }
+    setGenerating(true);
     startTransition(async () => {
-      const res = await generateScheduleAction({ semesterId, sectionIds });
-      setResult(res);
-      if (res.ok) {
-        toast.success(`Generated ${res.result.createdCount} class meeting(s) — ${res.result.scoreAfter}% optimized.`);
-      } else {
-        toast.error(res.error);
+      try {
+        const res = await generateScheduleWithAIAction({ semesterId, sectionIds });
+        setResult(res);
+        if (res.ok) {
+          toast.success(`Generated ${res.result.createdCount} class meeting(s) — ${res.result.scoreAfter}% optimized.`);
+        } else {
+          toast.error(res.error);
+        }
+      } finally {
+        setGenerating(false);
       }
     });
   }
@@ -105,7 +111,9 @@ export function AiSchedulerPanel({
         <CardContent className="space-y-5">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Semester</label>
-            <Select value={semesterId} onValueChange={(v) => setSemesterId(v ?? "")}>
+            <Select
+              items={semesters.map((s) => ({ value: s.id, label: `${s.label}${s.isActive ? " (Active)" : ""}` }))}
+              value={semesterId} onValueChange={(v) => setSemesterId(v ?? "")}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select semester" />
               </SelectTrigger>
@@ -151,14 +159,24 @@ export function AiSchedulerPanel({
           </div>
 
           <Button className="w-full" onClick={handleGenerate} disabled={pending}>
-            {pending ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-            Generate Schedule
+            {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+            {generating ? "Generating…" : "Generate Schedule"}
           </Button>
         </CardContent>
       </Card>
 
       <div className="space-y-4 lg:col-span-3">
-        {!result && (
+        {generating && (
+          <Card className="flex h-full min-h-64 items-center justify-center text-center">
+            <CardContent className="flex max-w-sm flex-col items-center gap-3 text-sm text-muted-foreground">
+              <Loader2 className="size-8 animate-spin text-primary" />
+              <p>Gemini is reasoning over faculty, room, and section constraints to build a schedule…</p>
+              <p className="text-xs">This can take up to a minute for larger section sets.</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {!generating && !result && (
           <Card className="flex h-full min-h-64 items-center justify-center text-center">
             <CardContent className="max-w-sm text-sm text-muted-foreground">
               Configure a semester and sections, then generate a schedule to see the
@@ -167,7 +185,7 @@ export function AiSchedulerPanel({
           </Card>
         )}
 
-        {result && !result.ok && (
+        {!generating && result && !result.ok && (
           <Card className="border-destructive/40">
             <CardContent className="flex items-start gap-3 p-4">
               <AlertTriangle className="mt-0.5 size-5 shrink-0 text-destructive" />
@@ -179,7 +197,7 @@ export function AiSchedulerPanel({
           </Card>
         )}
 
-        {result?.ok && (
+        {!generating && result?.ok && (
           <>
             <Card>
               <CardHeader className="flex-row items-center justify-between">

@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
-import Script from "next/script";
-import { Geist, Geist_Mono } from "next/font/google";
+import { cookies } from "next/headers";
+import { Geist_Mono, Poppins } from "next/font/google";
 import { Providers } from "./providers";
-import { THEME_INIT_SCRIPT } from "@/lib/theme/theme-provider";
+import { parseTheme, RESOLVED_THEME_COOKIE, THEME_COOKIE } from "@/lib/theme/theme-cookies";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const poppins = Poppins({
+  variable: "--font-poppins",
   subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
@@ -20,16 +21,23 @@ export const metadata: Metadata = {
   description: "AI-Powered Scheduling Management System for Granby Colleges of Science & Technology",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // Render the theme class on the server from cookies, so no inline script is
+  // needed to avoid a flash of the wrong theme.
+  const cookieStore = await cookies();
+  const theme = parseTheme(cookieStore.get(THEME_COOKIE)?.value);
+  const isDark =
+    theme === "dark" ||
+    (theme === "system" && cookieStore.get(RESOLVED_THEME_COOKIE)?.value === "dark");
+
   return (
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${poppins.variable} ${geistMono.variable} h-full antialiased${isDark ? " dark" : ""}`}
     >
       <body className="min-h-full flex flex-col">
-        <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-        <Providers>{children}</Providers>
+        <Providers initialTheme={theme}>{children}</Providers>
       </body>
     </html>
   );

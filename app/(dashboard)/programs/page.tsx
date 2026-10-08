@@ -5,7 +5,7 @@ import { ProgramsManager } from "./manager";
 export const metadata = { title: "Programs · GCST Scheduling" };
 
 export default async function ProgramsPage() {
-  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR");
+  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER");
   const [programs, departments] = await Promise.all([
     prisma.program.findMany({ include: { department: true }, orderBy: { code: "asc" } }),
     prisma.department.findMany({ orderBy: { name: "asc" } }),

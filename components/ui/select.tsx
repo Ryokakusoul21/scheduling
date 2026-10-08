@@ -3,7 +3,7 @@
 import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "cn"
-import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
+import { CaretDown as ChevronDownIcon, Check as CheckIcon, CaretUp as ChevronUpIcon } from "@phosphor-icons/react/ssr";
 
 const Select = SelectPrimitive.Root
 

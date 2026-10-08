@@ -4,28 +4,34 @@ import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, Printer } from "lucide-react";
+import { CalendarBlank as CalendarDays, Printer } from "@phosphor-icons/react/ssr";
 import { WeeklyCalendar, type CalendarEntry } from "./weekly-calendar";
 
 export function DashboardCalendarCard({
   sections,
   entriesBySection,
+  defaultSectionId,
 }: {
   sections: { id: string; name: string }[];
   entriesBySection: Record<string, CalendarEntry[]>;
+  /** Section to show first (e.g. the signed-in student's own), if it has a schedule. */
+  defaultSectionId?: string;
 }) {
-  const [sectionId, setSectionId] = useState(sections[0]?.id ?? "");
+  const [sectionId, setSectionId] = useState(
+    sections.find((s) => s.id === defaultSectionId)?.id ?? sections[0]?.id ?? ""
+  );
+  const sectionItems = useMemo(() => sections.map((s) => ({ value: s.id, label: s.name })), [sections]);
   const entries = useMemo(() => entriesBySection[sectionId] ?? [], [entriesBySection, sectionId]);
 
   return (
-    <Card className="print:shadow-none">
+    <Card className="print-area print:shadow-none">
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
         <CardTitle className="flex items-center gap-2">
           <CalendarDays className="size-5 text-primary" /> Weekly Class Schedule
         </CardTitle>
         <div className="flex items-center gap-2 print:hidden">
           {sections.length > 0 && (
-            <Select value={sectionId} onValueChange={(v) => setSectionId(v ?? "")}>
+            <Select items={sectionItems} value={sectionId} onValueChange={(v) => setSectionId(v ?? "")}>
               <SelectTrigger className="w-44">
                 <SelectValue placeholder="Select section" />
               </SelectTrigger>

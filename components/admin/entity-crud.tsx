@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Plus, MoreHorizontal, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Plus, DotsThree as MoreHorizontal, PencilSimple as Pencil, Trash as Trash2, CircleNotch as Loader2 } from "@phosphor-icons/react/ssr";
 
 import { Button } from "@/components/ui/button";
 import {

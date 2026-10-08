@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
+import { SETTING_REQUIRE_APPROVAL } from "@/lib/auth/config";
 
 const ADMIN = ["SUPER_ADMIN", "ADMINISTRATOR"] as const;
 
@@ -29,6 +30,25 @@ export async function updateInstitutionAction(formData: FormData) {
 export async function toggleConstraintAction(id: string, isActive: boolean) {
   await requireRole(...ADMIN);
   await prisma.schedulingConstraint.update({ where: { id }, data: { isActive } });
+  revalidatePath("/admin/settings");
+  return { ok: true };
+}
+
+export async function setRequireApprovalAction(enabled: boolean) {
+  const admin = await requireRole(...ADMIN);
+  await prisma.systemSetting.upsert({
+    where: { key: SETTING_REQUIRE_APPROVAL },
+    update: { value: enabled },
+    create: { key: SETTING_REQUIRE_APPROVAL, value: enabled },
+  });
+  await prisma.auditLog.create({
+    data: {
+      userId: admin.id,
+      action: `${enabled ? "Enabled" : "Disabled"} admin approval for new registrations`,
+      entity: "SystemSetting",
+      entityId: SETTING_REQUIRE_APPROVAL,
+    },
+  });
   revalidatePath("/admin/settings");
   return { ok: true };
 }

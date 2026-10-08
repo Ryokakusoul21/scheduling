@@ -1,29 +1,30 @@
 import type { AppRole } from "@/lib/permissions/roles";
+import type { Icon } from "@phosphor-icons/react";
 import {
-  LayoutDashboard,
-  Sparkles,
-  CalendarClock,
-  AlertTriangle,
-  ClipboardList,
-  CalendarDays,
+  SquaresFour as LayoutDashboard,
+  Sparkle as Sparkles,
+  CalendarDots as CalendarClock,
+  Warning as AlertTriangle,
+  ClipboardText as ClipboardList,
+  CalendarBlank as CalendarDays,
   GraduationCap,
   BookOpen,
-  Layers,
+  Stack as Layers,
   Users,
-  UserSquare2,
-  Building2,
-  BarChart3,
-  PieChart,
+  UserSquare as UserSquare2,
+  Buildings as Building2,
+  ChartBar as BarChart3,
+  ChartPie as PieChart,
   Bell,
-  History,
-  Settings,
-  type LucideIcon,
-} from "lucide-react";
+  ClockCounterClockwise as History,
+  Gear as Settings,
+  Robot as Bot,
+} from "@phosphor-icons/react/ssr";
 
 export interface NavItem {
   label: string;
   href: string;
-  icon: LucideIcon;
+  icon: Icon;
   roles?: AppRole[];
 }
 
@@ -45,6 +46,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "AI & Scheduling",
     items: [
       { label: "AI Auto Scheduler", href: "/ai-scheduler", icon: Sparkles, roles: SCHEDULING },
+      { label: "AI Assistant", href: "/assistant", icon: Bot },
       { label: "Schedule Manager", href: "/schedules", icon: CalendarClock, roles: STAFF },
       { label: "Conflict Resolution", href: "/conflicts", icon: AlertTriangle, roles: STAFF },
       { label: "Schedule Requests", href: "/requests", icon: ClipboardList },

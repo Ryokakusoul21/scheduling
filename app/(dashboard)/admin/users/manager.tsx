@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Plus, MoreHorizontal, Pencil, KeyRound, Trash2, Loader2 } from "lucide-react";
+import { Plus, DotsThree as MoreHorizontal, PencilSimple as Pencil, Key as KeyRound, Trash as Trash2, CircleNotch as Loader2, CheckCircle } from "@phosphor-icons/react/ssr";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel, FieldError } from "@/components/ui/field";
-import { createUserAction, updateUserAction, resetPasswordAction, deleteUserAction } from "./actions";
+import { createUserAction, updateUserAction, resetPasswordAction, deleteUserAction, approveUserAction } from "./actions";
 
 interface Row {
   id: string;
@@ -89,6 +89,14 @@ export function UsersManager({ users }: { users: Row[] }) {
     });
   }
 
+  function handleApprove(id: string) {
+    startTransition(async () => {
+      const res = await approveUserAction(id);
+      if (res.ok) toast.success("Account approved. The user has been notified.");
+      else toast.error(res.error ?? "Could not approve.");
+    });
+  }
+
   function handleDelete(id: string) {
     startTransition(async () => {
       const res = await deleteUserAction(id);
@@ -124,7 +132,7 @@ export function UsersManager({ users }: { users: Row[] }) {
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="password">Password</FieldLabel>
-                  <input type="password" name="password" id="password" required minLength={6} className="h-9 rounded-md border border-input bg-background px-2 text-sm" />
+                  <input type="password" name="password" id="password" required minLength={8} placeholder="8+ chars, upper, lower, number, symbol" className="h-9 rounded-md border border-input bg-background px-2 text-sm" />
                 </Field>
                 {error && <FieldError>{error}</FieldError>}
                 <Button type="submit" disabled={pending}>
@@ -154,7 +162,7 @@ export function UsersManager({ users }: { users: Row[] }) {
                 <TableCell className="font-medium">{u.name}</TableCell>
                 <TableCell>{u.email}</TableCell>
                 <TableCell><Badge variant="secondary">{u.role.replace("_", " ")}</Badge></TableCell>
-                <TableCell><Badge variant={u.status === "ACTIVE" ? "default" : "destructive"}>{u.status}</Badge></TableCell>
+                <TableCell><Badge variant={u.status === "ACTIVE" ? "default" : u.status === "PENDING" ? "secondary" : "destructive"}>{u.status}</Badge></TableCell>
                 <TableCell>{u.createdAt}</TableCell>
                 <TableCell>
                   <DropdownMenu>
@@ -162,6 +170,11 @@ export function UsersManager({ users }: { users: Row[] }) {
                       <MoreHorizontal className="size-4" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      {u.status === "PENDING" && (
+                        <DropdownMenuItem onClick={() => handleApprove(u.id)}>
+                          <CheckCircle className="size-4" /> Approve
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem onClick={() => setEditRow(u)}>
                         <Pencil className="size-4" /> Edit
                       </DropdownMenuItem>
@@ -216,6 +229,7 @@ export function UsersManager({ users }: { users: Row[] }) {
                 <Field>
                   <FieldLabel htmlFor="edit-status">Status</FieldLabel>
                   <select name="status" id="edit-status" defaultValue={editRow.status} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+                    <option value="PENDING">Pending approval</option>
                     <option value="ACTIVE">Active</option>
                     <option value="INACTIVE">Inactive</option>
                     <option value="SUSPENDED">Suspended</option>
@@ -239,7 +253,7 @@ export function UsersManager({ users }: { users: Row[] }) {
               <FieldGroup>
                 <Field>
                   <FieldLabel htmlFor="password">New Password</FieldLabel>
-                  <input type="password" name="password" id="password" required minLength={6} className="h-9 rounded-md border border-input bg-background px-2 text-sm" />
+                  <input type="password" name="password" id="password" required minLength={8} placeholder="8+ chars, upper, lower, number, symbol" className="h-9 rounded-md border border-input bg-background px-2 text-sm" />
                 </Field>
                 {error && <FieldError>{error}</FieldError>}
                 <Button type="submit" disabled={pending}>

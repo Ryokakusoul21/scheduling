@@ -5,7 +5,7 @@ import { StudentsManager } from "./manager";
 export const metadata = { title: "Students · GCST Scheduling" };
 
 export default async function StudentsPage() {
-  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR");
+  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER");
   const [students, programs, sections] = await Promise.all([
     prisma.student.findMany({
       include: { program: true, section: true },

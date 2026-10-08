@@ -11,6 +11,8 @@ export interface OptimizationContext {
   facultyPool: SchedFaculty[];
   roomPool: SchedRoom[];
   constraints?: SchedulingConstraints;
+  /** Already-committed schedule entries (other semesters/sections) that a relocation must not clash with. */
+  existingEntries?: SchedEntry[];
 }
 
 export interface OptimizationResult {
@@ -23,8 +25,9 @@ export interface OptimizationResult {
 /**
  * Local-search (hill-climbing) pass: repeatedly tries relocating one entry at a time to a
  * different legal day/time/room. A relocation is only kept if it strictly improves the overall
- * score and introduces zero hard-constraint violations - so this can only ever improve (or leave
- * unchanged) a schedule that was already hard-constraint-clean.
+ * score and introduces zero hard-constraint violations (checked against both the other entries
+ * being optimized and any already-committed `existingEntries`) - so this can only ever improve
+ * (or leave unchanged) a schedule that was already hard-constraint-clean.
  */
 export function optimizeSchedule(
   initialEntries: SchedEntry[],
@@ -32,6 +35,7 @@ export function optimizeSchedule(
   maxIterations = 3
 ): OptimizationResult {
   const constraints = ctx.constraints ?? DEFAULT_CONSTRAINTS;
+  const existingEntries = ctx.existingEntries ?? [];
   let entries = [...initialEntries];
   const scoreBefore = scoreSchedule(entries, { faculty: ctx.facultyPool, rooms: ctx.roomPool, constraints }).overallScore;
   let movesApplied = 0;
@@ -59,7 +63,7 @@ export function optimizeSchedule(
           const alt: SchedEntry = { ...entry, dayOfWeek: slot.day, startMin: slot.startMin, endMin: slot.endMin, roomId: room.id };
 
           const sectionStudentCount = ctx.sectionStudentCountById.get(entry.sectionId) ?? 0;
-          const hard = checkHardConstraints(alt, others, { faculty, room, subject, sectionStudentCount });
+          const hard = checkHardConstraints(alt, [...others, ...existingEntries], { faculty, room, subject, sectionStudentCount });
           const workload = checkFacultyWorkloadCap(faculty, durationMin / 60);
           if (hard.length > 0 || workload.length > 0) continue;
 

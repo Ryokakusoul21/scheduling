@@ -5,7 +5,7 @@ import { AcademicYearsManager } from "./manager";
 export const metadata = { title: "Academic Years · GCST Scheduling" };
 
 export default async function AcademicYearsPage() {
-  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR");
+  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER");
   const years = await prisma.academicYear.findMany({ orderBy: { startDate: "desc" } });
 
   return (

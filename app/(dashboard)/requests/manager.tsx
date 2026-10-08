@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Plus, Check, X, Loader2 } from "lucide-react";
+import { Plus, Check, X, CircleNotch as Loader2 } from "@phosphor-icons/react/ssr";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

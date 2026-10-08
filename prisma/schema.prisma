@@ -20,9 +20,15 @@ enum Role {
 }
 
 enum UserStatus {
+  PENDING
   ACTIVE
   INACTIVE
   SUSPENDED
+}
+
+enum AuthTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
 }
 
 enum DayOfWeek {
@@ -145,6 +151,18 @@ model User {
   status       UserStatus @default(ACTIVE)
   image        String?
 
+  // Authentication / security
+  emailVerified       DateTime?
+  termsAcceptedAt     DateTime?
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  /// Bumped to invalidate every existing session (password reset, "sign out everywhere").
+  sessionVersion      Int       @default(0)
+  twoFactorEnabled    Boolean   @default(false)
+  /// AES-GCM encrypted TOTP secret (see lib/auth/crypto.ts).
+  twoFactorSecret     String?
+
   facultyId String?  @unique
   faculty   Faculty? @relation(fields: [facultyId], references: [id])
 
@@ -159,8 +177,39 @@ model User {
   requestsMade     ScheduleRequest[] @relation("RequestedBy")
   requestsReviewed ScheduleRequest[] @relation("ReviewedBy")
   aiConversations  AIConversation[]
+  authTokens       AuthToken[]
 
   @@index([role])
+}
+
+/// Single-use, time-limited tokens for email verification and password reset.
+/// Only a SHA-256 hash of the token is stored.
+model AuthToken {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type      AuthTokenType
+  tokenHash String        @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, type])
+}
+
+/// Login attempt log used for IP-based rate limiting and auditing.
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ipAddress String
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([ipAddress, createdAt])
+  @@index([email, createdAt])
 }
 
 // ---------------------------------------------------------------------------

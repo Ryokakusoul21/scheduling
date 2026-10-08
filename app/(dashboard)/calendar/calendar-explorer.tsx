@@ -56,7 +56,7 @@ export function CalendarExplorer({
               <TabsTrigger value="room">By Room</TabsTrigger>
             </TabsList>
           </Tabs>
-          <Select value={activeId} onValueChange={(v) => setSelectedId(v ?? "")}>
+          <Select items={currentOptions.map((o) => ({ value: o.id, label: o.label }))} value={activeId} onValueChange={(v) => setSelectedId(v ?? "")}>
             <SelectTrigger className="w-48">
               <SelectValue placeholder="Select" />
             </SelectTrigger>

@@ -1,55 +1,40 @@
-import Image from "next/image";
-import { LoginForm } from "@/components/auth/login-form";
-import { auth } from "@/auth";
 import { redirect } from "next/navigation";
+import { CheckCircle } from "@phosphor-icons/react/ssr";
+import { LoginForm } from "@/components/auth/login-form";
+import { AuthShell } from "@/components/auth/auth-shell";
+import { auth } from "@/auth";
+import { homeForRole, type AppRole } from "@/lib/permissions/roles";
 
 export const metadata = { title: "Sign In · GCST Scheduling" };
 
-export default async function LoginPage() {
+const NOTICES: Record<string, string> = {
+  registered: "Account created. Check your email for a verification link.",
+  verified: "Email verified. You can now sign in.",
+  reset: "Your password has been reset. Sign in with your new password.",
+  changed: "Password changed. Please sign in again.",
+  signedout: "You've been signed out of all devices.",
+};
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ callbackUrl?: string; notice?: string }>;
+}) {
   const session = await auth();
-  if (session?.user) redirect("/dashboard");
+  if (session?.user) redirect(homeForRole(session.user.role as AppRole));
+
+  const { callbackUrl, notice } = await searchParams;
+  const message = notice ? NOTICES[notice] : undefined;
 
   return (
-    <div className="flex min-h-screen w-full">
-      <div className="relative hidden flex-1 flex-col justify-between overflow-hidden p-12 text-primary-foreground lg:flex">
-        <Image src="/branding/school.jpg" alt="GCST Campus" fill priority className="object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-b from-primary/95 via-primary/90 to-primary/95" />
-
-        <div className="relative flex items-center gap-3">
-          <div className="relative size-14 shrink-0 overflow-hidden rounded-full bg-white ring-2 ring-gold/60">
-            <Image src="/branding/logo.jpg" alt="GCST Seal" fill sizes="56px" className="object-cover" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold tracking-widest text-gold uppercase">GCST</p>
-            <p className="text-xs text-primary-foreground/70">Est. 1999</p>
-          </div>
+    <AuthShell title="Welcome back" description="Sign in to the GCST Scheduling System">
+      {message && (
+        <div role="status" className="mb-4 flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm">
+          <CheckCircle className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+          <p>{message}</p>
         </div>
-
-        <div className="relative">
-          <h1 className="max-w-md text-4xl font-semibold leading-tight">
-            Granby Colleges of Science &amp; Technology
-          </h1>
-          <p className="mt-4 max-w-sm text-primary-foreground/70">Naic, Cavite, Philippines</p>
-        </div>
-        <div className="relative max-w-sm text-sm text-primary-foreground/60">
-          AI-Powered Scheduling Management System — automated timetabling, conflict
-          detection, and faculty &amp; room allocation for the whole institution.
-        </div>
-      </div>
-      <div className="flex flex-1 items-center justify-center bg-background p-8">
-        <div className="w-full max-w-sm">
-          <div className="mb-8 flex flex-col items-center text-center lg:items-start lg:text-left">
-            <div className="relative mb-4 size-14 overflow-hidden rounded-full ring-1 ring-border lg:hidden">
-              <Image src="/branding/logo.jpg" alt="GCST Seal" fill sizes="56px" className="object-cover" />
-            </div>
-            <h2 className="text-2xl font-semibold">Welcome back</h2>
-            <p className="text-sm text-muted-foreground">
-              Sign in to the GCST Scheduling System
-            </p>
-          </div>
-          <LoginForm />
-        </div>
-      </div>
-    </div>
+      )}
+      <LoginForm callbackUrl={callbackUrl} />
+    </AuthShell>
   );
 }

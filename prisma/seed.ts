@@ -8,7 +8,7 @@ const prisma = new PrismaClient({ adapter });
 const DEV_PASSWORD = "Passw0rd!";
 
 async function hash(pw: string) {
-  return bcrypt.hash(pw, 10);
+  return bcrypt.hash(pw, 12);
 }
 
 async function main() {
@@ -380,6 +380,7 @@ async function main() {
         name: u.name,
         role: u.role,
         status: "ACTIVE",
+        emailVerified: new Date(),
         passwordHash,
         facultyId: u.facultyId,
         studentId: u.studentId,

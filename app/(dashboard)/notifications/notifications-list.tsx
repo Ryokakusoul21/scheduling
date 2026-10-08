@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import Link from "next/link";
-import { Bell, CheckCheck, Info, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import { Bell, Checks as CheckCheck, Info, CheckCircle as CheckCircle2, Warning as AlertTriangle, XCircle } from "@phosphor-icons/react/ssr";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { markNotificationReadAction, markAllNotificationsReadAction } from "./actions";

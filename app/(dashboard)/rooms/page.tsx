@@ -5,7 +5,7 @@ import { RoomsManager } from "./manager";
 export const metadata = { title: "Rooms · GCST Scheduling" };
 
 export default async function RoomsPage() {
-  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR");
+  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER");
   const rooms = await prisma.room.findMany({
     include: { schedules: { select: { startMin: true, endMin: true } } },
     orderBy: { roomNumber: "asc" },

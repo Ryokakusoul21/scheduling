@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { generateScheduleForSections } from "@/lib/scheduler/service";
+import { generateScheduleForSectionsWithAI } from "@/lib/scheduler/aiService";
 import { prisma } from "@/lib/db/prisma";
 
 const generateSchema = z.object({
@@ -26,6 +27,24 @@ export async function generateScheduleAction(input: { semesterId: string; sectio
     return { ok: true as const, result };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : "Schedule generation failed." };
+  }
+}
+
+export async function generateScheduleWithAIAction(input: { semesterId: string; sectionIds: string[] }) {
+  const user = await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "SCHEDULER");
+  const parsed = generateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  try {
+    const result = await generateScheduleForSectionsWithAI({ ...parsed.data, generatedBy: user.id });
+    revalidatePath("/ai-scheduler");
+    revalidatePath("/schedules");
+    revalidatePath("/calendar");
+    return { ok: true as const, result };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "AI schedule generation failed." };
   }
 }
 

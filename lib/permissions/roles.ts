@@ -41,3 +41,16 @@ export function roleLabel(role: AppRole) {
     .map((w) => w[0] + w.slice(1).toLowerCase())
     .join(" ");
 }
+
+/** Landing page after sign-in, per role. */
+export function homeForRole(role: AppRole) {
+  switch (role) {
+    case "SCHEDULER":
+      return "/schedules";
+    case "FACULTY":
+    case "STUDENT":
+      return "/calendar";
+    default:
+      return "/dashboard";
+  }
+}
