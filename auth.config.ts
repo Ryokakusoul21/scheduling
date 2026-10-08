@@ -1,6 +1,9 @@
 import type { NextAuthConfig } from "next-auth";
 import type { Role, UserStatus } from "@prisma/client";
+import { NextResponse } from "next/server";
 import { AUTH } from "@/lib/auth/config";
+import { canAccessPath } from "@/lib/permissions/routes";
+import type { AppRole } from "@/lib/permissions/roles";
 
 /** Routes reachable without a session. */
 const PUBLIC_PATHS = [
@@ -11,6 +14,7 @@ const PUBLIC_PATHS = [
   "/verify-email",
   "/terms",
   "/privacy",
+  "/403",
 ];
 
 export function isPublicPath(pathname: string) {
@@ -40,8 +44,14 @@ export const authConfig = {
   },
   callbacks: {
     authorized({ auth, request }) {
-      if (isPublicPath(request.nextUrl.pathname)) return true;
-      return !!auth?.user;
+      const { pathname } = request.nextUrl;
+      if (isPublicPath(pathname)) return true;
+      if (!auth?.user) return false;
+      // RBAC route guard: answer with a real 403 before the page streams.
+      if (!canAccessPath(pathname, auth.user.role as AppRole)) {
+        return NextResponse.rewrite(new URL("/403", request.nextUrl), { status: 403 });
+      }
+      return true;
     },
     jwt({ token, user }) {
       if (user) {

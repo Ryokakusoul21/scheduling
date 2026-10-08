@@ -4,47 +4,62 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
+import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { ACADEMIC_LEVELS, GRADE_LEVELS, LEVELS, YEAR_LEVELS } from "@/lib/academics/levels";
 
-const STAFF = ["SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER"] as const;
+type Result = { ok: boolean; error?: string };
 
-const schema = z.object({
-  name: z.string().min(1),
-  programId: z.string().min(1),
-  yearLevel: z.enum(["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH"]),
-  studentCount: z.coerce.number().int().min(0),
-  semesterId: z.string().optional(),
-});
+const schema = z
+  .object({
+    name: z.string().trim().min(1, "Section name is required").max(60),
+    studentCount: z.coerce.number().int().min(0, "Enrollment can't be negative").max(200),
+    level: z.enum(ACADEMIC_LEVELS),
+    programId: z.string().optional(),
+    yearLevel: z.enum(YEAR_LEVELS).optional().or(z.literal("")),
+    gradeLevel: z.enum(GRADE_LEVELS).optional().or(z.literal("")),
+    semesterId: z.string().optional(),
+  })
+  .refine((d) => d.level !== "COLLEGE" || (!!d.programId && !!d.yearLevel), { message: "College sections need a course and year level" })
+  .refine((d) => d.level === "COLLEGE" || (!!d.gradeLevel && LEVELS[d.level].grades.includes(d.gradeLevel)), {
+    message: "Choose a grade level that belongs to this academic level",
+  })
+  .refine((d) => d.level !== "SENIOR_HIGH" || !!d.programId, { message: "Senior High sections need a strand" });
 
-export async function createSectionAction(formData: FormData) {
-  await requireRole(...STAFF);
+export async function saveSectionAction(id: string | null, formData: FormData): Promise<Result> {
+  await requireRole(...STAFF_ROLES);
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const d = parsed.data;
-  try {
-    await prisma.section.create({
-      data: { ...d, semesterId: d.semesterId || null },
-    });
-    revalidatePath("/sections");
-    return { ok: true };
-  } catch {
-    return { ok: false, error: "A section with that name already exists in that semester." };
+  const usesProgram = LEVELS[d.level].usesPrograms;
+  const data = {
+    name: d.name,
+    studentCount: d.studentCount,
+    level: d.level,
+    programId: usesProgram ? d.programId || null : null,
+    yearLevel: d.level === "COLLEGE" ? d.yearLevel || null : null,
+    gradeLevel: d.level === "COLLEGE" ? null : d.gradeLevel || null,
+    semesterId: d.level === "COLLEGE" ? d.semesterId || null : null,
+  };
+
+  const duplicate = await prisma.section.findFirst({
+    where: { name: { equals: data.name, mode: "insensitive" }, level: data.level, semesterId: data.semesterId, id: id ? { not: id } : undefined },
+  });
+  if (duplicate) return { ok: false, error: `A section named "${data.name}" already exists here.` };
+
+  if (id) await prisma.section.update({ where: { id }, data });
+  else {
+    const last = await prisma.section.aggregate({ _max: { sortOrder: true } });
+    await prisma.section.create({ data: { ...data, sortOrder: (last._max.sortOrder ?? -1) + 1 } });
   }
-}
-
-export async function updateSectionAction(id: string, formData: FormData) {
-  await requireRole(...STAFF);
-  const parsed = schema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
-  const d = parsed.data;
-  await prisma.section.update({ where: { id }, data: { ...d, semesterId: d.semesterId || null } });
   revalidatePath("/sections");
+  revalidatePath("/scheduler");
   return { ok: true };
 }
 
-export async function deleteSectionAction(id: string) {
-  await requireRole(...STAFF);
-  const schedules = await prisma.schedule.count({ where: { sectionId: id } });
-  if (schedules > 0) return { ok: false, error: "This section has schedules linked to it." };
+export async function deleteSectionAction(id: string): Promise<Result> {
+  await requireRole(...STAFF_ROLES);
+  const classes = await prisma.schedule.count({ where: { sectionId: id } });
+  if (classes > 0) return { ok: false, error: `This section has ${classes} scheduled class(es). Remove them in the Scheduler first.` };
   await prisma.section.delete({ where: { id } });
   revalidatePath("/sections");
   return { ok: true };

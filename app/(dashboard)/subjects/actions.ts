@@ -4,56 +4,75 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
+import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { ACADEMIC_LEVELS, GRADE_LEVELS, LEVELS, YEAR_LEVELS } from "@/lib/academics/levels";
 
-const STAFF = ["SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER"] as const;
+type Result = { ok: boolean; error?: string };
 
-const schema = z.object({
-  code: z.string().min(1),
-  name: z.string().min(1),
-  description: z.string().optional(),
-  units: z.coerce.number().min(0),
-  lectureHours: z.coerce.number().min(0),
-  labHours: z.coerce.number().min(0),
-  requiredRoomType: z.enum(["LECTURE_ROOM", "COMPUTER_LABORATORY", "SCIENCE_LABORATORY", "CONFERENCE_ROOM", "OTHER"]),
-  programId: z.string().optional(),
-  yearLevel: z.enum(["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH"]).optional().or(z.literal("")),
-});
+const schema = z
+  .object({
+    code: z.string().trim().min(1, "Code is required").max(30),
+    name: z.string().trim().min(1, "Name is required").max(150),
+    description: z.string().max(500).optional(),
+    units: z.coerce.number().min(0, "Units can't be negative").max(30),
+    lectureHours: z.coerce.number().min(0).max(40),
+    labHours: z.coerce.number().min(0).max(40),
+    requiredRoomType: z.enum(["LECTURE_ROOM", "COMPUTER_LABORATORY", "SCIENCE_LABORATORY", "CONFERENCE_ROOM", "OTHER"]),
+    level: z.enum(ACADEMIC_LEVELS),
+    programId: z.string().optional(),
+    yearLevel: z.enum(YEAR_LEVELS).optional().or(z.literal("")),
+    gradeLevel: z.enum(GRADE_LEVELS).optional().or(z.literal("")),
+  })
+  .refine((d) => d.lectureHours + d.labHours > 0, { message: "Add lecture or lab hours per week" })
+  .refine((d) => d.level === "COLLEGE" || (!!d.gradeLevel && LEVELS[d.level].grades.includes(d.gradeLevel)), {
+    message: "Choose a grade level that belongs to this academic level",
+  });
 
-function clean(data: z.infer<typeof schema>) {
+async function clean(d: z.infer<typeof schema>) {
+  let programId = d.programId || null;
+  if (d.level === "JUNIOR_HIGH" || d.level === "ELEMENTARY") programId = null;
+  if (programId) {
+    const program = await prisma.program.findUnique({ where: { id: programId }, select: { level: true } });
+    if (!program || program.level !== d.level) programId = null;
+  }
   return {
-    ...data,
-    programId: data.programId || null,
-    yearLevel: data.yearLevel || null,
-    description: data.description || null,
+    code: d.code,
+    name: d.name,
+    description: d.description || null,
+    units: d.units,
+    lectureHours: d.lectureHours,
+    labHours: d.labHours,
+    requiredRoomType: d.requiredRoomType,
+    level: d.level,
+    programId,
+    yearLevel: d.level === "COLLEGE" ? d.yearLevel || null : null,
+    gradeLevel: d.level === "COLLEGE" ? null : d.gradeLevel || null,
   };
 }
 
-export async function createSubjectAction(formData: FormData) {
-  await requireRole(...STAFF);
+export async function saveSubjectAction(id: string | null, formData: FormData): Promise<Result> {
+  await requireRole(...STAFF_ROLES);
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
+  const data = await clean(parsed.data);
   try {
-    await prisma.subject.create({ data: clean(parsed.data) });
-    revalidatePath("/subjects");
-    return { ok: true };
+    if (id) await prisma.subject.update({ where: { id }, data });
+    else {
+      const last = await prisma.subject.aggregate({ _max: { sortOrder: true } });
+      await prisma.subject.create({ data: { ...data, sortOrder: (last._max.sortOrder ?? -1) + 1 } });
+    }
   } catch {
-    return { ok: false, error: "A subject with that code already exists." };
+    return { ok: false, error: `A subject with the code "${data.code}" already exists.` };
   }
-}
-
-export async function updateSubjectAction(id: string, formData: FormData) {
-  await requireRole(...STAFF);
-  const parsed = schema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
-  await prisma.subject.update({ where: { id }, data: clean(parsed.data) });
   revalidatePath("/subjects");
+  revalidatePath("/scheduler");
   return { ok: true };
 }
 
-export async function deleteSubjectAction(id: string) {
-  await requireRole(...STAFF);
-  const scheduleCount = await prisma.schedule.count({ where: { subjectId: id } });
-  if (scheduleCount > 0) return { ok: false, error: "This subject is used in existing schedules." };
+export async function deleteSubjectAction(id: string): Promise<Result> {
+  await requireRole(...STAFF_ROLES);
+  const classes = await prisma.schedule.count({ where: { subjectId: id } });
+  if (classes > 0) return { ok: false, error: `This subject has ${classes} scheduled class(es). Remove them in the Scheduler first.` };
   await prisma.subject.delete({ where: { id } });
   revalidatePath("/subjects");
   return { ok: true };

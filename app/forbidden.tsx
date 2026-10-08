@@ -1,7 +1,5 @@
 import { StatusPage } from "@/components/errors/status-page";
 
-export const metadata = { title: "Access Denied · GCST Scheduling" };
-
 export default function Forbidden() {
   return (
     <StatusPage

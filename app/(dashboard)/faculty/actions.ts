@@ -4,8 +4,16 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
+import { ACADEMIC_LEVELS } from "@/lib/academics/levels";
 
 const STAFF = ["SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER"] as const;
+
+/** FormData -> object, keeping repeated keys (checkbox groups) as arrays. */
+function formObject(formData: FormData) {
+  const out: Record<string, unknown> = Object.fromEntries(formData);
+  out.teachingLevels = formData.getAll("teachingLevels");
+  return out;
+}
 
 const schema = z.object({
   employeeId: z.string().min(1),
@@ -16,6 +24,7 @@ const schema = z.object({
   specialization: z.string().optional(),
   maxHours: z.coerce.number().int().min(1).max(80),
   status: z.enum(["ACTIVE", "INACTIVE", "ON_LEAVE"]),
+  teachingLevels: z.array(z.enum(ACADEMIC_LEVELS)).min(1, "Choose at least one teaching level"),
 });
 
 function clean(d: z.infer<typeof schema>) {
@@ -24,7 +33,7 @@ function clean(d: z.infer<typeof schema>) {
 
 export async function createFacultyAction(formData: FormData) {
   await requireRole(...STAFF);
-  const parsed = schema.safeParse(Object.fromEntries(formData));
+  const parsed = schema.safeParse(formObject(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   try {
     await prisma.faculty.create({
@@ -48,9 +57,13 @@ export async function createFacultyAction(formData: FormData) {
 
 export async function updateFacultyAction(id: string, formData: FormData) {
   await requireRole(...STAFF);
-  const parsed = schema.safeParse(Object.fromEntries(formData));
+  const parsed = schema.safeParse(formObject(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
-  await prisma.faculty.update({ where: { id }, data: clean(parsed.data) });
+  try {
+    await prisma.faculty.update({ where: { id }, data: clean(parsed.data) });
+  } catch {
+    return { ok: false, error: "Another faculty member already uses that employee ID or email." };
+  }
   revalidatePath("/faculty");
   return { ok: true };
 }

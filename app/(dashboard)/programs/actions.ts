@@ -4,47 +4,55 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
+import { STAFF_ROLES } from "@/lib/permissions/roles";
 
-const STAFF = ["SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER"] as const;
+type Result = { ok: boolean; error?: string };
 
-const schema = z.object({
-  code: z.string().min(1),
-  name: z.string().min(1),
-  departmentId: z.string().min(1),
-});
+const schema = z
+  .object({
+    level: z.enum(["COLLEGE", "SENIOR_HIGH"]),
+    code: z.string().trim().min(1, "Code is required").max(20),
+    name: z.string().trim().min(1, "Name is required").max(150),
+    departmentId: z.string().optional(),
+  })
+  .refine((d) => d.level !== "COLLEGE" || !!d.departmentId, { message: "Choose the department offering this course", path: ["departmentId"] });
 
-export async function createProgramAction(formData: FormData) {
-  await requireRole(...STAFF);
-  const parsed = schema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
-  try {
-    await prisma.program.create({ data: parsed.data });
-    revalidatePath("/programs");
-    return { ok: true };
-  } catch {
-    return { ok: false, error: "A program with that code already exists." };
-  }
+function revalidate(id?: string) {
+  revalidatePath("/programs");
+  if (id) revalidatePath(`/programs/${id}`);
+  revalidatePath("/scheduler");
 }
 
-export async function updateProgramAction(id: string, formData: FormData) {
-  await requireRole(...STAFF);
+export async function saveProgramAction(id: string | null, formData: FormData): Promise<Result> {
+  await requireRole(...STAFF_ROLES);
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
-  await prisma.program.update({ where: { id }, data: parsed.data });
-  revalidatePath("/programs");
+  const data = { ...parsed.data, departmentId: parsed.data.departmentId || null };
+
+  try {
+    if (id) {
+      await prisma.program.update({ where: { id }, data });
+    } else {
+      const last = await prisma.program.aggregate({ where: { level: data.level }, _max: { sortOrder: true } });
+      await prisma.program.create({ data: { ...data, sortOrder: (last._max.sortOrder ?? -1) + 1 } });
+    }
+  } catch {
+    return { ok: false, error: `A program or strand with the code "${data.code}" already exists.` };
+  }
+  revalidate(id ?? undefined);
   return { ok: true };
 }
 
-export async function deleteProgramAction(id: string) {
-  await requireRole(...STAFF);
-  const [sections, subjects] = await Promise.all([
+export async function deleteProgramAction(id: string): Promise<Result> {
+  await requireRole(...STAFF_ROLES);
+  const [sections, subjects, terms] = await Promise.all([
     prisma.section.count({ where: { programId: id } }),
     prisma.subject.count({ where: { programId: id } }),
+    prisma.semester.count({ where: { programId: id } }),
   ]);
-  if (sections + subjects > 0) {
-    return { ok: false, error: "This program is referenced by sections or subjects." };
-  }
+  const blockers = [sections && `${sections} section(s)`, subjects && `${subjects} subject(s)`, terms && `${terms} term(s)`].filter(Boolean);
+  if (blockers.length) return { ok: false, error: `Still used by ${blockers.join(", ")}. Move or delete those first.` };
   await prisma.program.delete({ where: { id } });
-  revalidatePath("/programs");
+  revalidate();
   return { ok: true };
 }
