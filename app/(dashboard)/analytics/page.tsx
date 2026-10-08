@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
-import { detectConflicts } from "@/lib/scheduler/conflictDetector";
-import { toSchedEntry, toSchedFaculty, toSchedRoom, toSchedSubject } from "@/lib/scheduler/mappers";
+import { activeOverlapConflicts } from "@/lib/scheduler/term-conflicts";
 import { AnalyticsCharts } from "./analytics-charts";
 
 export const metadata = { title: "Analytics · GCST Scheduling" };
@@ -14,11 +13,10 @@ const DAY_LABELS: Record<string, string> = {
 export default async function AnalyticsPage() {
   await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER");
 
-  const [schedules, rooms, faculty, subjects, sections] = await Promise.all([
+  const [schedules, rooms, faculty, sections] = await Promise.all([
     prisma.schedule.findMany({ where: { status: { not: "ARCHIVED" } } }),
-    prisma.room.findMany({ include: { availability: true } }),
-    prisma.faculty.findMany({ include: { availability: true } }),
-    prisma.subject.findMany(),
+    prisma.room.findMany(),
+    prisma.faculty.findMany(),
     prisma.section.findMany(),
   ]);
 
@@ -46,15 +44,9 @@ export default async function AnalyticsPage() {
   }
   const workloadData = Object.entries(workloadBuckets).map(([name, value]) => ({ name, value }));
 
-  const entries = schedules.map(toSchedEntry);
-  const conflicts = detectConflicts(entries, {
-    facultyById: new Map(faculty.map((f) => [f.id, toSchedFaculty(f)])),
-    roomById: new Map(rooms.map((r) => [r.id, toSchedRoom(r)])),
-    subjectById: new Map(subjects.map((s) => [s.id, toSchedSubject(s)])),
-    sectionStudentCountById: new Map(sections.map((s) => [s.id, s.studentCount])),
-  });
+  const conflicts = await activeOverlapConflicts();
 
-  const studentsPerSection = sections
+  const enrollmentPerSection = sections
     .map((s) => ({ section: s.name, students: s.studentCount }))
     .sort((a, b) => b.students - a.students)
     .slice(0, 10);
@@ -70,7 +62,7 @@ export default async function AnalyticsPage() {
         classesPerDay={classesPerDay}
         roomUtilization={roomUtilization}
         workloadData={workloadData}
-        studentsPerSection={studentsPerSection}
+        enrollmentPerSection={enrollmentPerSection}
         totalClasses={schedules.length}
         conflictCount={conflicts.length}
       />

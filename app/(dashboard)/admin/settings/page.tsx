@@ -8,9 +8,8 @@ export const metadata = { title: "System Settings · GCST Scheduling" };
 export default async function SettingsPage() {
   await requireRole("SUPER_ADMIN", "ADMINISTRATOR");
 
-  const [institutionSetting, constraints, approvalSetting] = await Promise.all([
+  const [institutionSetting, approvalSetting] = await Promise.all([
     prisma.systemSetting.findUnique({ where: { key: "institution" } }),
-    prisma.schedulingConstraint.findMany({ orderBy: [{ type: "asc" }, { name: "asc" }] }),
     prisma.systemSetting.findUnique({ where: { key: SETTING_REQUIRE_APPROVAL } }),
   ]);
 
@@ -20,7 +19,7 @@ export default async function SettingsPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">System Settings</h1>
-        <p className="text-sm text-muted-foreground">Institution details and scheduling constraint configuration.</p>
+        <p className="text-sm text-muted-foreground">Institution details and registration settings.</p>
       </div>
 
       <SettingsManager
@@ -30,13 +29,6 @@ export default async function SettingsPage() {
           location: institution.location ?? "Naic, Cavite",
         }}
         requireApproval={approvalSetting?.value === true}
-        constraints={constraints.map((c) => ({
-          id: c.id,
-          name: c.name,
-          type: c.type,
-          weight: c.weight,
-          isActive: c.isActive,
-        }))}
       />
     </div>
   );

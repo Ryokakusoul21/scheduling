@@ -37,13 +37,12 @@ export async function updateProgramAction(id: string, formData: FormData) {
 
 export async function deleteProgramAction(id: string) {
   await requireRole(...STAFF);
-  const [sections, subjects, students] = await Promise.all([
+  const [sections, subjects] = await Promise.all([
     prisma.section.count({ where: { programId: id } }),
     prisma.subject.count({ where: { programId: id } }),
-    prisma.student.count({ where: { programId: id } }),
   ]);
-  if (sections + subjects + students > 0) {
-    return { ok: false, error: "This program is referenced by sections, subjects, or students." };
+  if (sections + subjects > 0) {
+    return { ok: false, error: "This program is referenced by sections or subjects." };
   }
   await prisma.program.delete({ where: { id } });
   revalidatePath("/programs");

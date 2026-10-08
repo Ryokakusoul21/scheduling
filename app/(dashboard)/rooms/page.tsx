@@ -28,7 +28,7 @@ export default async function RoomsPage() {
             id: r.id,
             roomNumber: r.roomNumber,
             roomName: r.roomName,
-            building: r.building ?? "",
+            building: "",
             capacity: String(r.capacity),
             roomType: r.roomType,
             status: r.status,

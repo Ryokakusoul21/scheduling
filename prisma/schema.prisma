@@ -60,10 +60,39 @@ enum SubjectComponent {
   LABORATORY
 }
 
+/// A term within an academic year: semesters for College, quarters for basic education.
 enum SemesterType {
   FIRST
   SECOND
   SUMMER
+  QUARTER_1
+  QUARTER_2
+  QUARTER_3
+  QUARTER_4
+}
+
+enum AcademicLevel {
+  ELEMENTARY
+  JUNIOR_HIGH
+  SENIOR_HIGH
+  COLLEGE
+}
+
+/// Basic-education grade levels (Kindergarten to Grade 12). College uses YearLevel.
+enum GradeLevel {
+  KINDER
+  GRADE_1
+  GRADE_2
+  GRADE_3
+  GRADE_4
+  GRADE_5
+  GRADE_6
+  GRADE_7
+  GRADE_8
+  GRADE_9
+  GRADE_10
+  GRADE_11
+  GRADE_12
 }
 
 enum YearLevel {
@@ -80,12 +109,6 @@ enum FacultyStatus {
   ON_LEAVE
 }
 
-enum StudentStatus {
-  ACTIVE
-  INACTIVE
-  GRADUATED
-  DROPPED
-}
 
 enum ScheduleStatus {
   DRAFT
@@ -109,27 +132,8 @@ enum RequestStatus {
   COMPLETED
 }
 
-enum ConflictType {
-  FACULTY_CONFLICT
-  ROOM_CONFLICT
-  SECTION_CONFLICT
-  CAPACITY_CONFLICT
-  AVAILABILITY_CONFLICT
-  SUBJECT_REQUIREMENT_CONFLICT
-}
 
-enum ConflictSeverity {
-  CRITICAL
-  HIGH
-  MEDIUM
-  LOW
-}
 
-enum ConflictStatus {
-  OPEN
-  RESOLVED
-  IGNORED
-}
 
 enum NotificationType {
   INFO
@@ -165,9 +169,6 @@ model User {
 
   facultyId String?  @unique
   faculty   Faculty? @relation(fields: [facultyId], references: [id])
-
-  studentId String?  @unique
-  student   Student? @relation(fields: [studentId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -228,16 +229,19 @@ model Department {
   updatedAt DateTime @updatedAt
 }
 
+/// A college course (e.g. BSIT) or a Senior High School strand (e.g. STEM).
 model Program {
-  id           String @id @default(cuid())
-  code         String @unique
+  id           String        @id @default(cuid())
+  code         String        @unique
   name         String
-  departmentId String
+  level        AcademicLevel @default(COLLEGE)
+  sortOrder    Int           @default(0)
+  departmentId String?
 
-  department Department @relation(fields: [departmentId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
   sections   Section[]
   subjects   Subject[]
-  students   Student[]
+  semesters  Semester[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -256,10 +260,15 @@ model AcademicYear {
   updatedAt DateTime @updatedAt
 }
 
+/// A term: a College semester (optionally per program) or a basic-education quarter.
 model Semester {
-  id             String       @id @default(cuid())
+  id             String        @id @default(cuid())
   academicYearId String
-  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  academicYear   AcademicYear  @relation(fields: [academicYearId], references: [id])
+  level          AcademicLevel @default(COLLEGE)
+  /// College only: the course this semester belongs to. Null = applies to every course.
+  programId      String?
+  program        Program?      @relation(fields: [programId], references: [id])
   type           SemesterType
   name           String
   startDate      DateTime
@@ -272,7 +281,7 @@ model Semester {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([academicYearId, type])
+  @@index([academicYearId, level])
 }
 
 model Subject {
@@ -284,7 +293,11 @@ model Subject {
   lectureHours     Float     @default(0)
   labHours         Float     @default(0)
   requiredRoomType RoomType  @default(LECTURE_ROOM)
+  level            AcademicLevel @default(COLLEGE)
+  /// College: year level. Basic education: grade level.
   yearLevel        YearLevel?
+  gradeLevel       GradeLevel?
+  sortOrder        Int           @default(0)
 
   programId String?
   program   Program? @relation(fields: [programId], references: [id])
@@ -296,18 +309,22 @@ model Subject {
 }
 
 model Section {
-  id           String    @id @default(cuid())
+  id           String        @id @default(cuid())
   name         String
-  yearLevel    YearLevel
-  studentCount Int       @default(0)
+  level        AcademicLevel @default(COLLEGE)
+  /// College sections use yearLevel; basic-education sections use gradeLevel.
+  yearLevel    YearLevel?
+  gradeLevel   GradeLevel?
+  studentCount Int           @default(0)
+  sortOrder    Int           @default(0)
 
-  programId String
-  program   Program @relation(fields: [programId], references: [id])
+  /// College course or SHS strand. Null for Elementary / Junior High sections.
+  programId String?
+  program   Program? @relation(fields: [programId], references: [id])
 
   semesterId String?
   semester   Semester? @relation(fields: [semesterId], references: [id])
 
-  students  Student[]
   schedules Schedule[]
 
   createdAt DateTime @default(now())
@@ -329,6 +346,8 @@ model Faculty {
   specialization String?
   maxHours       Int           @default(24)
   status         FacultyStatus @default(ACTIVE)
+  /// Academic levels this faculty member teaches.
+  teachingLevels AcademicLevel[] @default([COLLEGE])
 
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id])
@@ -352,35 +371,47 @@ model FacultyAvailability {
   @@index([facultyId])
 }
 
-model Student {
-  id            String        @id @default(cuid())
-  studentNumber String        @unique
-  fullName      String
-  email         String        @unique
-  yearLevel     YearLevel?
-  status        StudentStatus @default(ACTIVE)
-
-  programId String?
-  program   Program? @relation(fields: [programId], references: [id])
-
-  sectionId String?
-  section   Section? @relation(fields: [sectionId], references: [id])
-
-  user User?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
 
 // ---------------------------------------------------------------------------
 // Facilities
 // ---------------------------------------------------------------------------
 
+model Building {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  code        String?
+  description String?
+  sortOrder   Int     @default(0)
+
+  floors Floor[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Floor {
+  id         String   @id @default(cuid())
+  buildingId String
+  building   Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  name       String
+  /// Floor number for ordering (1 = ground floor).
+  number     Int      @default(1)
+
+  rooms Room[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([buildingId, name])
+}
+
 model Room {
   id         String     @id @default(cuid())
   roomNumber String     @unique
   roomName   String
-  building   String?
+  floorId    String?
+  floor      Floor?     @relation(fields: [floorId], references: [id])
+  sortOrder  Int        @default(0)
   capacity   Int
   roomType   RoomType
   equipment  String[]
@@ -446,8 +477,7 @@ model Schedule {
   score       Float?
   notes       String?
 
-  conflicts Conflict[]
-  requests  ScheduleRequest[]
+  requests ScheduleRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -459,24 +489,6 @@ model Schedule {
   @@index([dayOfWeek])
 }
 
-model Conflict {
-  id          String           @id @default(cuid())
-  type        ConflictType
-  severity    ConflictSeverity
-  description String
-  status      ConflictStatus   @default(OPEN)
-
-  scheduleId String
-  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-
-  relatedScheduleId String?
-
-  createdAt  DateTime  @default(now())
-  resolvedAt DateTime?
-
-  @@index([scheduleId])
-  @@index([status])
-}
 
 model ScheduleRequest {
   id     String        @id @default(cuid())
@@ -538,17 +550,6 @@ model AuditLog {
   @@index([entity])
 }
 
-model SchedulingConstraint {
-  id       String  @id @default(cuid())
-  name     String  @unique
-  type     String
-  weight   Float   @default(1)
-  isActive Boolean @default(true)
-  config   Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
 
 model AIConversation {
   id String @id @default(cuid())
@@ -589,7 +590,7 @@ model SystemSetting {
 model DailyStat {
   id             String   @id @default(cuid())
   date           DateTime @unique @db.Date
-  totalStudents  Int
+  totalSections  Int      @default(0)
   totalFaculty   Int
   totalSubjects  Int
   totalRooms     Int

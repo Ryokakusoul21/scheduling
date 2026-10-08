@@ -26,9 +26,9 @@ export default async function SectionsPage() {
         sections={sections.map((s) => ({
           id: s.id,
           name: s.name,
-          programId: s.programId,
-          programLabel: s.program.code,
-          yearLevel: s.yearLevel,
+          programId: s.programId ?? "",
+          programLabel: s.program?.code ?? "—",
+          yearLevel: s.yearLevel ?? "",
           studentCount: String(s.studentCount),
           semesterId: s.semesterId ?? "",
           semesterLabel: s.semester ? `${s.semester.academicYear.name} · ${s.semester.name}` : "Unassigned",

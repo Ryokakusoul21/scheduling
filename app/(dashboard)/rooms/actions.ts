@@ -10,7 +10,7 @@ const STAFF = ["SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER"] as cons
 const schema = z.object({
   roomNumber: z.string().min(1),
   roomName: z.string().min(1),
-  building: z.string().optional(),
+
   capacity: z.coerce.number().int().min(1),
   roomType: z.enum(["LECTURE_ROOM", "COMPUTER_LABORATORY", "SCIENCE_LABORATORY", "CONFERENCE_ROOM", "OTHER"]),
   status: z.enum(["AVAILABLE", "UNDER_MAINTENANCE", "UNAVAILABLE"]),
@@ -21,7 +21,7 @@ function clean(d: z.infer<typeof schema>) {
   return {
     roomNumber: d.roomNumber,
     roomName: d.roomName,
-    building: d.building || null,
+
     capacity: d.capacity,
     roomType: d.roomType,
     status: d.status,

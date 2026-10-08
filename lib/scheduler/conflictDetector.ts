@@ -14,6 +14,25 @@ export interface ConflictContext {
   roomById: Map<string, SchedRoom>;
   subjectById: Map<string, SchedSubject>;
   sectionStudentCountById: Map<string, number>;
+  /**
+   * Date range per term id. When given, two entries only clash if their terms
+   * run at the same time (e.g. a College semester and an SHS quarter can overlap,
+   * but Q1 and Q2 never do).
+   */
+  termRanges?: Map<string, { start: number; end: number }>;
+}
+
+function termsConcurrent(a: SchedEntry, b: SchedEntry, ranges?: ConflictContext["termRanges"]) {
+  if (!ranges || !a.semesterId || !b.semesterId || a.semesterId === b.semesterId) return true;
+  const ra = ranges.get(a.semesterId);
+  const rb = ranges.get(b.semesterId);
+  if (!ra || !rb) return true;
+  return ra.start <= rb.end && rb.start <= ra.end;
+}
+
+/** Overlap conflicts (double bookings) are the ones shown in red; the rest are warnings. */
+export function isOverlapConflict(c: DetectedConflict) {
+  return c.type === "FACULTY_CONFLICT" || c.type === "ROOM_CONFLICT" || c.type === "SECTION_CONFLICT";
 }
 
 function push(
@@ -28,8 +47,8 @@ function push(
 }
 
 /**
- * Scans a full set of already-persisted entries for conflicts. Used by the Conflict Resolution
- * page and by anything that can move an entry into an illegal slot (drag-and-drop, manual edit).
+ * Scans a set of schedule entries for conflicts. Pure and browser-safe: the Scheduler runs it
+ * client-side after every drag-and-drop so highlights update instantly.
  */
 export function detectConflicts(entries: SchedEntry[], ctx: ConflictContext): DetectedConflict[] {
   const out: DetectedConflict[] = [];
@@ -84,6 +103,7 @@ export function detectConflicts(entries: SchedEntry[], ctx: ConflictContext): De
       const b = entries[j];
       if (a.dayOfWeek !== b.dayOfWeek) continue;
       if (!rangesOverlap(a, b)) continue;
+      if (!termsConcurrent(a, b, ctx.termRanges)) continue;
 
       if (a.facultyId === b.facultyId) {
         push(out, "FACULTY_CONFLICT", "CRITICAL", "Faculty is double-booked at this time.", a, b);

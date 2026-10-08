@@ -10,14 +10,14 @@ export function AnalyticsCharts({
   classesPerDay,
   roomUtilization,
   workloadData,
-  studentsPerSection,
+  enrollmentPerSection,
   totalClasses,
   conflictCount,
 }: {
   classesPerDay: { day: string; classes: number }[];
   roomUtilization: { room: string; utilization: number }[];
   workloadData: { name: string; value: number }[];
-  studentsPerSection: { section: string; students: number }[];
+  enrollmentPerSection: { section: string; students: number }[];
   totalClasses: number;
   conflictCount: number;
 }) {
@@ -81,10 +81,10 @@ export function AnalyticsCharts({
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="text-base">Students Per Section (Top 10)</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Enrollment Per Section (Top 10)</CardTitle></CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={studentsPerSection}>
+              <BarChart data={enrollmentPerSection}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" opacity={0.1} />
                 <XAxis dataKey="section" fontSize={11} tickLine={false} axisLine={false} interval={0} angle={-20} textAnchor="end" height={50} />
                 <YAxis fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />

@@ -43,11 +43,8 @@ export async function updateSectionAction(id: string, formData: FormData) {
 
 export async function deleteSectionAction(id: string) {
   await requireRole(...STAFF);
-  const [students, schedules] = await Promise.all([
-    prisma.student.count({ where: { sectionId: id } }),
-    prisma.schedule.count({ where: { sectionId: id } }),
-  ]);
-  if (students + schedules > 0) return { ok: false, error: "This section has students or schedules linked to it." };
+  const schedules = await prisma.schedule.count({ where: { sectionId: id } });
+  if (schedules > 0) return { ok: false, error: "This section has schedules linked to it." };
   await prisma.section.delete({ where: { id } });
   revalidatePath("/sections");
   return { ok: true };

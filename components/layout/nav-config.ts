@@ -45,10 +45,8 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "AI & Scheduling",
     items: [
-      { label: "AI Auto Scheduler", href: "/ai-scheduler", icon: Sparkles, roles: SCHEDULING },
       { label: "AI Assistant", href: "/assistant", icon: Bot },
       { label: "Schedule Manager", href: "/schedules", icon: CalendarClock, roles: STAFF },
-      { label: "Conflict Resolution", href: "/conflicts", icon: AlertTriangle, roles: STAFF },
       { label: "Schedule Requests", href: "/requests", icon: ClipboardList },
       { label: "Schedule Calendar", href: "/calendar", icon: CalendarDays },
     ],
@@ -61,7 +59,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Programs", href: "/programs", icon: Layers, roles: STAFF },
       { label: "Subjects", href: "/subjects", icon: BookOpen, roles: STAFF },
       { label: "Sections", href: "/sections", icon: Layers, roles: STAFF },
-      { label: "Students", href: "/students", icon: GraduationCap, roles: STAFF },
       { label: "Faculty", href: "/faculty", icon: UserSquare2, roles: STAFF },
       { label: "Rooms", href: "/rooms", icon: Building2, roles: STAFF },
     ],

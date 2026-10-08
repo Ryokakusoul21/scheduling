@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DashboardCalendarCard } from "@/components/scheduler/dashboard-calendar-card";
 import type { CalendarEntry } from "@/components/scheduler/weekly-calendar";
 import { recordAndGetTrend } from "@/lib/analytics/dailyStat";
+import { activeOverlapConflicts } from "@/lib/scheduler/term-conflicts";
 import { canManageScheduling, isStaff, type AppRole } from "@/lib/permissions/roles";
 import { AssistantChat, AssistantHeader } from "@/components/assistant/assistant-chat";
 import { getAssistantHistory } from "../assistant/actions";
@@ -90,19 +91,19 @@ async function getStats() {
   const activeSemester = await prisma.semester.findFirst({ where: { isActive: true } });
 
   const [
-    totalStudents,
+    totalSections,
     totalFaculty,
     totalSubjects,
     totalRooms,
-    openConflicts,
+    overlapConflicts,
     rooms,
     facultyList,
   ] = await Promise.all([
-    prisma.student.count({ where: { status: "ACTIVE" } }),
+    prisma.section.count(),
     prisma.faculty.count({ where: { status: "ACTIVE" } }),
     prisma.subject.count(),
     prisma.room.count(),
-    prisma.conflict.count({ where: { status: "OPEN" } }),
+    activeOverlapConflicts(),
     prisma.room.findMany({
       select: { id: true, capacity: true, schedules: { select: { startMin: true, endMin: true } } },
     }),
@@ -143,10 +144,11 @@ async function getStats() {
     }))
     .sort((a, b) => b.minutes - a.minutes)[0];
 
-  const trend = await recordAndGetTrend({ totalStudents, totalFaculty, totalSubjects, totalRooms, openConflicts });
+  const openConflicts = overlapConflicts.length;
+  const trend = await recordAndGetTrend({ totalSections, totalFaculty, totalSubjects, totalRooms, openConflicts });
 
   return {
-    totalStudents,
+    totalSections,
     totalFaculty,
     totalSubjects,
     totalRooms,
@@ -205,7 +207,7 @@ export default async function DashboardPage() {
       },
     }),
     prisma.schedule.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-    prisma.student.findFirst({ where: { user: { id: user.id } }, select: { sectionId: true } }),
+    Promise.resolve<{ sectionId: string | null } | null>(null),
     getAssistantHistory(),
     isStudent
       ? prisma.scheduleRequest.findMany({
@@ -297,7 +299,7 @@ export default async function DashboardPage() {
     .sort((a, b) => a.sortKey - b.sortKey)[0];
 
   const cards = [
-    { label: "Total Students", value: stats.totalStudents, icon: Users, tint: "bg-blue-500/15 text-blue-600", trend: stats.trend.totalStudents },
+    { label: "Sections", value: stats.totalSections, icon: Users, tint: "bg-blue-500/15 text-blue-600", trend: stats.trend.totalSections },
     { label: "Faculty", value: stats.totalFaculty, icon: UserSquare2, tint: "bg-violet-500/15 text-violet-600", trend: stats.trend.totalFaculty },
     { label: "Subjects", value: stats.totalSubjects, icon: BookOpen, tint: "bg-emerald-500/15 text-emerald-600", trend: stats.trend.totalSubjects },
     { label: "Rooms", value: stats.totalRooms, icon: Building2, tint: "bg-amber-500/15 text-amber-600", trend: stats.trend.totalRooms },
@@ -367,10 +369,10 @@ export default async function DashboardPage() {
           </div>
           <div className="flex flex-col items-start gap-1 md:items-end">
             <a
-              href="/ai-scheduler"
+              href="/schedules"
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
-              <Sparkles className="size-4" /> Generate Schedule <ArrowRight className="size-4" />
+              <Sparkles className="size-4" /> Open Scheduler <ArrowRight className="size-4" />
             </a>
             <p className="text-xs text-muted-foreground">
               {latestSchedule ? `Last generated: ${latestSchedule.createdAt.toLocaleString()}` : "No schedule generated yet"}
@@ -548,10 +550,10 @@ export default async function DashboardPage() {
                 </li>
               </ul>
               <a
-                href="/ai-scheduler"
+                href="/schedules"
                 className="inline-block rounded-md bg-gold px-3 py-1.5 text-sm font-medium text-gold-foreground hover:opacity-90"
               >
-                View AI Auto Scheduler
+                Open Scheduler
               </a>
             </CardContent>
           </Card>
@@ -734,7 +736,7 @@ export default async function DashboardPage() {
                 Let AI handle the complexity, so you can focus on what matters most — quality education.
               </p>
               <a
-                href={canSchedule ? "/ai-scheduler" : "/assistant"}
+                href={canSchedule ? "/schedules" : "/assistant"}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
                 {canSchedule ? "Try AI Scheduler" : "Open AI Assistant"} <ArrowRight className="size-4" />

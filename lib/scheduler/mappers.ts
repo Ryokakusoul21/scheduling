@@ -61,6 +61,7 @@ export function toSchedSection(s: Section): SchedSection {
 export function toSchedEntry(s: Schedule): SchedEntry {
   return {
     id: s.id,
+    semesterId: s.semesterId,
     subjectId: s.subjectId,
     sectionId: s.sectionId,
     facultyId: s.facultyId,

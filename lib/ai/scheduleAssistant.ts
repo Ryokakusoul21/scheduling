@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db/prisma";
 import { FinishReason, ThinkingLevel } from "@google/genai";
 import { getGeminiClient, SCHEDULING_MODEL } from "./geminiClient";
 import { isStaff, type AppRole } from "@/lib/permissions/roles";
+import { activeOverlapConflicts } from "@/lib/scheduler/term-conflicts";
+import { levelLabel, termLabel } from "@/lib/academics/levels";
 
 export const ASSISTANT_MODEL = process.env.GEMINI_ASSISTANT_MODEL ?? SCHEDULING_MODEL;
 
@@ -35,16 +37,24 @@ type ScheduleRow = {
   status: string;
   subject: { code: string; name: string };
   faculty: { fullName: string };
-  room: { roomName: string; roomNumber: string; building: string | null };
+  room: RoomLocation;
   section: { name: string };
 };
+
+type RoomLocation = { roomName: string; roomNumber: string; floor: { name: string; building: { name: string } } | null };
+
+function roomLocation(r: RoomLocation) {
+  return `${r.roomName} (room ${r.roomNumber}${r.floor ? `, ${r.floor.building.name} ${r.floor.name}` : ""})`;
+}
+
+const floorSelect = { select: { name: true, building: { select: { name: true } } } } as const;
 
 function formatSchedule(rows: ScheduleRow[], perspective: "student" | "faculty") {
   if (rows.length === 0) return "(no classes scheduled)";
   return [...rows]
     .sort((a, b) => DAY_ORDER.indexOf(a.dayOfWeek) - DAY_ORDER.indexOf(b.dayOfWeek) || a.startMin - b.startMin)
     .map((s) => {
-      const room = `${s.room.roomName} (room ${s.room.roomNumber}${s.room.building ? `, ${s.room.building}` : ""})`;
+      const room = roomLocation(s.room);
       const who = perspective === "student" ? `instructor: ${s.faculty.fullName}` : `section: ${s.section.name}`;
       return `- ${titleCase(s.dayOfWeek)} ${fmtTime(s.startMin)}-${fmtTime(s.endMin)} | ${s.subject.code} ${s.subject.name} (${titleCase(s.component)}) | ${who} | ${room} | status: ${titleCase(s.status)}`;
     })
@@ -54,23 +64,17 @@ function formatSchedule(rows: ScheduleRow[], perspective: "student" | "faculty")
 const scheduleInclude = {
   subject: { select: { code: true, name: true } },
   faculty: { select: { fullName: true } },
-  room: { select: { roomName: true, roomNumber: true, building: true } },
+  room: { select: { roomName: true, roomNumber: true, floor: floorSelect } },
   section: { select: { name: true } },
 } as const;
 
 /** Builds the data the assistant may answer from, scoped to what this user is allowed to see. */
 async function buildContext(userId: string, role: AppRole): Promise<string> {
-  const [user, activeSemester, rooms] = await Promise.all([
+  const [user, activeTerms, rooms] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: {
         name: true,
-        student: {
-          include: {
-            program: { select: { code: true, name: true } },
-            section: { select: { id: true, name: true, yearLevel: true } },
-          },
-        },
         faculty: { select: { id: true, fullName: true, position: true, maxHours: true } },
         requestsMade: {
           take: 10,
@@ -85,13 +89,21 @@ async function buildContext(userId: string, role: AppRole): Promise<string> {
         },
       },
     }),
-    prisma.semester.findFirst({
+    prisma.semester.findMany({
       where: { isActive: true },
-      select: { id: true, name: true, startDate: true, endDate: true, academicYear: { select: { name: true } } },
+      select: {
+        id: true,
+        type: true,
+        level: true,
+        startDate: true,
+        endDate: true,
+        academicYear: { select: { name: true } },
+        program: { select: { code: true } },
+      },
     }),
     prisma.room.findMany({
       orderBy: { roomNumber: "asc" },
-      select: { roomName: true, roomNumber: true, building: true, roomType: true, status: true },
+      select: { roomName: true, roomNumber: true, floor: floorSelect, roomType: true, status: true },
     }),
   ]);
 
@@ -99,40 +111,18 @@ async function buildContext(userId: string, role: AppRole): Promise<string> {
   const parts: string[] = [
     `Current date and time: ${now.toLocaleString("en-US", { timeZone: SCHOOL_TIME_ZONE, dateStyle: "full", timeStyle: "short" })} (Philippine time)`,
     `User: ${user?.name ?? "Unknown"} (role: ${titleCase(role)})`,
-    activeSemester
-      ? `Active semester: ${activeSemester.name}, A.Y. ${activeSemester.academicYear.name} (${activeSemester.startDate.toDateString()} to ${activeSemester.endDate.toDateString()})`
-      : "Active semester: none is currently set.",
+    activeTerms.length
+      ? `Active terms:\n${activeTerms
+          .map(
+            (t) =>
+              `- ${levelLabel(t.level)}${t.program ? ` ${t.program.code}` : ""}: ${termLabel(t.type)}, A.Y. ${t.academicYear.name} (${t.startDate.toDateString()} to ${t.endDate.toDateString()})`
+          )
+          .join("\n")}`
+      : "Active term: none is currently set.",
   ];
 
-  const semesterFilter = { semesterId: activeSemester?.id, status: { not: "ARCHIVED" as const } };
-
-  if (user?.student) {
-    const s = user.student;
-    parts.push(
-      `## Student profile\nStudent number: ${s.studentNumber}\nProgram: ${s.program ? `${s.program.code} - ${s.program.name}` : "not assigned"}\nYear level: ${s.yearLevel ? titleCase(s.yearLevel) : "not set"}\nSection: ${s.section?.name ?? "not assigned to a section yet"}`
-    );
-    if (s.section) {
-      const classes = await prisma.schedule.findMany({
-        where: { sectionId: s.section.id, ...semesterFilter },
-        include: scheduleInclude,
-      });
-      parts.push(`## The student's weekly class schedule (section ${s.section.name})\n${formatSchedule(classes, "student")}`);
-    }
-    if (s.programId) {
-      const subjects = await prisma.subject.findMany({
-        where: { programId: s.programId },
-        orderBy: { code: "asc" },
-        select: { code: true, name: true, units: true, lectureHours: true, labHours: true, yearLevel: true },
-      });
-      if (subjects.length > 0) {
-        parts.push(
-          `## Subjects offered in the student's program\n${subjects
-            .map((sub) => `- ${sub.code} ${sub.name}: ${sub.units} units, ${sub.lectureHours}h lecture / ${sub.labHours}h lab${sub.yearLevel ? `, ${titleCase(sub.yearLevel)}` : ""}`)
-            .join("\n")}`
-        );
-      }
-    }
-  }
+  const activeTermIds = activeTerms.map((t) => t.id);
+  const semesterFilter = { semesterId: { in: activeTermIds }, status: { not: "ARCHIVED" as const } };
 
   if (user?.faculty) {
     const f = user.faculty;
@@ -148,7 +138,7 @@ async function buildContext(userId: string, role: AppRole): Promise<string> {
   }
 
   if (isStaff(role)) {
-    parts.push(...(await buildStaffOverview(activeSemester?.id)));
+    parts.push(...(await buildStaffOverview(activeTermIds)));
   }
 
   parts.push(
@@ -165,7 +155,7 @@ async function buildContext(userId: string, role: AppRole): Promise<string> {
         : "(none)"
     }`,
     `## Campus rooms\n${rooms
-      .map((r) => `- ${r.roomName} (room ${r.roomNumber}${r.building ? `, ${r.building}` : ""}): ${titleCase(r.roomType)}, ${titleCase(r.status)}`)
+      .map((r) => `- ${roomLocation(r)}: ${titleCase(r.roomType)}, ${titleCase(r.status)}`)
       .join("\n")}`
   );
 
@@ -173,23 +163,17 @@ async function buildContext(userId: string, role: AppRole): Promise<string> {
 }
 
 /** System-wide scheduling data for staff (admins, registrars, schedulers). */
-async function buildStaffOverview(semesterId: string | undefined): Promise<string[]> {
-  const activeOnly = { semesterId, status: { not: "ARCHIVED" as const } };
+async function buildStaffOverview(termIds: string[]): Promise<string[]> {
+  const activeOnly = { semesterId: { in: termIds }, status: { not: "ARCHIVED" as const } };
   const [counts, schedules, conflicts, pendingRequests, faculty, roomLoad] = await Promise.all([
     Promise.all([
-      prisma.student.count({ where: { status: "ACTIVE" } }),
+      prisma.section.count(),
       prisma.faculty.count({ where: { status: "ACTIVE" } }),
       prisma.subject.count(),
       prisma.room.count(),
-      prisma.section.count({ where: { semesterId } }),
     ]),
     prisma.schedule.findMany({ where: activeOnly, include: scheduleInclude, take: 600 }),
-    prisma.conflict.findMany({
-      where: { status: "OPEN" },
-      orderBy: { createdAt: "desc" },
-      take: 30,
-      select: { type: true, severity: true, description: true },
-    }),
+    activeOverlapConflicts(),
     prisma.scheduleRequest.findMany({
       where: { status: "PENDING" },
       orderBy: { createdAt: "desc" },
@@ -207,7 +191,14 @@ async function buildStaffOverview(semesterId: string | undefined): Promise<strin
     }),
   ]);
 
-  const [students, facultyCount, subjects, rooms, sections] = counts;
+  const [sections, facultyCount, subjects, rooms] = counts;
+  const byId = new Map(schedules.map((s) => [s.id, s]));
+  const describe = (id?: string) => {
+    const row = id ? byId.get(id) : undefined;
+    return row
+      ? `${row.subject.code} ${row.section.name} ${titleCase(row.dayOfWeek)} ${fmtTime(row.startMin)}-${fmtTime(row.endMin)}`
+      : "a class";
+  };
   const hours = (rows: { startMin: number; endMin: number }[]) =>
     Math.round((rows.reduce((sum, r) => sum + (r.endMin - r.startMin), 0) / 60) * 10) / 10;
 
@@ -217,10 +208,13 @@ async function buildStaffOverview(semesterId: string | undefined): Promise<strin
   }
 
   return [
-    `## System overview\nActive students: ${students}\nActive faculty: ${facultyCount}\nSubjects: ${subjects}\nRooms: ${rooms}\nSections this semester: ${sections}\nScheduled class meetings this semester: ${schedules.length}`,
-    `## Open schedule conflicts (${conflicts.length})\n${
+    `## System overview\nSections: ${sections}\nActive faculty: ${facultyCount}\nSubjects: ${subjects}\nRooms: ${rooms}\nScheduled class meetings in active terms: ${schedules.length}`,
+    `## Current double-booking conflicts (${conflicts.length})\n${
       conflicts.length
-        ? conflicts.map((c) => `- ${titleCase(c.severity)} ${titleCase(c.type)}: ${c.description}`).join("\n")
+        ? conflicts
+            .slice(0, 30)
+            .map((c) => `- ${titleCase(c.type)}: ${c.description} (${describe(c.entryA.id)} vs ${describe(c.entryB?.id)})`)
+            .join("\n")
         : "(none)"
     }`,
     `## Pending schedule requests awaiting review (${pendingRequests.length})\n${
@@ -253,18 +247,18 @@ function systemInstruction(context: string, role: AppRole) {
 
 Your job is to answer questions about this scheduling system: ${
     staff
-      ? "the whole school's timetable, sections, faculty workloads, room usage, open conflicts, pending requests, the active semester, and how to use the system"
-      : "the user's class schedule, rooms, instructors, subjects, the active semester, their schedule requests and notifications, and how to use the system"
+      ? "the whole school's timetable (College, Senior High, Junior High, and Elementary), sections, faculty workloads, room usage, schedule conflicts, pending requests, the active terms, and how to use the system"
+      : "the user's class schedule, rooms, instructors, subjects, the active terms, their schedule requests and notifications, and how to use the system"
   }.
 
 Rules:
 - Answer ONLY from the data below. If the answer is not in the data, say you don't have that information and suggest contacting the Registrar or submitting a request on the Schedule Requests page. Never invent classes, times, rooms, or people.
 ${
     staff
-      ? `- You cannot change data yourself. Point the user to the right page: "AI Auto Scheduler" to generate schedules, "Schedule Manager" to edit or publish classes, "Conflict Resolution" to fix conflicts, "Schedule Requests" to review requests, and the Reports & Analytics pages for workload and room utilization.
+      ? `- You cannot change data yourself. Point the user to the right page: "Scheduler" to view, edit (drag and drop), and publish classes and to fix conflicts from its Conflicts panel; "Academic Years & Terms", "Programs & Strands", "Subjects", "Sections", "Faculty", and "Rooms" for setup data; "Schedule Requests" to review requests; and the Reports & Analytics pages for workload and room utilization.
 - When asked for analysis (e.g. overloaded faculty, underused rooms, free time slots), work it out from the data and explain briefly.`
       : `- You cannot change schedules. To request a change (time, room, instructor, cancellation), tell the user to open "Schedule Requests" in the sidebar and submit a request.
-- Other useful pages: "Schedule Calendar" (weekly calendar by section, faculty, or room) and "Notifications".`
+- Other useful pages: "Scheduler" (weekly timetable filtered by level, grade or program, and section) and "Notifications".`
   }
 - If asked who developed, made, built, or created this system (or this assistant), answer that it was developed by KC FADRIQUILA.
 - Politely decline questions unrelated to school scheduling and steer back to scheduling topics.

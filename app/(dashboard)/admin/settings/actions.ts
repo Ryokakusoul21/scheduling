@@ -27,13 +27,6 @@ export async function updateInstitutionAction(formData: FormData) {
   return { ok: true };
 }
 
-export async function toggleConstraintAction(id: string, isActive: boolean) {
-  await requireRole(...ADMIN);
-  await prisma.schedulingConstraint.update({ where: { id }, data: { isActive } });
-  revalidatePath("/admin/settings");
-  return { ok: true };
-}
-
 export async function setRequireApprovalAction(enabled: boolean) {
   const admin = await requireRole(...ADMIN);
   await prisma.systemSetting.upsert({

@@ -99,6 +99,8 @@ export interface SchedRoom {
 /** A placed (or candidate) class meeting. */
 export interface SchedEntry {
   id?: string;
+  /** Term (semester/quarter) the entry belongs to; used to skip pairs from non-overlapping terms. */
+  semesterId?: string;
   subjectId: string;
   sectionId: string;
   facultyId: string;
@@ -108,36 +110,6 @@ export interface SchedEntry {
   startMin: number;
   endMin: number;
 }
-
-export interface GenerationRequest {
-  semesterId: string;
-  sectionIds: string[];
-  /** subjectId -> facultyId, optional pinning. If absent, engine chooses best faculty. */
-  facultyOverrides?: Record<string, string>;
-  constraints?: SchedulingConstraints;
-}
-
-export interface SchedulingConstraints {
-  dayStartMin: number; // e.g. 7:00 -> 420
-  dayEndMin: number; // e.g. 19:00 -> 1140
-  allowedDays: DayOfWeek[];
-  avoidBefore?: number; // soft: avoid classes before this minute
-  avoidAfter?: number; // soft: avoid classes after this minute
-  preferConsecutive?: boolean;
-  maxClassesPerDayPerSection?: number;
-  slotGranularityMin: number; // e.g. 30
-}
-
-export const DEFAULT_CONSTRAINTS: SchedulingConstraints = {
-  dayStartMin: toMinutes("07:00"),
-  dayEndMin: toMinutes("19:00"),
-  allowedDays: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"],
-  avoidBefore: toMinutes("08:00"),
-  avoidAfter: toMinutes("18:00"),
-  preferConsecutive: true,
-  maxClassesPerDayPerSection: 4,
-  slotGranularityMin: 30,
-};
 
 export type ConflictType =
   | "FACULTY_CONFLICT"
@@ -155,12 +127,4 @@ export interface DetectedConflict {
   description: string;
   entryA: SchedEntry;
   entryB?: SchedEntry;
-}
-
-export interface ScoreBreakdown {
-  facultyWorkloadBalance: number; // 0-100
-  roomUtilization: number; // 0-100
-  studentScheduleQuality: number; // 0-100
-  constraintSatisfaction: number; // 0-100
-  overallScore: number; // 0-100
 }

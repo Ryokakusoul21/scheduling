@@ -5,26 +5,15 @@ import { toast } from "sonner";
 import { CircleNotch as Loader2 } from "@phosphor-icons/react/ssr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { updateInstitutionAction, toggleConstraintAction, setRequireApprovalAction } from "./actions";
-
-interface Constraint {
-  id: string;
-  name: string;
-  type: string;
-  weight: number;
-  isActive: boolean;
-}
+import { updateInstitutionAction, setRequireApprovalAction } from "./actions";
 
 export function SettingsManager({
   institution,
-  constraints,
   requireApproval,
 }: {
   institution: { name: string; shortName: string; location: string };
-  constraints: Constraint[];
   requireApproval: boolean;
 }) {
   const [pending, startTransition] = useTransition();
@@ -36,14 +25,7 @@ export function SettingsManager({
     });
   }
 
-  function handleToggle(id: string, isActive: boolean) {
-    startTransition(async () => {
-      await toggleConstraintAction(id, isActive);
-    });
-  }
 
-  const hard = constraints.filter((c) => c.type === "HARD");
-  const soft = constraints.filter((c) => c.type === "SOFT");
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -92,34 +74,6 @@ export function SettingsManager({
                 })
               }
             />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle>Scheduling Constraints</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Hard Constraints (always enforced)</p>
-            <div className="space-y-1.5">
-              {hard.map((c) => (
-                <div key={c.id} className="flex items-center justify-between rounded-md border p-2 text-sm">
-                  <span>{c.name.replace(/_/g, " ")}</span>
-                  <Badge variant="destructive">Required</Badge>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Soft Constraints (optimized)</p>
-            <div className="space-y-1.5">
-              {soft.map((c) => (
-                <div key={c.id} className="flex items-center justify-between rounded-md border p-2 text-sm">
-                  <span>{c.name.replace(/_/g, " ")} <span className="text-xs text-muted-foreground">(weight {c.weight})</span></span>
-                  <Switch checked={c.isActive} onCheckedChange={(v) => handleToggle(c.id, !!v)} disabled={pending} />
-                </div>
-              ))}
-            </div>
           </div>
         </CardContent>
       </Card>

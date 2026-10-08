@@ -23,8 +23,8 @@ export default async function ProgramsPage() {
           id: p.id,
           code: p.code,
           name: p.name,
-          departmentId: p.departmentId,
-          departmentLabel: p.department.name,
+          departmentId: p.departmentId ?? "",
+          departmentLabel: p.department?.name ?? "—",
         }))}
         departments={departments.map((d) => ({ id: d.id, label: d.name }))}
       />

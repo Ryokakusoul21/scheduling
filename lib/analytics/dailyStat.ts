@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 
 export interface CurrentCounts {
-  totalStudents: number;
+  totalSections: number;
   totalFaculty: number;
   totalSubjects: number;
   totalRooms: number;
@@ -39,7 +39,7 @@ export async function recordAndGetTrend(counts: CurrentCounts): Promise<TrendMap
 
   if (!previous) {
     return {
-      totalStudents: null,
+      totalSections: null,
       totalFaculty: null,
       totalSubjects: null,
       totalRooms: null,
@@ -53,7 +53,7 @@ export async function recordAndGetTrend(counts: CurrentCounts): Promise<TrendMap
   }
 
   return {
-    totalStudents: pct(counts.totalStudents, previous.totalStudents),
+    totalSections: pct(counts.totalSections, previous.totalSections),
     totalFaculty: pct(counts.totalFaculty, previous.totalFaculty),
     totalSubjects: pct(counts.totalSubjects, previous.totalSubjects),
     totalRooms: pct(counts.totalRooms, previous.totalRooms),
