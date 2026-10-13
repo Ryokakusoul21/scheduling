@@ -54,7 +54,7 @@ describe("level helpers", () => {
     expect(levelForGrade("GRADE_12")).toBe("SENIOR_HIGH");
   });
   it("labels sections by year or grade", () => {
-    expect(stageLabel({ level: "COLLEGE", yearLevel: "SECOND" })).toBe("2nd Year");
+    expect(stageLabel({ level: "COLLEGE", yearLevel: "SECOND" })).toBe("Second Year");
     expect(stageLabel({ level: "ELEMENTARY", gradeLevel: "KINDER" })).toBe("Kindergarten");
   });
 });

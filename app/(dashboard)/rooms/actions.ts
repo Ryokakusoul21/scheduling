@@ -4,7 +4,8 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
-import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { ADMIN_ROLES, STAFF_ROLES } from "@/lib/permissions/roles";
+import { canManageDepartment, requireScope } from "@/lib/permissions/scope";
 
 type Result = { ok: boolean; error?: string };
 
@@ -25,7 +26,7 @@ const buildingSchema = z.object({
 });
 
 export async function saveBuildingAction(id: string | null, formData: FormData): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  await requireRole(...ADMIN_ROLES);
   const parsed = buildingSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const data = { name: parsed.data.name, code: parsed.data.code || null, description: parsed.data.description || null };
@@ -45,7 +46,7 @@ export async function saveBuildingAction(id: string | null, formData: FormData):
 }
 
 export async function deleteBuildingAction(id: string): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  await requireRole(...ADMIN_ROLES);
   const rooms = await prisma.room.count({ where: { floor: { buildingId: id } } });
   if (rooms > 0) return { ok: false, error: `This building still has ${rooms} room(s). Move or delete them first.` };
   await prisma.building.delete({ where: { id } });
@@ -63,7 +64,7 @@ const floorSchema = z.object({
 });
 
 export async function saveFloorAction(id: string | null, formData: FormData): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  await requireRole(...ADMIN_ROLES);
   const parsed = floorSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   try {
@@ -76,7 +77,7 @@ export async function saveFloorAction(id: string | null, formData: FormData): Pr
 }
 
 export async function deleteFloorAction(id: string): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  await requireRole(...ADMIN_ROLES);
   const rooms = await prisma.room.count({ where: { floorId: id } });
   if (rooms > 0) return { ok: false, error: `This floor still has ${rooms} room(s). Move or delete them first.` };
   await prisma.floor.delete({ where: { id } });
@@ -95,15 +96,26 @@ const roomSchema = z.object({
   roomType: z.enum(["LECTURE_ROOM", "COMPUTER_LABORATORY", "SCIENCE_LABORATORY", "CONFERENCE_ROOM", "OTHER"]),
   status: z.enum(["AVAILABLE", "UNDER_MAINTENANCE", "UNAVAILABLE"]),
   equipment: z.string().max(500).optional(),
+  departmentId: z.string().optional(),
 });
 
+const OWN_ROOMS = "You can only manage rooms that belong to your department.";
+
 export async function saveRoomAction(id: string | null, formData: FormData): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  const scope = await requireScope(...STAFF_ROLES);
   const parsed = roomSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const d = parsed.data;
+  // Rooms of a Head of Department always belong to their department; shared rooms are managed by the Administrator.
+  const departmentId = scope.isAdmin ? d.departmentId || null : scope.departmentId;
+  if (!canManageDepartment(scope, departmentId)) return { ok: false, error: OWN_ROOMS };
+  if (id) {
+    const existing = await prisma.room.findUnique({ where: { id }, select: { departmentId: true } });
+    if (!canManageDepartment(scope, existing?.departmentId)) return { ok: false, error: OWN_ROOMS };
+  }
   const data = {
     ...d,
+    departmentId,
     equipment: d.equipment ? d.equipment.split(",").map((e) => e.trim()).filter(Boolean) : [],
   };
   try {
@@ -131,9 +143,13 @@ export async function saveRoomAction(id: string | null, formData: FormData): Pro
 }
 
 export async function deleteRoomAction(id: string): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  const scope = await requireScope(...STAFF_ROLES);
+  const room = await prisma.room.findUnique({ where: { id }, select: { departmentId: true } });
+  if (!canManageDepartment(scope, room?.departmentId)) return { ok: false, error: OWN_ROOMS };
   const classes = await prisma.schedule.count({ where: { roomId: id } });
   if (classes > 0) return { ok: false, error: `This room has ${classes} scheduled class(es). Move them in the Scheduler first.` };
+  const held = (await prisma.examination.count({ where: { roomId: id } })) + (await prisma.roomBooking.count({ where: { roomId: id, status: "CONFIRMED" } }));
+  if (held > 0) return { ok: false, error: `This room has ${held} examination(s) or booking(s). Move or cancel them first.` };
   await prisma.room.delete({ where: { id } });
   return done();
 }

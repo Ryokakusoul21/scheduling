@@ -98,7 +98,15 @@ export default async function SubjectsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Subjects" description="Pick a level and year or grade to manage its subjects, units, and weekly hours." />
+      <PageHeader
+        title="Subjects"
+        description="Pick a level and year or grade to manage its subjects, units, and weekly hours."
+        actions={
+          <Link href="/import?kind=subjects" className="inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-sm font-medium hover:bg-muted">
+            Import subjects in bulk
+          </Link>
+        }
+      />
       <LevelFlow
         basePath="/subjects"
         rootLabel="Subjects"

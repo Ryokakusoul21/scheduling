@@ -74,7 +74,7 @@ export default async function AcademicYearDetailPage({
               icon={LEVEL_ICONS[l]}
               accent={LEVEL_ACCENTS[l]}
               title={LEVELS[l].label}
-              subtitle={LEVELS[l].termKind === "semester" ? "Semesters per course" : "1st to 4th quarter"}
+              subtitle={LEVELS[l].termKind === "semester" ? "Semesters per course" : "First to fourth quarter"}
               meta={
                 <>
                   <Badge variant="secondary">{terms.length} terms</Badge>

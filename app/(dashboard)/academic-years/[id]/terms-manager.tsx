@@ -158,7 +158,7 @@ export function TermsManager({
                 {missing > 0 && (
                   <Button variant="ghost" size="sm" disabled={pending} onClick={() => createDefaults(g.programId)} className="text-primary">
                     {isCollege ? <CalendarPlus className="size-4" /> : <Sparkle className="size-4" />}
-                    {isCollege ? `Create ${list.length ? "missing" : "1st, 2nd & Summer"} semesters` : `Create ${list.length ? "missing" : "all 4"} quarters`}
+                    {isCollege ? `Create ${list.length ? "missing" : "First, Second & Summer"} semesters` : `Create ${list.length ? "missing" : "all 4"} quarters`}
                   </Button>
                 )}
               </CardContent>

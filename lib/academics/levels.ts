@@ -105,11 +105,11 @@ export function gradeLabel(grade: string) {
 }
 
 const ORDINAL: Record<YearLevel, string> = {
-  FIRST: "1st Year",
-  SECOND: "2nd Year",
-  THIRD: "3rd Year",
-  FOURTH: "4th Year",
-  FIFTH: "5th Year",
+  FIRST: "First Year",
+  SECOND: "Second Year",
+  THIRD: "Third Year",
+  FOURTH: "Fourth Year",
+  FIFTH: "Fifth Year",
 };
 
 export function yearLabel(year: string) {
@@ -122,13 +122,13 @@ export function levelForGrade(grade: GradeLevel): AcademicLevel {
 }
 
 const TERM_LABELS: Record<TermType, string> = {
-  FIRST: "1st Semester",
-  SECOND: "2nd Semester",
+  FIRST: "First Semester",
+  SECOND: "Second Semester",
   SUMMER: "Summer",
-  QUARTER_1: "1st Quarter",
-  QUARTER_2: "2nd Quarter",
-  QUARTER_3: "3rd Quarter",
-  QUARTER_4: "4th Quarter",
+  QUARTER_1: "First Quarter",
+  QUARTER_2: "Second Quarter",
+  QUARTER_3: "Third Quarter",
+  QUARTER_4: "Fourth Quarter",
 };
 
 export function termLabel(type: string) {
@@ -139,7 +139,7 @@ export function termTypesFor(level: AcademicLevel): readonly TermType[] {
   return LEVELS[level].termKind === "semester" ? SEMESTER_TYPES : QUARTER_TYPES;
 }
 
-/** "Grade 11", "2nd Year", etc. for a section/subject row. */
+/** "Grade 11", "Second Year", etc. for a section/subject row. */
 export function stageLabel(row: { level: string; yearLevel?: string | null; gradeLevel?: string | null }) {
   if (row.level === "COLLEGE") return row.yearLevel ? yearLabel(row.yearLevel) : "Any year";
   return row.gradeLevel ? gradeLabel(row.gradeLevel) : "Any grade";

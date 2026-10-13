@@ -13,6 +13,7 @@ import {
   Plus,
   Stack,
   Trash,
+  UploadSimple,
   X,
 } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ interface Room {
   status: string;
   equipment: string;
   utilization: number;
+  departmentId: string;
 }
 interface Floor {
   id: string;
@@ -82,7 +84,17 @@ type Editor =
 
 type Deleting = { kind: "building" | "floor" | "room"; id: string; label: string };
 
-export function RoomsExplorer({ buildings, initialQuery }: { buildings: Building[]; initialQuery: string }) {
+export function RoomsExplorer({
+  buildings,
+  initialQuery,
+  isAdmin,
+  departments,
+}: {
+  buildings: Building[];
+  initialQuery: string;
+  isAdmin: boolean;
+  departments: { value: string; label: string }[];
+}) {
   const [query, setQuery] = useState(initialQuery);
   const [open, setOpen] = useState<Set<string>>(() => new Set(buildings.slice(0, 1).flatMap((b) => [b.id, ...b.floors.map((f) => f.id)])));
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -136,7 +148,7 @@ export function RoomsExplorer({ buildings, initialQuery }: { buildings: Building
       title: editor.item ? `Edit ${editor.item.name}` : `Add floor to ${building?.name ?? "building"}`,
       fields: [
         { name: "buildingId", label: "", type: "hidden" },
-        { name: "name", label: "Floor name", type: "text", required: true, placeholder: "2nd Floor" },
+        { name: "name", label: "Floor name", type: "text", required: true, placeholder: "Second Floor" },
         { name: "number", label: "Floor number (for ordering)", type: "number", min: -5, max: 100, required: true, help: "1 = ground floor" },
       ],
       values: editor.item ?? { buildingId: editor.buildingId, number: (building?.floors.at(-1)?.number ?? 0) + 1 },
@@ -152,9 +164,17 @@ export function RoomsExplorer({ buildings, initialQuery }: { buildings: Building
         { name: "capacity", label: "Seating capacity", type: "number", min: 1, required: true },
         { name: "roomType", label: "Room type", type: "select", required: true, options: ROOM_TYPES },
         { name: "status", label: "Status", type: "select", required: true, options: STATUSES },
-        { name: "equipment", label: "Equipment (comma-separated)", type: "text", placeholder: "Projector, Aircon, 40 PCs", wide: true },
+        { name: "equipment", label: "Equipment (comma-separated)", type: "text", placeholder: "Projector, Air conditioning, 40 computers", wide: true },
+        {
+          name: "departmentId",
+          label: "Owning department",
+          type: "select",
+          options: isAdmin ? [{ value: "", label: "Shared room (Administrator)" }, ...departments] : departments,
+          wide: true,
+          help: "The Head of Department of the owning department can manage and close this room.",
+        },
       ],
-      values: editor.item ?? { floorId: editor.floorId, capacity: 40, roomType: "LECTURE_ROOM", status: "AVAILABLE" },
+      values: editor.item ?? { floorId: editor.floorId, capacity: 40, roomType: "LECTURE_ROOM", status: "AVAILABLE", departmentId: isAdmin ? "" : departments[0]?.value },
       submit: (fd) => saveRoomAction(editor.item?.id ?? null, fd),
     };
   }
@@ -168,9 +188,16 @@ export function RoomsExplorer({ buildings, initialQuery }: { buildings: Building
         title="Rooms"
         description={`${buildings.length} buildings · ${totals.floors} floors · ${totals.rooms} rooms · ${totals.seats.toLocaleString()} seats`}
         actions={
-          <Button onClick={() => setEditor({ kind: "building" })} aria-keyshortcuts="n">
-            <Plus className="size-4" /> Add building
-          </Button>
+          <>
+            <Button variant="outline" nativeButton={false} render={<Link href="/import?kind=rooms" />}>
+              <UploadSimple className="size-4" /> Import rooms
+            </Button>
+            {isAdmin && (
+              <Button onClick={() => setEditor({ kind: "building" })} aria-keyshortcuts="n">
+                <Plus className="size-4" /> Add building
+              </Button>
+            )}
+          </>
         }
       />
 
@@ -238,23 +265,25 @@ export function RoomsExplorer({ buildings, initialQuery }: { buildings: Building
                       </span>
                       <CaretDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} />
                     </button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${b.name}`} />}>
-                        <DotsThree className="size-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setEditor({ kind: "floor", buildingId: b.id })}>
-                          <Stack className="size-4" /> Add floor
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setEditor({ kind: "building", item: buildings.find((x) => x.id === b.id) })}>
-                          <PencilSimple className="size-4" /> Edit building
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem variant="destructive" onClick={() => setDeleting({ kind: "building", id: b.id, label: b.name })}>
-                          <Trash className="size-4" /> Delete building
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {isAdmin && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${b.name}`} />}>
+                          <DotsThree className="size-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setEditor({ kind: "floor", buildingId: b.id })}>
+                            <Stack className="size-4" /> Add floor
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setEditor({ kind: "building", item: buildings.find((x) => x.id === b.id) })}>
+                            <PencilSimple className="size-4" /> Edit building
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem variant="destructive" onClick={() => setDeleting({ kind: "building", id: b.id, label: b.name })}>
+                            <Trash className="size-4" /> Delete building
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </div>
 
                   {expanded && (

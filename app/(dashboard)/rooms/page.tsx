@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
-import { requireRole } from "@/lib/auth/session";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { requireScope } from "@/lib/permissions/scope";
 import { RoomsExplorer } from "./rooms-explorer";
 
 export const metadata = { title: "Rooms · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
@@ -9,8 +9,9 @@ export const metadata = { title: "Rooms · GRANBY COLLEGES OF SCIENCE & TECHNOLO
 const AVAILABLE_MIN_PER_WEEK = 6 * 12 * 60;
 
 export default async function RoomsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  await requireRole(...STAFF_ROLES);
+  const scope = await requireScope(...STAFF_ROLES);
   const { q } = await searchParams;
+  const departments = await prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } });
   const buildings = await prisma.building.findMany({
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     include: {
@@ -31,6 +32,8 @@ export default async function RoomsPage({ searchParams }: { searchParams: Promis
   return (
     <RoomsExplorer
       initialQuery={q ?? ""}
+      isAdmin={scope.isAdmin}
+      departments={(scope.isAdmin ? departments : departments.filter((d) => d.id === scope.departmentId)).map((d) => ({ value: d.id, label: d.name }))}
       buildings={buildings.map((b) => ({
         id: b.id,
         name: b.name,
@@ -52,6 +55,7 @@ export default async function RoomsPage({ searchParams }: { searchParams: Promis
               roomType: r.roomType,
               status: r.status,
               equipment: r.equipment.join(", "),
+              departmentId: r.departmentId ?? "",
               utilization: Math.min(Math.round((booked / AVAILABLE_MIN_PER_WEEK) * 100), 100),
             };
           }),
