@@ -17,7 +17,7 @@ import { ConfirmDialog } from "@/components/ux/form-dialog";
 import { ActionButton } from "@/components/ux/action-button";
 import { ExportButtons, PrintHeader } from "@/components/ux/export-buttons";
 import { DEFAULT_GRID, formatRange, timeOptions } from "@/lib/scheduler/timetable";
-import { checkExamAction, deleteExamAction, saveExamAction, type ExamInput } from "./actions";
+import { checkExamAction, deleteExamAction, notifyExamAction, notifyExamsAction, saveExamAction, type ExamInput } from "./actions";
 
 export interface ExamRow {
   id: string;
@@ -96,12 +96,21 @@ export function ExamManager({
   const set = (k: keyof typeof blank) => (e: { target: { value: string } }) =>
     setEditing((s) => (s ? { ...s, form: { ...s.form, [k]: e.target.value } } : s));
 
+  /** Sends the examination notice to everyone who has these examinations on their schedule. */
+  function notify(ids: string[]) {
+    startTransition(async () => {
+      const res = ids.length === 1 ? await notifyExamAction(ids[0]).then((r) => (r.ok ? { ok: true as const, data: { exams: 1, notified: r.data.notified } } : r)) : await notifyExamsAction(ids);
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(res.data.notified ? `Notice sent to ${res.data.notified} people for ${res.data.exams} examination(s).` : "No one else needed a notice: you are the only person involved.");
+    });
+  }
+
   function save() {
     if (!editing) return;
     startTransition(async () => {
       const res = await saveExamAction(input(editing.form), editing.id);
       if (!res.ok) return void toast.error(res.error);
-      toast.success("Examination saved and the proctor notified.");
+      toast.success("Examination saved. The proctor, the instructors, and the Head of Department were notified.");
       setEditing(null);
       router.refresh();
     });
@@ -130,6 +139,9 @@ export function ExamManager({
               { header: "Term", value: (r) => r.term },
             ]}
           />
+          {canEdit && filtered.length > 0 && (
+            <ActionButton kind="notify" disabled={pending} onClick={() => notify(filtered.map((r) => r.id))}>Notify all listed</ActionButton>
+          )}
           {canEdit && (
             <Button size="sm" onClick={() => setEditing({ form: { ...blank, semesterId: options.terms[0]?.value ?? "" } })}>
               <Plus className="size-4" /> Schedule examination
@@ -167,6 +179,7 @@ export function ExamManager({
                   {canEdit && (
                     <TableCell className="print:hidden">
                       <div className="flex justify-end gap-1.5">
+                        <ActionButton kind="notify" disabled={pending} onClick={() => notify([r.id])} title="Notify the proctor, the instructors of this class, and the Head of Department" />
                         <ActionButton kind="edit" onClick={() => setEditing({ id: r.id, form: { ...r, startMin: String(r.startMin), endMin: String(r.endMin) } })} />
                         <ActionButton kind="delete" onClick={() => setDeleting(r)} />
                       </div>

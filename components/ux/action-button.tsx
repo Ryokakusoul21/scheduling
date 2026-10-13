@@ -1,5 +1,5 @@
 import type { Icon } from "@phosphor-icons/react";
-import { ArrowCounterClockwise, Check, CheckCircle, Eye, Key, PencilSimple, Plus, Prohibit, Star, Trash, X } from "@phosphor-icons/react/ssr";
+import { ArrowCounterClockwise, Bell, Check, CheckCircle, Eye, Key, PencilSimple, Plus, Prohibit, Star, Trash, X } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 
 /** Row and dialog actions share one look everywhere: an outlined button with an icon, red for destructive ones. */
@@ -16,6 +16,7 @@ const KINDS = {
   activate: { label: "Set as active", icon: Star, destructive: false },
   approve: { label: "Approve", icon: CheckCircle, destructive: false },
   reset: { label: "Reset password", icon: Key, destructive: false },
+  notify: { label: "Notify", icon: Bell, destructive: false },
 } satisfies Record<string, { label: string; icon: Icon; destructive: boolean }>;
 
 export type ActionKind = keyof typeof KINDS;

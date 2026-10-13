@@ -9,12 +9,17 @@ import { loadReport, statusOf } from "@/lib/workload/optimizer";
 import { formatRange, DAY_LONG } from "@/lib/scheduler/timetable";
 import { peakHeatmap, HEATMAP_DAYS } from "./timetable";
 import { countChange } from "./trends";
+import { EXAM_TITLES } from "@/lib/examinations/notify";
 
 const NOTIFICATION_KINDS: { kind: string; titles: string[] }[] = [
   { kind: "Workload change", titles: ["Your teaching load changed", "Teaching load change undone", "Teaching load reassigned"] },
   { kind: "Room conflict rescheduled", titles: ["Class rescheduled", "Schedule change undone"] },
   { kind: "Class suspension or cancellation", titles: ["Class cancelled", "Make-up class scheduled"] },
   { kind: "Unavailability update", titles: ["Unavailability report applied", "Unavailability report dismissed"] },
+  {
+    kind: "Examination",
+    titles: [...Object.values(EXAM_TITLES.proctor), ...Object.values(EXAM_TITLES.instructor), ...Object.values(EXAM_TITLES.head), EXAM_TITLES.removed],
+  },
 ];
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
