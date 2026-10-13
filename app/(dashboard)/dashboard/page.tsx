@@ -1,26 +1,16 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  BookOpen,
-  Buildings,
   CalendarBlank,
   CalendarDots,
   ClipboardText,
   Clock,
-  Gear,
-  Stack,
   UploadSimple,
   UserCheck,
   UserMinus,
   Gauge,
-  ArrowsClockwise,
-  ChartLineUp,
-  CalendarCheck,
-  UserSquare,
   Users,
-  UsersThree,
   WarningOctagon,
-  ChartBar,
 } from "@phosphor-icons/react/ssr";
 import { prisma } from "@/lib/db/prisma";
 import { getScope } from "@/lib/permissions/scope";
@@ -32,7 +22,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CardGrid } from "@/components/ux/card-grid";
-import { Kbd } from "@/components/ux/kbd";
 import { LEVEL_ACCENTS, LEVEL_ICONS } from "@/components/ux/level-icons";
 import { EmptyState, SelectCard } from "@/components/ux/states";
 import { AdminPanels } from "@/components/dashboard/admin-panels";
@@ -127,7 +116,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     }));
 
   const todayCard = (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Clock className="size-4 text-primary" /> Coming up today
@@ -263,146 +252,110 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     },
   ].filter((a) => a.show);
 
-  const quickActions = [
-    { label: "Scheduler", hint: "g s", href: "/scheduler", icon: CalendarDots, description: "Build and fix timetables" },
-    { label: "Academic Years & Terms", hint: "g y", href: "/academic-years", icon: CalendarBlank, description: "Semesters and quarters" },
-    { label: "Calendar of Activities", hint: "g c", href: "/calendar", icon: CalendarCheck, description: "Classes, examinations, events" },
-    { label: "Schedule Adjustments", hint: "", href: "/adjustments", icon: ArrowsClockwise, description: "Unavailability and suspensions" },
-    { label: "Faculty Workload", hint: "", href: "/workload", icon: Gauge, description: "Balance teaching loads" },
-    { label: "Enrollment Forecast", hint: "", href: "/forecast", icon: ChartLineUp, description: "Sections, faculty, rooms needed" },
-    { label: "Programs & Strands", hint: "g p", href: "/programs", icon: Stack, description: "Courses and Senior High School strands" },
-    { label: "Sections", hint: "g e", href: "/sections", icon: UsersThree, description: "Basic education and college sections" },
-    { label: "Subjects", hint: "g u", href: "/subjects", icon: BookOpen, description: "Subjects, units, and hours" },
-    { label: "Faculty", hint: "g f", href: "/faculty", icon: UserSquare, description: "Teachers and loads" },
-    { label: "Rooms", hint: "g r", href: "/rooms", icon: Buildings, description: "Buildings, floors, rooms" },
-    { label: "Timetable Analytics", hint: "", href: "/analytics", icon: ChartBar, description: "Utilization and peak hours" },
-    { label: "Users & Settings", hint: "", href: "/admin/users", icon: Gear, description: "Accounts and approvals" },
-  ];
-
   const classesByLevel = (level: string) => activeClasses.filter((c) => c.section.level === level);
+
+  const levelCards = (
+    <section aria-labelledby="lv-title" className="space-y-2">
+      <h2 id="lv-title" className="text-sm font-semibold text-muted-foreground">
+        By academic level (active terms)
+      </h2>
+      <CardGrid label="Academic levels" className="sm:grid-cols-2 xl:grid-cols-4">
+        {ACADEMIC_LEVELS.map((l) => {
+          const sections = countFor(sectionsByLevel, l);
+          const classes = classesByLevel(l);
+          const covered = new Set(classes.map((c) => c.sectionId)).size;
+          const pct = sections ? Math.round((covered / sections) * 100) : 0;
+          return (
+            <SelectCard
+              key={l}
+              href={`/scheduler?level=${l}`}
+              icon={LEVEL_ICONS[l]}
+              accent={LEVEL_ACCENTS[l]}
+              title={levelLabel(l)}
+              subtitle={`${sections} sections · ${countFor(subjectsByLevel, l)} subjects · ${classes.length} classes`}
+            >
+              <div className="mt-3">
+                <div className="flex justify-between text-[11px] text-muted-foreground">
+                  <span>Sections with a timetable</span>
+                  <span>
+                    {covered}/{sections}
+                  </span>
+                </div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            </SelectCard>
+          );
+        })}
+      </CardGrid>
+    </section>
+  );
 
   return (
     <div className="space-y-5">
       {header}
 
-      <AdminPanels scope={scope} params={params} />
+      <AdminPanels scope={scope} params={params} levels={levelCards} />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="space-y-5">
-          <section aria-labelledby="qa-title" className="space-y-2">
-            <h2 id="qa-title" className="text-sm font-semibold text-muted-foreground">
-              Quick actions <span className="font-normal">· arrow keys to move, Enter to open</span>
-            </h2>
-            <CardGrid label="Quick actions" className="sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4">
-              {quickActions.map((a) => (
-                <SelectCard
-                  key={a.href}
-                  href={a.href}
-                  icon={a.icon}
-                  title={a.label}
-                  subtitle={a.description}
-                  meta={a.hint ? <Kbd>{a.hint}</Kbd> : undefined}
-                />
-              ))}
-            </CardGrid>
-          </section>
-
-          <section aria-labelledby="lv-title" className="space-y-2">
-            <h2 id="lv-title" className="text-sm font-semibold text-muted-foreground">
-              By academic level (active terms)
-            </h2>
-            <CardGrid label="Academic levels" className="lg:grid-cols-2 2xl:grid-cols-4">
-              {ACADEMIC_LEVELS.map((l) => {
-                const sections = countFor(sectionsByLevel, l);
-                const classes = classesByLevel(l);
-                const covered = new Set(classes.map((c) => c.sectionId)).size;
-                const pct = sections ? Math.round((covered / sections) * 100) : 0;
-                return (
-                  <SelectCard
-                    key={l}
-                    href={`/scheduler?level=${l}`}
-                    icon={LEVEL_ICONS[l]}
-                    accent={LEVEL_ACCENTS[l]}
-                    title={levelLabel(l)}
-                    subtitle={`${sections} sections · ${countFor(subjectsByLevel, l)} subjects · ${classes.length} classes`}
-                  >
-                    <div className="mt-3">
-                      <div className="flex justify-between text-[11px] text-muted-foreground">
-                        <span>Sections with a timetable</span>
-                        <span>
-                          {covered}/{sections}
-                        </span>
-                      </div>
-                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
-                        <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                  </SelectCard>
-                );
-              })}
-            </CardGrid>
-          </section>
-        </div>
-
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Needs attention</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {attention.length === 0 ? (
-                <EmptyState title="All clear" description="No conflicts, pending requests, or unpublished classes." className="py-6" />
-              ) : (
-                <ul className="space-y-2">
-                  {attention.map((a) => (
-                    <li key={a.title}>
-                      <Link href={a.href} className="flex items-center gap-3 rounded-lg border p-2.5 text-sm transition-colors hover:bg-accent">
-                        <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md", a.tone)}>
-                          <a.icon className="size-4" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block font-medium">{a.title}</span>
-                          <span className="block truncate text-xs text-muted-foreground">{a.detail}</span>
-                        </span>
-                        <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-
-          {todayCard}
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Recent activity</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {recentAudit.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No activity yet.</p>
-              ) : (
-                <ul className="space-y-2.5 text-sm">
-                  {recentAudit.map((log) => (
-                    <li key={log.id} className="flex gap-2">
-                      <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
-                      <span className="min-w-0">
-                        <span className="block truncate">{log.action}</span>
-                        <span className="block text-xs text-muted-foreground">
-                          {log.user?.name ?? "System"} · {log.createdAt.toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}
-                        </span>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="h-full">
+          <CardHeader>
+            <CardTitle className="text-base">Needs attention</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {attention.length === 0 ? (
+              <EmptyState title="All clear" description="No conflicts, pending requests, or unpublished classes." className="py-6" />
+            ) : (
+              <ul className="space-y-2">
+                {attention.map((a) => (
+                  <li key={a.title}>
+                    <Link href={a.href} className="flex items-center gap-3 rounded-lg border p-2.5 text-sm transition-colors hover:bg-accent">
+                      <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md", a.tone)}>
+                        <a.icon className="size-4" />
                       </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <Link href="/admin/audit-logs" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                View audit log <ArrowRight className="size-3" />
-              </Link>
-            </CardContent>
-          </Card>
-        </div>
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-medium">{a.title}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{a.detail}</span>
+                      </span>
+                      <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        {todayCard}
+
+        <Card className="h-full">
+          <CardHeader>
+            <CardTitle className="text-base">Recent activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {recentAudit.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No activity yet.</p>
+            ) : (
+              <ul className="space-y-2.5 text-sm">
+                {recentAudit.map((log) => (
+                  <li key={log.id} className="flex gap-2">
+                    <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
+                    <span className="min-w-0">
+                      <span className="block truncate">{log.action}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {log.user?.name ?? "System"} · {log.createdAt.toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Link href="/admin/audit-logs" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+              View audit log <ArrowRight className="size-3" />
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

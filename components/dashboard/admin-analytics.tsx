@@ -29,8 +29,11 @@ export function analyticsBlocks(d: DashboardAnalytics, heading: string, cardKeys
 export function AdminAnalytics({
   data,
   filters,
+  levels,
 }: {
   data: DashboardAnalytics;
+  /** Academic level summary shown under the cards. */
+  levels?: React.ReactNode;
   filters: { term: string; department: string; building: string; terms: Option[]; departments: Option[]; buildings: Option[] };
 }) {
   const scope = [
@@ -61,6 +64,8 @@ export function AdminAnalytics({
           <StatCard key={c.key} label={c.label} value={c.value} hint={c.hint} change={c.change} previous={data.previousLabel} />
         ))}
       </StatGrid>
+
+      {levels}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <RateChart title="Room Utilization Rate per building" rows={data.buildings} unit="available hours" />

@@ -10,7 +10,7 @@ import { WorkloadBalance } from "./workload-balance";
  * Administrator dashboard analytics and the live Workload Balance panel. Filters live in the address
  * (semester, department, building); LiveRefresh re-renders everything when schedules or fixes change.
  */
-export async function AdminPanels({ scope, params }: { scope: Scope; params: { term?: string; department?: string; building?: string } }) {
+export async function AdminPanels({ scope, params, levels }: { scope: Scope; params: { term?: string; department?: string; building?: string }; levels?: React.ReactNode }) {
   const [terms, departments, buildings] = await Promise.all([
     prisma.semester.findMany({ include: { academicYear: { select: { name: true } } }, orderBy: [{ startDate: "desc" }, { level: "asc" }] }),
     prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -28,6 +28,7 @@ export async function AdminPanels({ scope, params }: { scope: Scope; params: { t
     <div className="space-y-5">
       <AdminAnalytics
         data={data}
+        levels={levels}
         filters={{
           term: term.id,
           department: departmentId ?? "",
