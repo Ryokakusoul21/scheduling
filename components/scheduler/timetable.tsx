@@ -6,7 +6,6 @@ import { Warning, WarningOctagon } from "@phosphor-icons/react/ssr";
 import { cn } from "@/lib/utils";
 import {
   DAY_LONG,
-  DAY_SHORT,
   DEFAULT_GRID,
   formatRange,
   formatTime,
@@ -132,8 +131,7 @@ export function Timetable({
         <div className="sticky top-0 z-20 border-b bg-card" />
         {days.map((d) => (
           <div key={d} role="columnheader" className="sticky top-0 z-20 border-b border-l bg-card px-2 py-2 text-center text-xs font-semibold">
-            <span className="hidden sm:inline">{DAY_LONG[d]}</span>
-            <span className="sm:hidden">{DAY_SHORT[d]}</span>
+            {DAY_LONG[d]}
           </div>
         ))}
 

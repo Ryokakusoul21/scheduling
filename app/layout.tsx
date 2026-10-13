@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "GRANBY COLLEGES OF SCIENCE & TECHNOLOGY Scheduling System",
-  description: "AI-Powered Scheduling Management System for GRANBY COLLEGES OF SCIENCE & TECHNOLOGY",
+  description: "Class Scheduling and Room Booking System of GRANBY COLLEGES OF SCIENCE & TECHNOLOGY",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {

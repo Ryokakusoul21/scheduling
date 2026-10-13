@@ -60,7 +60,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Room Booking", href: "/bookings", icon: DoorOpen, shortcut: "g b" },
       { label: "Schedule Adjustments", href: "/adjustments", icon: ArrowsClockwise, roles: STAFF },
       { label: "Schedule Requests", href: "/requests", icon: ClipboardList },
-      { label: "AI Assistant", href: "/assistant", icon: Bot },
+      { label: "Scheduling Assistant", href: "/assistant", icon: Bot },
     ],
   },
   {

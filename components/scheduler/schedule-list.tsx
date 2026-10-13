@@ -5,7 +5,7 @@ import { WarningOctagon, Warning, CaretUp, CaretDown } from "@phosphor-icons/rea
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
-import { DAY_SHORT, WEEK_DAYS, formatRange, type Severity } from "@/lib/scheduler/timetable";
+import { DAY_LONG, WEEK_DAYS, formatRange, type Severity } from "@/lib/scheduler/timetable";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ux/states";
 import type { SchedulerEntry } from "./types";
@@ -101,7 +101,7 @@ export function ScheduleList({
                 data-entry-id={e.id}
                 tabIndex={-1}
                 onClick={() => onOpen(e)}
-                aria-label={`${i.subject} ${i.section}, ${DAY_SHORT[e.dayOfWeek]} ${formatRange(e.startMin, e.endMin)}${c ? `, ${c.severity}` : ""}. Press Enter to edit.`}
+                aria-label={`${i.subject} ${i.section}, ${DAY_LONG[e.dayOfWeek]} ${formatRange(e.startMin, e.endMin)}${c ? `, ${c.severity}` : ""}. Press Enter to edit.`}
                 className={cn(
                   "cursor-pointer",
                   c?.severity === "conflict" && "bg-red-500/[0.07] hover:bg-red-500/10",
@@ -112,7 +112,7 @@ export function ScheduleList({
                   <span className="flex items-center gap-1.5">
                     {c?.severity === "conflict" && <WarningOctagon className="size-4 text-red-600" weight="fill" aria-hidden />}
                     {c?.severity === "warning" && <Warning className="size-4 text-amber-600" weight="fill" aria-hidden />}
-                    <span className="font-medium">{DAY_SHORT[e.dayOfWeek]}</span> {formatRange(e.startMin, e.endMin)}
+                    <span className="font-medium">{DAY_LONG[e.dayOfWeek]}</span> {formatRange(e.startMin, e.endMin)}
                   </span>
                 </TableCell>
                 <TableCell>

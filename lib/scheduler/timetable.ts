@@ -6,15 +6,6 @@
 import type { DayOfWeek, DetectedConflict } from "./types";
 
 export const WEEK_DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
-export const DAY_SHORT: Record<DayOfWeek, string> = {
-  MONDAY: "Mon",
-  TUESDAY: "Tue",
-  WEDNESDAY: "Wed",
-  THURSDAY: "Thu",
-  FRIDAY: "Fri",
-  SATURDAY: "Sat",
-  SUNDAY: "Sun",
-};
 export const DAY_LONG: Record<DayOfWeek, string> = {
   MONDAY: "Monday",
   TUESDAY: "Tuesday",

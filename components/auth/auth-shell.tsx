@@ -33,7 +33,7 @@ export function AuthShell({
           <p className="mt-4 max-w-sm text-primary-foreground/70">Naic, Cavite, Philippines</p>
         </div>
         <div className="relative max-w-sm text-sm text-primary-foreground/60">
-          AI-Powered Scheduling Management System — automated timetabling, conflict
+          Smart Scheduling Management System — automated timetabling, conflict
           detection, and faculty &amp; room allocation for the whole institution.
         </div>
       </div>

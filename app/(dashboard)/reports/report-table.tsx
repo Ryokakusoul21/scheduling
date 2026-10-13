@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Printer } from "@phosphor-icons/react/ssr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { ExportButtons, PrintHeader } from "@/components/ux/export-buttons";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -24,6 +23,8 @@ interface Row {
   endMin: number;
   status: string;
 }
+
+const STATUS_LABELS: Record<string, string> = { DRAFT: "Draft", REVIEW: "Awaiting approval", PUBLISHED: "Published", ARCHIVED: "Archived" };
 
 function formatTime(min: number) {
   const h = Math.floor(min / 60);
@@ -96,16 +97,24 @@ export function ScheduleReportTable({
               {rooms.map((r) => <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Button size="sm" variant="outline" onClick={() => window.print()}>
-            <Printer className="size-4" /> Print
-          </Button>
+          <ExportButtons
+            filename="schedule-of-classes"
+            rows={filtered}
+            columns={[
+              { header: "Subject", value: (r) => r.subjectLabel },
+              { header: "Section", value: (r) => r.sectionLabel },
+              { header: "Faculty", value: (r) => r.facultyLabel },
+              { header: "Room", value: (r) => r.roomLabel },
+              { header: "Day", value: (r) => r.dayOfWeek[0] + r.dayOfWeek.slice(1).toLowerCase() },
+              { header: "Time", value: (r) => `${formatTime(r.startMin)} to ${formatTime(r.endMin)}` },
+              { header: "Term", value: (r) => r.semesterLabel },
+              { header: "Status", value: (r) => STATUS_LABELS[r.status] ?? r.status },
+            ]}
+          />
         </div>
       </CardHeader>
       <CardContent>
-        <div className="mb-3 hidden text-center print:block">
-          <p className="font-semibold">GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY</p>
-          <p className="text-sm">Naic, Cavite — Schedule of Classes</p>
-        </div>
+        <PrintHeader title="Schedule of Classes" subtitle="Naic, Cavite" />
         <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
@@ -136,7 +145,7 @@ export function ScheduleReportTable({
                     {r.dayOfWeek[0] + r.dayOfWeek.slice(1).toLowerCase()} · {formatTime(r.startMin)}–{formatTime(r.endMin)}
                   </TableCell>
                   <TableCell className="print:hidden">
-                    <Badge variant={r.status === "PUBLISHED" ? "default" : "secondary"}>{r.status}</Badge>
+                    <Badge variant={r.status === "PUBLISHED" ? "default" : "secondary"}>{STATUS_LABELS[r.status] ?? r.status}</Badge>
                   </TableCell>
                 </TableRow>
               ))}

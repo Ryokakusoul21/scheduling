@@ -97,7 +97,7 @@ export function FacultyBrowser({
     { name: "departmentId", label: "Department", type: "select", options: [{ value: "", label: "No department" }, ...departments] },
     { name: "position", label: "Position", type: "text", placeholder: "Instructor I" },
     { name: "specialization", label: "Specialization", type: "text", placeholder: "Mathematics" },
-    { name: "maxHours", label: "Max teaching hours / week", type: "number", min: 1, max: 80, required: true },
+    { name: "maxHours", label: "Maximum teaching hours per week", type: "number", min: 1, max: 80, required: true },
     { name: "status", label: "Status", type: "select", required: true, options: STATUS },
     {
       name: "teachingLevels",
@@ -137,7 +137,7 @@ export function FacultyBrowser({
         <div className="flex justify-between text-[11px] text-muted-foreground">
           <span>Load this term</span>
           <span className={cn(over && "font-semibold text-destructive")}>
-            {f.loadHours}/{f.maxHours} h
+            {f.loadHours} of {f.maxHours} hours
           </span>
         </div>
         <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Teaching load ${pct}%`}>

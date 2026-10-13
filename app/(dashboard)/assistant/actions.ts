@@ -59,8 +59,8 @@ export async function sendAssistantMessageAction(
     return {
       ok: false,
       error: missingKey
-        ? "The AI assistant isn't configured yet. Please contact the administrator."
-        : "The AI assistant is unavailable right now. Please try again in a moment.",
+        ? "The Scheduling Assistant is not set up yet. Please contact the Administrator."
+        : "The Scheduling Assistant is unavailable right now. Please try again in a moment.",
     };
   }
 

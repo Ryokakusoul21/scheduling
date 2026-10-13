@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { AssistantChat, AssistantHeader } from "@/components/assistant/assistant-chat";
 import { getAssistantHistory } from "./actions";
 
-export const metadata = { title: "AI Assistant · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Scheduling Assistant · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function AssistantPage() {
   const user = await requireUser();
@@ -13,7 +13,7 @@ export default async function AssistantPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">AI Assistant</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Scheduling Assistant</h1>
         <p className="text-sm text-muted-foreground">
           Ask about your classes, rooms, instructors, and schedule requests.
         </p>

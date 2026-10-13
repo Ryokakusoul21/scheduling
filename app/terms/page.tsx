@@ -23,7 +23,7 @@ export default function TermsPage() {
       </ul>
       <h2>3. Schedules and data accuracy</h2>
       <p>
-        Schedules generated or suggested by the System, including AI-assisted results, are subject to review and
+        Schedules generated or suggested by the System, including results assisted by artificial intelligence, are subject to review and
         approval by authorized staff. Official schedules are those published by the Registrar.
       </p>
       <h2>4. Suspension</h2>

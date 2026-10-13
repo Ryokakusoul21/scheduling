@@ -7,7 +7,7 @@ export function getGeminiClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error(
-      "AI schedule generation requires a Gemini API key. Set GEMINI_API_KEY in your environment to enable this feature."
+      "The Scheduling Assistant requires a Gemini key. Set GEMINI_API_KEY in your environment to enable this feature."
     );
   }
   if (!client) {

@@ -22,8 +22,8 @@ export default function PrivacyPage() {
       </p>
       <h2>Sharing</h2>
       <p>
-        Data is accessible only to authorized GRANBY COLLEGES OF SCIENCE & TECHNOLOGY personnel according to their role. Optional AI features may send
-        schedule data (not passwords) to an AI service provider to generate suggestions.
+        Data is accessible only to authorized GRANBY COLLEGES OF SCIENCE & TECHNOLOGY personnel according to their role. Optional artificial intelligence features may send
+        schedule data (not passwords) to an artificial intelligence service provider to generate suggestions.
       </p>
       <h2>Retention and your rights</h2>
       <p>
