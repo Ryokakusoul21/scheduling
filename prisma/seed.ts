@@ -1,7 +1,7 @@
 /**
  * Sample data for GRANBY COLLEGES OF SCIENCE & TECHNOLOGY so every feature can be demonstrated immediately.
  * Dates are computed from the day the seed runs, so the current term, calendar, and examinations are always "now".
- * Run on an empty database: `npx prisma migrate reset` (drops data, migrates, then seeds).
+ * Run on an empty database: `npx prisma migrate reset`, then `npx prisma db seed`.
  */
 import {
   PrismaClient,
@@ -15,6 +15,8 @@ import {
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 import { DEFAULT_COLLEGE_PROGRAMS, DEFAULT_SHS_STRANDS } from "../lib/academics/levels";
+import { placeCollegeClasses } from "./sample-timetable";
+import { addSampleHistory } from "./sample-history";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -365,64 +367,6 @@ async function main() {
     faculty[f.id] = { id: row.id, windows };
   }
 
-  // -------------------------------------------------------------------
-  // College timetables: greedy placement that never double-books a room, faculty member, or section
-  // -------------------------------------------------------------------
-  const teacherFor: Record<string, string[]> = {
-    GE101: ["F-008", "F-014"], GE102: ["F-009", "F-013"], GE103: ["F-010"], GE104: ["F-009", "F-010", "F-013"],
-    GRANBY100: ["F-010", "F-013"], IT101: ["F-001", "F-005"], IT102: ["F-001", "F-005"], IT201: ["F-005", "F-001"],
-    IT202: ["F-003", "F-001"], IT203: ["F-004"], IT301: ["F-002"], IT302: ["F-007"], IT303: ["F-006"], IT401: ["F-007", "F-002"],
-    CS201: ["F-014"], CS202: ["F-015"], SCI101: ["F-011"], CRIM101: ["F-016"], ACC101: ["F-017"], BA101: ["F-012"],
-    TM101: ["F-018"], ISM101: ["F-016"], EED101: ["F-013"], ED101: ["F-013"],
-  };
-  // Ana Santos is assigned extra laboratory sections on purpose so Workload Optimization has someone to rebalance.
-  const overloadExtras: Record<string, string> = { "Information Technology 2-B|IT201": "F-001", "Computer Science 2-A|IT201": "F-001" };
-
-  type Busy = { day: DayOfWeek; start: number; end: number };
-  const busy = new Map<string, Busy[]>();
-  const isFree = (key: string, day: DayOfWeek, start: number, end: number) =>
-    !(busy.get(key) ?? []).some((b) => b.day === day && b.start < end && start < b.end);
-  const occupy = (key: string, day: DayOfWeek, start: number, end: number) => busy.set(key, [...(busy.get(key) ?? []), { day, start, end }]);
-  const facultyAvailable = (fid: string, day: DayOfWeek, start: number, end: number) =>
-    faculty[fid].windows.some((w) => w.day === day && start >= w.start && end <= w.end);
-
-  const startTimes = Array.from({ length: 21 }, (_, i) => 7 * 60 + 30 + i * 30).filter((t) => t <= 17 * 60);
-  const dayPatterns: DayOfWeek[][] = [["MONDAY", "WEDNESDAY"], ["TUESDAY", "THURSDAY"], ["WEDNESDAY", "FRIDAY"], ["MONDAY", "THURSDAY"]];
-  const singleDays: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
-
-  type Meeting = { day: DayOfWeek; start: number; end: number; roomId: string; facultyId: string; lab: boolean };
-  const created: { sectionId: string; subjectId: string; meeting: Meeting }[] = [];
-
-  /** Places all meetings of one component on the first pattern and time where everything is free. */
-  function place(sectionName: string, code: string, fid: string, lab: boolean, minutes: number, meetings: number, rotate: number) {
-    const sec = section[sectionName];
-    const subj = subject[code];
-    // College classes use shared rooms and their own laboratories, never Basic Education classrooms.
-    const roomPool = rooms.filter((r) => (lab ? r.type === subj.room : r.type === "LECTURE_ROOM") && r.capacity >= sec.count && r.dept !== "BED");
-    const patterns = meetings === 2 ? dayPatterns : singleDays.map((d) => [d]);
-    for (let p = 0; p < patterns.length; p++) {
-      const days = patterns[(p + rotate) % patterns.length];
-      for (const start of startTimes) {
-        const end = start + minutes;
-        if (end > 18 * 60) continue;
-        const fKey = `f:${faculty[fid].id}`;
-        const okPeople = days.every((d) => isFree(`s:${sec.id}`, d, start, end) && isFree(fKey, d, start, end) && facultyAvailable(fid, d, start, end));
-        if (!okPeople) continue;
-        const room = roomPool.find((r) => days.every((d) => isFree(`r:${r.id}`, d, start, end)));
-        if (!room) continue;
-        for (const d of days) {
-          occupy(`s:${sec.id}`, d, start, end);
-          occupy(fKey, d, start, end);
-          occupy(`r:${room.id}`, d, start, end);
-          created.push({ sectionId: sec.id, subjectId: subj.id, meeting: { day: d, start, end, roomId: room.id, facultyId: faculty[fid].id, lab } });
-        }
-        return true;
-      }
-    }
-    console.warn(`Could not place ${code} for ${sectionName}`);
-    return false;
-  }
-
   // Basic education sample timetables (fixed meetings).
   type FixedMeeting = { subject: string; faculty: string; room: string; day: DayOfWeek; start: string; end: string; lab?: boolean };
   const fixed: { section: string; termId: string; meetings: FixedMeeting[] }[] = [
@@ -457,13 +401,8 @@ async function main() {
       ],
     },
   ];
-  // Reserve the fixed meetings first so the college generator works around them.
+  // Fixed meetings are saved first so the college generator works around them.
   for (const t of fixed) {
-    for (const m of t.meetings) {
-      occupy(`s:${section[t.section].id}`, m.day, toMin(m.start), toMin(m.end));
-      occupy(`f:${faculty[m.faculty].id}`, m.day, toMin(m.start), toMin(m.end));
-      occupy(`r:${roomByNumber[m.room].id}`, m.day, toMin(m.start), toMin(m.end));
-    }
     await prisma.schedule.createMany({
       data: t.meetings.map((m) => ({
         semesterId: t.termId, sectionId: section[t.section].id, subjectId: subject[m.subject].id, facultyId: faculty[m.faculty].id,
@@ -473,26 +412,12 @@ async function main() {
     });
   }
 
-  collegeSections.forEach((s, si) => {
-    for (const code of s.subjects ?? []) {
-      const subj = subject[code];
-      const candidates = overloadExtras[`${s.name}|${code}`] ? [overloadExtras[`${s.name}|${code}`]] : teacherFor[code];
-      const fid = candidates[si % candidates.length];
-      if (subj.lecture > 0) {
-        const twice = subj.lecture === 3;
-        place(s.name, code, fid, false, twice ? 90 : subj.lecture * 60, twice ? 2 : 1, si);
-      }
-      for (let k = 0; k < subj.lab; k++) place(s.name, code, fid, true, 180, 1, si + k + 1);
-    }
-  });
-
-  await prisma.schedule.createMany({
-    data: created.map((c) => ({
-      semesterId: collegeTerm.id, sectionId: c.sectionId, subjectId: c.subjectId, facultyId: c.meeting.facultyId, roomId: c.meeting.roomId,
-      component: c.meeting.lab ? ("LABORATORY" as const) : ("LECTURE" as const), dayOfWeek: c.meeting.day,
-      startMin: c.meeting.start, endMin: c.meeting.end, status: "PUBLISHED" as const,
-    })),
-  });
+  // College timetables: conflict-free generated placement (shared with the sample history script).
+  const placed = await placeCollegeClasses(
+    prisma,
+    collegeTerm.id,
+    collegeSections.map((s) => ({ id: section[s.name].id, name: s.name, count: s.count, subjects: s.subjects ?? [] }))
+  );
 
   // -------------------------------------------------------------------
   // Demo accounts: one per role; Head of Department and Faculty are linked to faculty records
@@ -558,7 +483,7 @@ async function main() {
       date: date(nextWeekday(3, 2)), startMin: 13 * 60, endMin: 15 * 60, attendees: 12,
     },
   });
-  const dizonDay = created.find((c) => c.meeting.facultyId === faculty["F-005"].id)?.meeting.day ?? "TUESDAY";
+  const dizonDay = (await prisma.schedule.findFirst({ where: { facultyId: faculty["F-005"].id, semesterId: collegeTerm.id } }))?.dayOfWeek ?? "TUESDAY";
   const dizonDate = nextWeekday(["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"].indexOf(dizonDay), 4);
   await prisma.unavailability.create({
     data: {
@@ -617,7 +542,10 @@ async function main() {
     ],
   });
 
-  console.log(`Seed complete: ${created.length} college class meetings placed in ${collegeTerm.name} ${ay.name}.`);
+  // Previous semester, past bookings, and automatically resolved conflicts for trend comparisons.
+  await addSampleHistory(prisma);
+
+  console.log(`Seed complete: ${placed} college class meetings placed in ${collegeTerm.name} ${ay.name}.`);
   console.log(`Demo login password for every demo account: ${DEV_PASSWORD}`);
 }
 

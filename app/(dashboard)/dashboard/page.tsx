@@ -44,6 +44,7 @@ import { EmptyState, SelectCard } from "@/components/ux/states";
 import { AssistantChat, AssistantHeader } from "@/components/assistant/assistant-chat";
 import { getAssistantHistory } from "../assistant/actions";
 import { MyTeaching } from "@/components/dashboard/my-teaching";
+import { AdminPanels } from "@/components/dashboard/admin-panels";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "Dashboard · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
@@ -65,7 +66,7 @@ function TrendBadge({ value, invert = false }: { value: number | null | undefine
   );
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ term?: string; department?: string; building?: string }> }) {
   const scope = await getScope();
   const user = { id: scope.userId, name: scope.name };
   const role = scope.role;
@@ -363,31 +364,36 @@ export default async function DashboardPage() {
     <div className="space-y-5">
       {header}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        {stats.map((s) => (
-          <Link
-            key={s.label}
-            href={s.href}
-            className={cn(
-              "group relative rounded-xl border bg-card p-4 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md",
-              s.danger && "border-red-500/40 bg-red-500/[0.04]"
-            )}
-          >
-            <div className="flex items-center gap-3">
-              <span className={cn("flex size-10 items-center justify-center rounded-lg", s.danger ? "bg-red-500/15 text-red-600" : "bg-primary/10 text-primary")}>
-                <s.icon className="size-5" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-2xl font-semibold tabular-nums leading-tight">{s.value}</p>
-                <p className="truncate text-xs text-muted-foreground">{s.label}</p>
+      {admin && <AdminPanels scope={scope} params={await searchParams} />}
+
+      {/* Heads of Department keep the compact counts; the Administrator gets the full analytics above. */}
+      {!admin && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+          {stats.map((s) => (
+            <Link
+              key={s.label}
+              href={s.href}
+              className={cn(
+                "group relative rounded-xl border bg-card p-4 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md",
+                s.danger && "border-red-500/40 bg-red-500/[0.04]"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <span className={cn("flex size-10 items-center justify-center rounded-lg", s.danger ? "bg-red-500/15 text-red-600" : "bg-primary/10 text-primary")}>
+                  <s.icon className="size-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-2xl font-semibold tabular-nums leading-tight">{s.value}</p>
+                  <p className="truncate text-xs text-muted-foreground">{s.label}</p>
+                </div>
               </div>
-            </div>
-            <div className="absolute top-3 right-3">
-              <TrendBadge value={s.trend} invert={s.invert} />
-            </div>
-          </Link>
-        ))}
-      </div>
+              <div className="absolute top-3 right-3">
+                <TrendBadge value={s.trend} invert={s.invert} />
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-5">
