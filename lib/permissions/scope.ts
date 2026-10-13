@@ -1,5 +1,4 @@
 import "server-only";
-import { forbidden } from "next/navigation";
 import { requireRole, requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import type { AppRole } from "./roles";
@@ -52,7 +51,10 @@ export function canManageDepartment(scope: Scope, departmentId: string | null | 
   return !!departmentId && departmentId === scope.departmentId;
 }
 
-/** Page guard version of canManageDepartment. */
-export function assertDepartment(scope: Scope, departmentId: string | null | undefined) {
-  if (!canManageDepartment(scope, departmentId)) forbidden();
+/** Owning department of a college course or Senior High School strand (null when none). */
+export async function programDepartment(programId: string | null | undefined) {
+  if (!programId) return null;
+  return (await prisma.program.findUnique({ where: { id: programId }, select: { departmentId: true } }))?.departmentId ?? null;
 }
+
+export const OUTSIDE_DEPARTMENT = "You can only manage records of your own department. Ask the Administrator for anything else.";

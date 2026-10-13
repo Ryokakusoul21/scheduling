@@ -13,6 +13,12 @@ import {
   Stack,
   UploadSimple,
   UserCheck,
+  UserMinus,
+  Gauge,
+  DoorOpen,
+  ArrowsClockwise,
+  ChartLineUp,
+  CalendarCheck,
   UserSquare,
   Users,
   UsersThree,
@@ -22,8 +28,8 @@ import {
   ChartBar,
 } from "@phosphor-icons/react/ssr";
 import { prisma } from "@/lib/db/prisma";
-import { requireUser } from "@/lib/auth/session";
-import { isAdmin, isStaff, type AppRole } from "@/lib/permissions/roles";
+import { getScope } from "@/lib/permissions/scope";
+import { loadPlan } from "@/lib/occupancy/load";
 import { ACADEMIC_LEVELS, LEVELS, levelLabel, termLabel } from "@/lib/academics/levels";
 import { recordAndGetTrend } from "@/lib/analytics/dailyStat";
 import { activeOverlapConflicts } from "@/lib/scheduler/term-conflicts";
@@ -37,11 +43,10 @@ import { LEVEL_ACCENTS, LEVEL_ICONS } from "@/components/ux/level-icons";
 import { EmptyState, SelectCard } from "@/components/ux/states";
 import { AssistantChat, AssistantHeader } from "@/components/assistant/assistant-chat";
 import { getAssistantHistory } from "../assistant/actions";
+import { MyTeaching } from "@/components/dashboard/my-teaching";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "Dashboard · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
-
-const DAY_NAMES = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
 
 function greeting(hour: number) {
   return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -61,43 +66,46 @@ function TrendBadge({ value, invert = false }: { value: number | null | undefine
 }
 
 export default async function DashboardPage() {
-  const user = await requireUser();
-  const role = user.role as AppRole;
-  const staff = isStaff(role);
-  const admin = isAdmin(role);
+  const scope = await getScope();
+  const user = { id: scope.userId, name: scope.name };
+  const role = scope.role;
+  const staff = role !== "FACULTY";
+  const admin = scope.isAdmin;
+  // Head of Department figures cover their own department only.
+  const dept = admin ? null : scope.manageDepartmentId;
 
   // Manila time for "today" and greetings.
   const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" }));
   const nowMin = now.getHours() * 60 + now.getMinutes();
-  const today = DAY_NAMES[now.getDay()];
 
-  const [activeTerms, me] = await Promise.all([
+  const todayIso = now.toLocaleDateString("en-CA");
+  const [activeTerms, plan] = await Promise.all([
     prisma.semester.findMany({
       where: { isActive: true },
       include: { program: { select: { code: true } }, academicYear: { select: { name: true } } },
       orderBy: [{ level: "asc" }],
     }),
-    prisma.user.findUnique({ where: { id: user.id }, select: { facultyId: true } }),
+    loadPlan(todayIso, todayIso),
   ]);
+  const me = { facultyId: scope.facultyId };
   const activeTermIds = activeTerms.map((t) => t.id);
   const inActiveTerms = { semesterId: { in: activeTermIds }, status: { not: "ARCHIVED" as const } };
 
-  const todaysClasses = await prisma.schedule.findMany({
-    where: {
-      ...inActiveTerms,
-      dayOfWeek: today,
-      endMin: { gte: nowMin },
-      ...(role === "FACULTY" ? { facultyId: me?.facultyId ?? "__none__" } : {}),
-    },
-    include: {
-      subject: { select: { code: true, name: true } },
-      section: { select: { name: true } },
-      room: { select: { roomName: true } },
-      faculty: { select: { fullName: true } },
-    },
-    orderBy: { startMin: "asc" },
-    take: 6,
-  });
+  // Today's real sessions, after room bookings, substitutions, suspensions, and holidays.
+  const todaysClasses = plan.sessions
+    .filter((s) => s.endMin >= nowMin)
+    .filter((s) => (role === "FACULTY" ? s.facultyId === me.facultyId : !dept || plan.classInfo.get(s.scheduleId)?.departmentId === dept || s.facultyId === me.facultyId))
+    .slice(0, 6)
+    .map((s) => ({
+      id: `${s.scheduleId}-${s.date}`,
+      startMin: s.startMin,
+      endMin: s.endMin,
+      moved: s.status !== "REGULAR",
+      subject: { code: plan.classInfo.get(s.scheduleId)?.subjectCode ?? "" },
+      section: { name: plan.classInfo.get(s.scheduleId)?.sectionName ?? "" },
+      room: { roomName: plan.roomName.get(s.roomId) ?? "" },
+      faculty: { fullName: plan.facultyName.get(s.facultyId) ?? "" },
+    }));
 
   const header = (
     <div className="flex flex-wrap items-end justify-between gap-3">
@@ -149,6 +157,7 @@ export default async function DashboardPage() {
                   <span className="block truncate text-xs text-muted-foreground">
                     {c.room.roomName}
                     {role !== "FACULTY" && ` · ${c.faculty.fullName}`}
+                    {c.moved && " · Rescheduled"}
                   </span>
                 </span>
               </li>
@@ -159,16 +168,22 @@ export default async function DashboardPage() {
     </Card>
   );
 
+  const myTeaching = <MyTeaching facultyId={me.facultyId} userId={user.id} activeTermIds={activeTermIds} />;
+
   // ---------------------------------------------------------------------------
-  // Faculty & students: a focused personal view
+  // Faculty: a focused personal view
   // ---------------------------------------------------------------------------
   if (!staff) {
     const history = await getAssistantHistory();
     const links = [
-      { label: "My timetable", href: role === "FACULTY" && me?.facultyId ? `/scheduler?facultyId=${me.facultyId}` : "/scheduler", icon: CalendarDots },
+      { label: "My timetable", href: me.facultyId ? `/scheduler?facultyId=${me.facultyId}` : "/scheduler", icon: CalendarDots },
+      { label: "Calendar of Activities", href: "/calendar?scope=mine", icon: CalendarCheck },
+      { label: "Book a room", href: "/bookings", icon: DoorOpen },
+      { label: "Report unavailability", href: "/availability", icon: UserMinus },
+      { label: "My teaching load", href: "/workload", icon: Gauge },
       { label: "Schedule requests", href: "/requests", icon: ClipboardText },
       { label: "Notifications", href: "/notifications", icon: Bell },
-      { label: "AI assistant", href: "/assistant", icon: Robot },
+      { label: "Scheduling Assistant", href: "/assistant", icon: Robot },
     ];
     return (
       <div className="space-y-5">
@@ -176,6 +191,7 @@ export default async function DashboardPage() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(380px,36%)]">
           <div className="space-y-4">
             {todayCard}
+            {myTeaching}
             <CardGrid label="Quick links" className="xl:grid-cols-2">
               {links.map((l) => (
                 <SelectCard key={l.href} href={l.href} icon={l.icon} title={l.label} />
@@ -194,8 +210,10 @@ export default async function DashboardPage() {
   }
 
   // ---------------------------------------------------------------------------
-  // Staff / Super Admin overview
+  // Administrator (whole school) and Head of Department (own department) overview
   // ---------------------------------------------------------------------------
+  const inDept = dept ? { program: { departmentId: dept } } : {};
+  const deptSectionIds = dept ? new Set((await prisma.section.findMany({ where: inDept, select: { id: true } })).map((s) => s.id)) : null;
   const [
     sectionsByLevel,
     subjectsByLevel,
@@ -208,21 +226,25 @@ export default async function DashboardPage() {
     facultyLoad,
     activeClasses,
     recentAudit,
+    pendingReports,
+    pendingProposals,
   ] = await Promise.all([
-    prisma.section.groupBy({ by: ["level"], _count: true }),
-    prisma.subject.groupBy({ by: ["level"], _count: true }),
-    prisma.faculty.count({ where: { status: "ACTIVE" } }),
-    prisma.room.count(),
-    activeOverlapConflicts(),
-    prisma.schedule.count({ where: { ...inActiveTerms, status: { in: ["DRAFT", "REVIEW"] } } }),
+    prisma.section.groupBy({ by: ["level"], where: inDept, _count: true }),
+    prisma.subject.groupBy({ by: ["level"], where: inDept, _count: true }),
+    prisma.faculty.count({ where: { status: "ACTIVE", ...(dept ? { departmentId: dept } : {}) } }),
+    prisma.room.count({ where: dept ? { departmentId: dept } : {} }),
+    activeOverlapConflicts().then((all) => (deptSectionIds ? all.filter((c) => deptSectionIds.has(c.entryA.sectionId) || (c.entryB && deptSectionIds.has(c.entryB.sectionId))) : all)),
+    prisma.schedule.count({ where: { ...inActiveTerms, status: { in: ["DRAFT", "REVIEW"] }, ...(dept ? { section: inDept } : {}) } }),
     prisma.scheduleRequest.count({ where: { status: "PENDING" } }),
     admin ? prisma.user.count({ where: { status: "PENDING", emailVerified: { not: null } } }) : Promise.resolve(0),
     prisma.faculty.findMany({
-      where: { status: "ACTIVE" },
+      where: { status: "ACTIVE", ...(dept ? { departmentId: dept } : {}) },
       select: { maxHours: true, schedules: { where: inActiveTerms, select: { startMin: true, endMin: true } } },
     }),
-    prisma.schedule.findMany({ where: inActiveTerms, select: { sectionId: true, section: { select: { level: true } } } }),
-    prisma.auditLog.findMany({ take: 6, orderBy: { createdAt: "desc" }, include: { user: { select: { name: true } } } }),
+    prisma.schedule.findMany({ where: { ...inActiveTerms, ...(dept ? { section: inDept } : {}) }, select: { sectionId: true, section: { select: { level: true } } } }),
+    admin ? prisma.auditLog.findMany({ take: 6, orderBy: { createdAt: "desc" }, include: { user: { select: { name: true } } } }) : Promise.resolve([]),
+    prisma.unavailability.count({ where: { status: "PENDING", ...(dept ? { faculty: { departmentId: dept } } : {}) } }),
+    prisma.workloadProposal.count({ where: { status: "PENDING", ...(dept ? { departmentId: dept } : {}) } }),
   ]);
 
   const countFor = (rows: { level: string; _count: number }[], level: string) => rows.find((r) => r.level === level)?._count ?? 0;
@@ -231,13 +253,10 @@ export default async function DashboardPage() {
   const overloaded = facultyLoad.filter((f) => f.schedules.reduce((s, e) => s + e.endMin - e.startMin, 0) / 60 > f.maxHours).length;
   const scheduledSections = new Set(activeClasses.map((c) => c.sectionId));
 
-  const trend = await recordAndGetTrend({
-    totalSections,
-    totalFaculty,
-    totalSubjects,
-    totalRooms,
-    openConflicts: conflicts.length,
-  });
+  // Day-over-day trends are school-wide, so only the Administrator sees them.
+  const trend = admin
+    ? await recordAndGetTrend({ totalSections, totalFaculty, totalSubjects, totalRooms, openConflicts: conflicts.length })
+    : { totalSections: null, totalFaculty: null, totalSubjects: null, totalRooms: null, openConflicts: null };
 
   const stats = [
     { label: "Sections", value: totalSections, icon: UsersThree, href: "/sections", trend: trend.totalSections },
@@ -268,8 +287,8 @@ export default async function DashboardPage() {
       show: toPublish > 0,
       icon: UploadSimple,
       tone: "text-blue-600 bg-blue-500/10",
-      title: `${toPublish} class${toPublish === 1 ? "" : "es"} awaiting publish`,
-      detail: "Drafts and edits sent for review",
+      title: `${toPublish} class${toPublish === 1 ? "" : "es"} awaiting approval`,
+      detail: "Drafts and edits sent for review; approve and publish them in the Scheduler",
       href: "/scheduler",
     },
     {
@@ -277,22 +296,38 @@ export default async function DashboardPage() {
       icon: ClipboardText,
       tone: "text-amber-600 bg-amber-500/10",
       title: `${pendingRequests} pending schedule request${pendingRequests === 1 ? "" : "s"}`,
-      detail: "Faculty and students waiting for a decision",
+      detail: "Faculty waiting for a decision",
       href: "/requests",
+    },
+    {
+      show: pendingReports > 0,
+      icon: UserMinus,
+      tone: "text-rose-600 bg-rose-500/10",
+      title: `${pendingReports} faculty unavailability report${pendingReports === 1 ? "" : "s"}`,
+      detail: "Review and reassign or cancel the affected classes",
+      href: "/adjustments",
+    },
+    {
+      show: pendingProposals > 0,
+      icon: Gauge,
+      tone: "text-indigo-600 bg-indigo-500/10",
+      title: `${pendingProposals} workload proposal${pendingProposals === 1 ? "" : "s"} awaiting approval`,
+      detail: "Suggested teaching load reassignments",
+      href: "/workload",
     },
     {
       show: pendingAccounts > 0,
       icon: UserCheck,
       tone: "text-violet-600 bg-violet-500/10",
       title: `${pendingAccounts} account${pendingAccounts === 1 ? "" : "s"} awaiting approval`,
-      detail: "Verified registrations need an administrator",
+      detail: "Verified registrations need the Administrator",
       href: "/admin/users",
     },
     {
       show: overloaded > 0,
       icon: Users,
       tone: "text-orange-600 bg-orange-500/10",
-      title: `${overloaded} faculty over their max hours`,
+      title: `${overloaded} faculty over their maximum hours`,
       detail: "Check teaching loads",
       href: "/workload",
     },
@@ -308,13 +343,17 @@ export default async function DashboardPage() {
 
   const quickActions = [
     { label: "Scheduler", hint: "g s", href: "/scheduler", icon: CalendarDots, description: "Build and fix timetables" },
-    { label: "Academic Years & Terms", hint: "g y", href: "/academic-years", icon: CalendarBlank, description: "Semesters and quarters" },
+    ...(admin ? [{ label: "Academic Years & Terms", hint: "g y", href: "/academic-years", icon: CalendarBlank, description: "Semesters and quarters" }] : []),
+    { label: "Calendar of Activities", hint: "g c", href: "/calendar", icon: CalendarCheck, description: "Classes, examinations, events" },
+    { label: "Schedule Adjustments", hint: "", href: "/adjustments", icon: ArrowsClockwise, description: "Unavailability and suspensions" },
+    { label: "Faculty Workload", hint: "", href: "/workload", icon: Gauge, description: "Balance teaching loads" },
+    { label: "Enrollment Forecast", hint: "", href: "/forecast", icon: ChartLineUp, description: "Sections, faculty, rooms needed" },
     { label: "Programs & Strands", hint: "g p", href: "/programs", icon: Stack, description: "Courses and Senior High School strands" },
     { label: "Sections", hint: "g e", href: "/sections", icon: UsersThree, description: "Basic education and college sections" },
     { label: "Subjects", hint: "g u", href: "/subjects", icon: BookOpen, description: "Subjects, units, and hours" },
     { label: "Faculty", hint: "g f", href: "/faculty", icon: UserSquare, description: "Teachers and loads" },
     { label: "Rooms", hint: "g r", href: "/rooms", icon: Buildings, description: "Buildings, floors, rooms" },
-    { label: "Reports", hint: "", href: "/reports", icon: ChartBar, description: "Workload and utilization" },
+    { label: "Timetable Analytics", hint: "", href: "/analytics", icon: ChartBar, description: "Utilization and peak hours" },
     ...(admin ? [{ label: "Users & Settings", hint: "", href: "/admin/users", icon: Gear, description: "Accounts and approvals" }] : []),
   ];
 
@@ -438,35 +477,39 @@ export default async function DashboardPage() {
 
           {todayCard}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Recent activity</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {recentAudit.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No activity yet.</p>
-              ) : (
-                <ul className="space-y-2.5 text-sm">
-                  {recentAudit.map((log) => (
-                    <li key={log.id} className="flex gap-2">
-                      <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
-                      <span className="min-w-0">
-                        <span className="block truncate">{log.action}</span>
-                        <span className="block text-xs text-muted-foreground">
-                          {log.user?.name ?? "System"} · {log.createdAt.toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}
+          {!admin && myTeaching}
+
+          {admin && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Recent activity</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {recentAudit.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No activity yet.</p>
+                ) : (
+                  <ul className="space-y-2.5 text-sm">
+                    {recentAudit.map((log) => (
+                      <li key={log.id} className="flex gap-2">
+                        <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
+                        <span className="min-w-0">
+                          <span className="block truncate">{log.action}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {log.user?.name ?? "System"} · {log.createdAt.toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}
+                          </span>
                         </span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {admin && (
-                <Link href="/admin/audit-logs" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                  View audit log <ArrowRight className="size-3" />
-                </Link>
-              )}
-            </CardContent>
-          </Card>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {admin && (
+                  <Link href="/admin/audit-logs" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                    View audit log <ArrowRight className="size-3" />
+                  </Link>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

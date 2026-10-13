@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { requireRole } from "@/lib/auth/session";
+import { canManageDepartment, OUTSIDE_DEPARTMENT, programDepartment, requireScope } from "@/lib/permissions/scope";
 import { prisma } from "@/lib/db/prisma";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { ACADEMIC_LEVELS, GRADE_LEVELS, LEVELS, YEAR_LEVELS } from "@/lib/academics/levels";
@@ -26,7 +26,7 @@ const schema = z
   .refine((d) => d.level !== "SENIOR_HIGH" || !!d.programId, { message: "Senior High sections need a strand" });
 
 export async function saveSectionAction(id: string | null, formData: FormData): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  const scope = await requireScope(...STAFF_ROLES);
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const d = parsed.data;
@@ -40,6 +40,12 @@ export async function saveSectionAction(id: string | null, formData: FormData): 
     gradeLevel: d.level === "COLLEGE" ? null : d.gradeLevel || null,
     semesterId: d.level === "COLLEGE" ? d.semesterId || null : null,
   };
+
+  // Sections belong to the department of their course or strand; sections without one are the Administrator's.
+  const existing = id ? await prisma.section.findUnique({ where: { id }, select: { programId: true } }) : null;
+  if (!canManageDepartment(scope, await programDepartment(data.programId)) || (existing && !canManageDepartment(scope, await programDepartment(existing.programId)))) {
+    return { ok: false, error: OUTSIDE_DEPARTMENT };
+  }
 
   const duplicate = await prisma.section.findFirst({
     where: { name: { equals: data.name, mode: "insensitive" }, level: data.level, semesterId: data.semesterId, id: id ? { not: id } : undefined },
@@ -57,7 +63,9 @@ export async function saveSectionAction(id: string | null, formData: FormData): 
 }
 
 export async function deleteSectionAction(id: string): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  const scope = await requireScope(...STAFF_ROLES);
+  const section = await prisma.section.findUnique({ where: { id }, select: { programId: true } });
+  if (!canManageDepartment(scope, await programDepartment(section?.programId))) return { ok: false, error: OUTSIDE_DEPARTMENT };
   const classes = await prisma.schedule.count({ where: { sectionId: id } });
   if (classes > 0) return { ok: false, error: `This section has ${classes} scheduled class(es). Remove them in the Scheduler first.` };
   await prisma.section.delete({ where: { id } });

@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { requireRole } from "@/lib/auth/session";
+import { canManageDepartment, OUTSIDE_DEPARTMENT, programDepartment, requireScope } from "@/lib/permissions/scope";
 import { prisma } from "@/lib/db/prisma";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 
@@ -24,10 +24,11 @@ function revalidate(id?: string) {
 }
 
 export async function saveProgramAction(id: string | null, formData: FormData): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  const scope = await requireScope(...STAFF_ROLES);
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
-  const data = { ...parsed.data, departmentId: parsed.data.departmentId || null };
+  const data = { ...parsed.data, departmentId: scope.isAdmin ? parsed.data.departmentId || null : scope.departmentId };
+  if (!canManageDepartment(scope, data.departmentId) || (id && !canManageDepartment(scope, await programDepartment(id)))) return { ok: false, error: OUTSIDE_DEPARTMENT };
 
   try {
     if (id) {
@@ -44,7 +45,8 @@ export async function saveProgramAction(id: string | null, formData: FormData): 
 }
 
 export async function deleteProgramAction(id: string): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  const scope = await requireScope(...STAFF_ROLES);
+  if (!canManageDepartment(scope, await programDepartment(id))) return { ok: false, error: OUTSIDE_DEPARTMENT };
   const [sections, subjects, terms] = await Promise.all([
     prisma.section.count({ where: { programId: id } }),
     prisma.subject.count({ where: { programId: id } }),

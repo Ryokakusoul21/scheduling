@@ -1,15 +1,18 @@
 import { prisma } from "@/lib/db/prisma";
-import { requireRole } from "@/lib/auth/session";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { requireScope } from "@/lib/permissions/scope";
 import { FacultyBrowser } from "./faculty-browser";
 
 export const metadata = { title: "Faculty · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function FacultyPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  await requireRole(...STAFF_ROLES);
+  const scope = await requireScope(...STAFF_ROLES);
   const { q } = await searchParams;
+  // A Head of Department sees and manages their own department's faculty.
+  const own = scope.isAdmin ? {} : { departmentId: scope.manageDepartmentId };
   const [faculty, departments] = await Promise.all([
     prisma.faculty.findMany({
+      where: own,
       include: {
         department: { select: { code: true, name: true } },
         // Teaching load counts classes in currently active terms only.
@@ -17,13 +20,13 @@ export default async function FacultyPage({ searchParams }: { searchParams: Prom
       },
       orderBy: { fullName: "asc" },
     }),
-    prisma.department.findMany({ orderBy: { code: "asc" } }),
+    prisma.department.findMany({ where: scope.isAdmin ? {} : { id: scope.manageDepartmentId ?? "__none__" }, orderBy: { name: "asc" } }),
   ]);
 
   return (
     <FacultyBrowser
       initialQuery={q ?? ""}
-      departments={departments.map((d) => ({ value: d.id, label: `${d.code} — ${d.name}` }))}
+      departments={departments.map((d) => ({ value: d.id, label: d.name }))}
       faculty={faculty.map((f) => ({
         id: f.id,
         employeeId: f.employeeId,
