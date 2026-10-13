@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ExportButtons, PrintHeader } from "@/components/ux/export-buttons";
+import { Pagination, usePagination } from "@/components/ux/pagination";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -63,6 +65,8 @@ export function ScheduleReportTable({
       ),
     [rows, semesterId, sectionId, facultyId, roomId]
   );
+  // Ten rows per page on screen; exports and printing still include every filtered row.
+  const paging = usePagination(filtered, 10, [semesterId, sectionId, facultyId, roomId].join("|"));
 
   return (
     <Card className="print-area">
@@ -135,8 +139,8 @@ export function ScheduleReportTable({
                   </TableCell>
                 </TableRow>
               )}
-              {filtered.map((r) => (
-                <TableRow key={r.id}>
+              {filtered.map((r, i) => (
+                <TableRow key={r.id} className={cn(!paging.isVisible(i) && "hidden print:table-row")}>
                   <TableCell className="font-medium">{r.subjectLabel}</TableCell>
                   <TableCell>{r.sectionLabel}</TableCell>
                   <TableCell>{r.facultyLabel}</TableCell>
@@ -152,6 +156,7 @@ export function ScheduleReportTable({
             </TableBody>
           </Table>
         </div>
+        <Pagination {...paging} className="mt-3" />
       </CardContent>
     </Card>
   );
