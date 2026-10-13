@@ -35,7 +35,7 @@ export default async function FacultyPage({ searchParams }: { searchParams: Prom
         position: f.position ?? "",
         specialization: f.specialization ?? "",
         departmentId: f.departmentId ?? "",
-        department: f.department?.code ?? null,
+        department: f.department?.name ?? null,
         maxHours: f.maxHours,
         status: f.status,
         teachingLevels: f.teachingLevels,

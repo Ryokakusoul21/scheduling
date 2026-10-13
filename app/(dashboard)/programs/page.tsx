@@ -27,12 +27,12 @@ export default async function ProgramsPage() {
         name: p.name,
         level: p.level as "COLLEGE" | "SENIOR_HIGH",
         departmentId: p.departmentId ?? "",
-        department: p.department ? `${p.department.code} — ${p.department.name}` : null,
+        department: p.department?.name ?? null,
         sections: p._count.sections,
         subjects: p._count.subjects,
         terms: p._count.semesters,
       }))}
-      departments={departments.map((d) => ({ value: d.id, label: `${d.code} — ${d.name}` }))}
+      departments={departments.map((d) => ({ value: d.id, label: d.name }))}
     />
   );
 }

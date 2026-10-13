@@ -63,7 +63,7 @@ export default async function ProgramDetailPage({ params }: { params: Promise<{ 
             </Button>
             <EditProgramButton
               program={{ id: program.id, code: program.code, name: program.name, level: program.level, departmentId: program.departmentId ?? "" }}
-              departments={departments.map((d) => ({ value: d.id, label: `${d.code} — ${d.name}` }))}
+              departments={departments.map((d) => ({ value: d.id, label: d.name }))}
             />
           </>
         }

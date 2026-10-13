@@ -36,7 +36,7 @@ export default async function AcademicYearDetailPage({
   if (!year) notFound();
 
   const programs = level === "COLLEGE"
-    ? await prisma.program.findMany({ where: { level: "COLLEGE" }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }], include: { department: { select: { code: true } } } })
+    ? await prisma.program.findMany({ where: { level: "COLLEGE" }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }], include: { department: { select: { name: true } } } })
     : [];
 
   const termsByLevel = (l: string) => year.semesters.filter((s) => s.level === l);
@@ -94,7 +94,7 @@ export default async function AcademicYearDetailPage({
         <TermsManager
           year={{ id: year.id, name: year.name, startDate: year.startDate.toISOString().slice(0, 10), endDate: year.endDate.toISOString().slice(0, 10) }}
           level={level}
-          programs={programs.map((p) => ({ id: p.id, code: p.code, name: p.name, department: p.department?.code ?? null }))}
+          programs={programs.map((p) => ({ id: p.id, code: p.code, name: p.name, department: p.department?.name ?? null }))}
           terms={termsByLevel(level).map((t) => ({
             id: t.id,
             type: t.type,

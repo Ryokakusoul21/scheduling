@@ -92,7 +92,7 @@ export function FacultyBrowser({
 
   const fields: FormField[] = [
     { name: "employeeId", label: "Employee ID", type: "text", required: true, placeholder: "F-019" },
-    { name: "fullName", label: "Full name", type: "text", required: true, placeholder: "Prof. Juan Dela Cruz" },
+    { name: "fullName", label: "Full name", type: "text", required: true, placeholder: "Juan Dela Cruz" },
     { name: "email", label: "Email", type: "email", required: true },
     { name: "departmentId", label: "Department", type: "select", options: [{ value: "", label: "No department" }, ...departments] },
     { name: "position", label: "Position", type: "text", placeholder: "Instructor I" },
@@ -153,7 +153,7 @@ export function FacultyBrowser({
         }
       />
 
-      <Card className="flex flex-wrap items-end gap-3 p-3">
+      <Card className="flex-row flex-wrap items-center gap-3 p-3">
         <div className="relative min-w-56 flex-1">
           <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -230,12 +230,10 @@ export function FacultyBrowser({
                   aria-label={`${f.fullName}, ${f.position || "faculty"}. Press Enter to edit.`}
                 >
                   <p className="truncate font-semibold">{f.fullName}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {[f.position, f.department].filter(Boolean).join(" · ") || f.employeeId}
-                  </p>
-                  {f.specialization && <p className="truncate text-xs text-muted-foreground">{f.specialization}</p>}
+                  <p className="truncate text-xs text-muted-foreground">{f.position || f.employeeId}</p>
+                  {f.department && <p className="truncate text-xs text-muted-foreground" title={f.department}>{f.department}</p>}
+                  {f.specialization && <p className="truncate text-xs text-muted-foreground" title={f.specialization}>{f.specialization}</p>}
                 </button>
-                {menu(f)}
               </div>
               <div className="flex flex-wrap gap-1">
                 {f.status !== "ACTIVE" && <Badge variant="destructive">{STATUS.find((s) => s.value === f.status)?.label}</Badge>}
@@ -246,6 +244,7 @@ export function FacultyBrowser({
                 ))}
               </div>
               {loadBar(f)}
+              <div className="mt-auto border-t pt-3">{menu(f)}</div>
             </div>
           ))}
         </div>

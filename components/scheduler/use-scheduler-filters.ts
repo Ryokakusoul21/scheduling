@@ -115,7 +115,7 @@ export function useSchedulerFilters(data: SchedulerData, defaults: Partial<Filte
 
     return {
       levels: ACADEMIC_LEVELS.map((l) => ({ value: l, label: levelLabel(l) })),
-      departments: departments.map((d) => ({ value: d.id, label: `${d.code} — ${d.name}` })),
+      departments: departments.map((d) => ({ value: d.id, label: d.name })),
       programs: programs.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` })),
       programLabel: level === "SENIOR_HIGH" ? "Strand" : "Program",
       showDepartment: level === "COLLEGE",
