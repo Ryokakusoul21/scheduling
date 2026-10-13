@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HEATMAP_DAYS, HEATMAP_HOURS, type RateRow } from "@/lib/analytics/timetable";
 import { DAY_LONG, formatTime } from "@/lib/scheduler/timetable";
 
+/** Size charts assume before the browser measures them, so server rendering does not warn about a zero-size box. */
+export const CHART_SIZE = { width: 480, height: 240 };
+
 /** Tooltip style shared by every chart so it follows the light and dark theme. */
 export const TOOLTIP_STYLE = { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, color: "var(--popover-foreground)" };
 
@@ -25,7 +28,7 @@ export function RateChart({ title, rows, unit, limit = 10 }: { title: string; ro
         {data.length === 0 ? (
           <p className="text-sm text-muted-foreground">No data for these filters.</p>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
             <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
               <CartesianGrid horizontal={false} stroke="currentColor" opacity={0.08} />
               <XAxis type="number" domain={[0, (max: number) => Math.max(100, Math.ceil(max / 10) * 10)]} unit="%" fontSize={11} tickLine={false} axisLine={false} />

@@ -6,7 +6,7 @@ import { UserMinus } from "@phosphor-icons/react/ssr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Heatmap, TOOLTIP_STYLE } from "@/components/charts/utilization";
+import { Heatmap, TOOLTIP_STYLE, CHART_SIZE } from "@/components/charts/utilization";
 import { LoadBar, LoadStatusLabel } from "@/components/workload/load-bar";
 import type { FacultyAnalytics } from "@/lib/analytics/faculty";
 import { HEATMAP_DAYS, HEATMAP_HOURS } from "@/lib/analytics/timetable";
@@ -122,7 +122,7 @@ export function FacultyAnalyticsView({ data, terms, title = "My teaching analyti
         <Card>
           <CardHeader><CardTitle className="text-base">My weekly teaching hours by day</CardTitle></CardHeader>
           <CardContent className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
               <BarChart data={d.byDay} margin={{ top: 20 }}>
                 <CartesianGrid vertical={false} stroke="currentColor" opacity={0.08} />
                 <XAxis dataKey="day" fontSize={11} tickLine={false} axisLine={false} />
@@ -138,7 +138,7 @@ export function FacultyAnalyticsView({ data, terms, title = "My teaching analyti
         <Card>
           <CardHeader><CardTitle className="text-base">My load compared with the department</CardTitle></CardHeader>
           <CardContent className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
               <BarChart data={d.comparison} layout="vertical" margin={{ left: 8, right: 32 }}>
                 <CartesianGrid horizontal={false} stroke="currentColor" opacity={0.08} />
                 <XAxis type="number" fontSize={11} tickLine={false} axisLine={false} />

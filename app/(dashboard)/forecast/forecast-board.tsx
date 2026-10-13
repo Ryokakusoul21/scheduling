@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { NativeSelect } from "@/components/ux/native-select";
 import { ExportButtons, PrintHeader } from "@/components/ux/export-buttons";
 import type { SeriesForecast } from "@/lib/forecast/load";
+import { CHART_SIZE } from "@/components/charts/utilization";
 import { cn } from "@/lib/utils";
 
 type Option = { value: string; label: string };
@@ -116,7 +117,7 @@ export function ForecastBoard(props: {
             <NativeSelect aria-label="Program" value={selected.key} onChange={(e) => setFocus(e.target.value)} options={props.series.map((s) => ({ value: s.key, label: s.name }))} className="w-80" />
           </CardHeader>
           <CardContent className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
               <ComposedChart data={chart} margin={{ left: 0, right: 16, top: 8 }}>
                 <CartesianGrid vertical={false} stroke="currentColor" opacity={0.08} />
                 <XAxis dataKey="label" fontSize={11} tickLine={false} axisLine={false} />

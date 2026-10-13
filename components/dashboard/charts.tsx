@@ -3,7 +3,7 @@
 import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TOOLTIP_STYLE } from "@/components/charts/utilization";
+import { TOOLTIP_STYLE, CHART_SIZE } from "@/components/charts/utilization";
 import { LOAD_STATUS } from "@/components/workload/load-bar";
 import type { LoadStatus } from "@/lib/workload/optimizer";
 import { formatRange } from "@/lib/scheduler/timetable";
@@ -18,7 +18,7 @@ export function LoadDistributionChart({ data }: { data: { status: LoadStatus; co
     <Card>
       <CardHeader><CardTitle className="text-base">Faculty teaching load distribution</CardTitle></CardHeader>
       <CardContent className="h-56">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
           <BarChart data={data.map((l) => ({ name: LOAD_STATUS[l.status].label, count: l.count, status: l.status }))} margin={{ top: 20 }}>
             <CartesianGrid vertical={false} stroke="currentColor" opacity={0.08} />
             <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
@@ -54,7 +54,7 @@ export function EnrollmentChart({ data, title = "Enrollment trend and forecast",
       <CardContent className="space-y-3">
         <div className="h-60">
           {rows.length === 0 ? <p className="text-sm text-muted-foreground">No enrollment history.</p> : (
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
               <ComposedChart data={rows} margin={{ left: 0, right: 16, top: 8 }}>
                 <CartesianGrid vertical={false} stroke="currentColor" opacity={0.08} />
                 <XAxis dataKey="label" fontSize={10} tickLine={false} axisLine={false} interval="preserveStartEnd" />
@@ -79,7 +79,7 @@ export function WeeklyChart({ data }: { data: Record<string, string | number>[] 
     <Card>
       <CardHeader><CardTitle className="text-base">Room bookings and conflicts resolved per week</CardTitle></CardHeader>
       <CardContent className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
           <LineChart data={data.map((w) => ({ ...w, label: formatLongDate(String(w.week), { month: "short", day: "numeric" }) }))} margin={{ left: 0, right: 16, top: 8 }}>
             <CartesianGrid vertical={false} stroke="currentColor" opacity={0.08} />
             <XAxis dataKey="label" fontSize={10} tickLine={false} axisLine={false} interval="preserveStartEnd" />
@@ -141,7 +141,7 @@ export function HoursBars({ title, rows, unit = "hours per week" }: { title: str
       <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
       <CardContent style={{ height: Math.max(140, rows.length * 30 + 40) }}>
         {rows.length === 0 ? <p className="text-sm text-muted-foreground">No classes yet.</p> : (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
             <BarChart data={rows} layout="vertical" margin={{ left: 8, right: 32 }}>
               <CartesianGrid horizontal={false} stroke="currentColor" opacity={0.08} />
               <XAxis type="number" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
