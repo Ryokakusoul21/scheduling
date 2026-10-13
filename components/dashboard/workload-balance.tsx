@@ -47,30 +47,35 @@ export function WorkloadBalance({
           <Link href="/workload" className="inline-flex items-center gap-1 font-medium text-primary hover:underline">Open Faculty Workload <ArrowRight className="size-3" /></Link>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground" aria-label="Legend">
-          {(Object.keys(LOAD_STATUS) as (keyof typeof LOAD_STATUS)[]).map((s) => (
-            <span key={s} className="flex items-center gap-1.5"><span className={`size-2.5 rounded-full ${LOAD_STATUS[s].bar}`} />{LOAD_STATUS[s].label} ({rows.filter((r) => r.status === s).length})</span>
-          ))}
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-4 rounded-sm bg-emerald-500/20" />Allowed range</span>
-        </div>
-
-        {proposals.length > 0 && <ProposalCards proposals={proposals} unit={unit} compact />}
-
-        <ul className="max-h-96 space-y-2.5 overflow-y-auto pr-1">
-          {sorted.map((r) => (
-            <li key={r.facultyId} className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)_auto] items-center gap-3 text-sm">
-              <span className="truncate" title={`${r.name}, ${r.department}`}>{r.name}</span>
-              <div>
+      <CardContent className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        {/* Left: every faculty member's load. Right: what to act on. */}
+        <section aria-label="Faculty loads" className="space-y-3">
+          <div className="flex flex-wrap gap-3 text-xs text-muted-foreground" aria-label="Legend">
+            {(Object.keys(LOAD_STATUS) as (keyof typeof LOAD_STATUS)[]).map((s) => (
+              <span key={s} className="flex items-center gap-1.5"><span className={`size-2.5 rounded-full ${LOAD_STATUS[s].bar}`} />{LOAD_STATUS[s].label} ({rows.filter((r) => r.status === s).length})</span>
+            ))}
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-4 rounded-sm bg-emerald-500/20" />Allowed range</span>
+          </div>
+          <ul className="max-h-[28rem] space-y-1 overflow-y-auto pr-1">
+            {sorted.map((r) => (
+              <li key={r.facultyId} className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)_5.5rem_6.5rem] items-center gap-3 rounded-md px-1 py-1.5 text-sm hover:bg-muted/50">
+                <span className="truncate font-medium" title={`${r.name}, ${r.department}`}>{r.name}</span>
                 <LoadBar r={r} />
-                <span className="text-[11px] tabular-nums text-muted-foreground">{r.load} {unit} · allowed {r.minimum} to {r.maximum}</span>
-              </div>
-              <LoadStatusLabel status={r.status} />
-            </li>
-          ))}
-        </ul>
+                <span className="text-right text-xs tabular-nums text-muted-foreground" title={`Allowed ${r.minimum} to ${r.maximum} ${unit}`}>
+                  {r.load} / {r.minimum}–{r.maximum}
+                </span>
+                <LoadStatusLabel status={r.status} />
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] text-muted-foreground">Numbers show the current load and the allowed range in {unit}.</p>
+        </section>
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <section aria-label="Actions" className="space-y-5">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold">Fixes awaiting approval ({proposals.length})</p>
+            {proposals.length ? <ProposalCards proposals={proposals} unit={unit} compact /> : <p className="text-sm text-muted-foreground">Nothing to approve.</p>}
+          </div>
           <div className="space-y-2">
             <p className="text-sm font-semibold">Latest fixes</p>
             <FixLog fixes={fixes} empty="No fixes yet. They appear here as soon as they are applied." />
@@ -79,7 +84,7 @@ export function WorkloadBalance({
             <p className="text-sm font-semibold">Needs manual attention</p>
             <FlagList flags={attention} />
           </div>
-        </div>
+        </section>
       </CardContent>
     </Card>
   );
