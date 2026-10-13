@@ -42,7 +42,5 @@ export function roleLabel(role: AppRole) {
   return ROLE_LABELS[role] ?? role;
 }
 
-/** Landing page after sign-in; every role gets its own tailored dashboard. */
-export function homeForRole(_role: AppRole) {
-  return "/dashboard";
-}
+/** Landing page after sign-in; the dashboard is tailored to each role. */
+export const HOME_PATH = "/dashboard";

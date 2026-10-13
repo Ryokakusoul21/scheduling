@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { homeForRole, type AppRole } from "@/lib/permissions/roles";
+import { HOME_PATH } from "@/lib/permissions/roles";
 
 export default async function Home() {
   const session = await auth();
-  redirect(session?.user ? homeForRole(session.user.role as AppRole) : "/login");
+  redirect(session?.user ? HOME_PATH : "/login");
 }

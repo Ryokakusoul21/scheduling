@@ -7,7 +7,8 @@ export const metadata = { title: "Room Booking · GRANBY COLLEGES OF SCIENCE & T
 
 export default async function BookingsPage() {
   const scope = await getScope();
-  const since = new Date(Date.now() - 30 * 86400000);
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
 
   const bookings = await prisma.roomBooking.findMany({
     where: { date: { gte: since }, ...(scope.isAdmin ? {} : { bookedById: scope.userId }) },
