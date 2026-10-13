@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { canManageDepartment, OUTSIDE_DEPARTMENT, programDepartment, requireScope } from "@/lib/permissions/scope";
 import { prisma } from "@/lib/db/prisma";
+import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { ACADEMIC_LEVELS, GRADE_LEVELS, LEVELS, YEAR_LEVELS } from "@/lib/academics/levels";
 
@@ -71,6 +72,7 @@ export async function saveSubjectAction(id: string | null, formData: FormData): 
   }
   revalidatePath("/subjects");
   revalidatePath("/scheduler");
+  queueWorkloadCheck("A subject was changed");
   return { ok: true };
 }
 
@@ -82,5 +84,6 @@ export async function deleteSubjectAction(id: string): Promise<Result> {
   if (classes > 0) return { ok: false, error: `This subject has ${classes} scheduled class(es). Remove them in the Scheduler first.` };
   await prisma.subject.delete({ where: { id } });
   revalidatePath("/subjects");
+  queueWorkloadCheck("A subject was removed");
   return { ok: true };
 }

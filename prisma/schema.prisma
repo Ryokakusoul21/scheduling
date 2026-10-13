@@ -180,6 +180,14 @@ enum ProposalStatus {
   PENDING
   APPLIED
   REJECTED
+  /// Replaced by a newer automatic proposal after the schedule changed.
+  SUPERSEDED
+}
+
+/// How a workload fix was applied.
+enum FixMode {
+  AUTOMATIC
+  APPROVED
 }
 
 enum NotificationType {
@@ -705,7 +713,9 @@ model WorkloadProposal {
   semesterId   String
   departmentId String?
   status       ProposalStatus @default(PENDING)
-  /// Array of { scheduleIds, fromFacultyId, toFacultyId, hours, reason }.
+  /// Created by the continuous workload check rather than on request.
+  automatic    Boolean        @default(false)
+  /// Array of optimizer moves (see lib/workload/optimizer.ts).
   items        Json
   explanation  String
   narrative    String?
@@ -713,6 +723,32 @@ model WorkloadProposal {
   reviewedById String?
   reviewedAt   DateTime?
   createdAt    DateTime       @default(now())
+}
+
+/// One applied workload reassignment with the loads before and after; undoing restores the original faculty.
+model WorkloadFix {
+  id            String   @id @default(cuid())
+  mode          FixMode
+  proposalId    String?
+  trigger       String
+  assignmentKey String
+  scheduleIds   String[]
+  label         String
+  fromFacultyId String
+  toFacultyId   String
+  measure       String
+  amount        Float
+  fromBefore    Float
+  fromAfter     Float
+  toBefore      Float
+  toAfter       Float
+  reason        String
+  appliedById   String?
+  appliedAt     DateTime  @default(now())
+  undoneAt      DateTime?
+  undoneById    String?
+
+  @@index([appliedAt])
 }
 
 /// Historical enrollment per program (or per level when there is no program) and term.

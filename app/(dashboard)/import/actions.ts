@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
+import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { requireScope, type Scope } from "@/lib/permissions/scope";
 import { validateRooms, validateSubjects, type ImportKind, type RoomRow, type RowResult, type SubjectRow } from "@/lib/import/specs";
@@ -96,5 +97,6 @@ export async function commitImportAction(kind: ImportKind, records: Record<strin
   });
   revalidatePath(kind === "subjects" ? "/subjects" : "/rooms");
   revalidatePath("/scheduler");
+  queueWorkloadCheck("Subjects or rooms were imported");
   return { ok: true, data: { saved: valid.length, skipped: results.length - valid.length } };
 }

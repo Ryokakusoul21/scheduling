@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { canManageDepartment, OUTSIDE_DEPARTMENT, programDepartment, requireScope } from "@/lib/permissions/scope";
 import { prisma } from "@/lib/db/prisma";
+import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { ACADEMIC_LEVELS, GRADE_LEVELS, LEVELS, YEAR_LEVELS } from "@/lib/academics/levels";
 
@@ -59,6 +60,7 @@ export async function saveSectionAction(id: string | null, formData: FormData): 
   }
   revalidatePath("/sections");
   revalidatePath("/scheduler");
+  queueWorkloadCheck("A section was opened or changed");
   return { ok: true };
 }
 
@@ -70,5 +72,6 @@ export async function deleteSectionAction(id: string): Promise<Result> {
   if (classes > 0) return { ok: false, error: `This section has ${classes} scheduled class(es). Remove them in the Scheduler first.` };
   await prisma.section.delete({ where: { id } });
   revalidatePath("/sections");
+  queueWorkloadCheck("A section was closed");
   return { ok: true };
 }

@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { SETTING_REQUIRE_APPROVAL } from "@/lib/auth/config";
 import { SETTING_WORKLOAD } from "@/lib/settings";
+import { queueWorkloadCheck } from "@/lib/workload/auto";
 
 const ADMIN = ["ADMINISTRATOR"] as const;
 
@@ -32,6 +33,7 @@ const workloadSchema = z
     measure: z.enum(["HOURS", "UNITS"]),
     minimum: z.coerce.number().min(0).max(60),
     maximum: z.coerce.number().min(1).max(60),
+    mode: z.enum(["AUTOMATIC", "APPROVAL"]),
   })
   .refine((d) => d.maximum > d.minimum, { message: "Maximum load must be greater than the minimum load." });
 
@@ -49,6 +51,8 @@ export async function updateWorkloadAction(formData: FormData) {
   });
   revalidatePath("/admin/settings");
   revalidatePath("/workload");
+  // New limits or mode change who is over or under, so check every load again.
+  queueWorkloadCheck("Teaching load settings changed", admin.id);
   return { ok: true };
 }
 

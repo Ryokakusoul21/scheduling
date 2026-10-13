@@ -5,15 +5,15 @@ import { concurrentTermIds } from "@/lib/scheduler/term-conflicts";
 import type { Assignment, WFaculty, WMeeting } from "./optimizer";
 
 /**
- * Builds the optimizer input for the given terms: faculty (optionally one department), their
- * assignments, and every meeting each faculty member teaches in concurrent terms (for clash checks).
+ * Builds the optimizer input for the given terms: active faculty (optionally one department), their
+ * assignments, every meeting each faculty member teaches in concurrent terms (for clash checks),
+ * classes still assigned to inactive faculty, and the moves people already undid.
  */
 export async function loadWorkload(termIds: string[], departmentId: string | null) {
   const concurrent = [...new Set((await Promise.all(termIds.map(concurrentTermIds))).flat())];
-  const [limits, facultyRows, schedules] = await Promise.all([
+  const [limits, facultyRows, schedules, undone, rejected] = await Promise.all([
     getWorkloadSettings(),
     prisma.faculty.findMany({
-      where: { status: "ACTIVE", ...(departmentId ? { departmentId } : {}) },
       include: { availability: true, department: { select: { name: true } } },
       orderBy: { fullName: "asc" },
     }),
@@ -24,9 +24,14 @@ export async function loadWorkload(termIds: string[], departmentId: string | nul
         section: { select: { name: true, level: true, program: { select: { departmentId: true } } } },
       },
     }),
+    prisma.workloadFix.findMany({ where: { undoneAt: { not: null } }, select: { assignmentKey: true } }),
+    prisma.workloadProposal.findMany({ where: { automatic: true, status: "REJECTED" }, select: { items: true } }),
   ]);
+  // Classes whose fix was undone, or whose automatic proposal was rejected, stay where a person left them.
+  const declined = [...undone.map((u) => u.assignmentKey), ...rejected.flatMap((p) => (p.items as unknown as { key: string }[]).map((m) => m.key))];
 
-  const faculty: (WFaculty & { departmentName: string })[] = facultyRows.map((f) => ({
+  const active = facultyRows.filter((f) => f.status === "ACTIVE" && (!departmentId || f.departmentId === departmentId));
+  const faculty: (WFaculty & { departmentName: string })[] = active.map((f) => ({
     id: f.id,
     name: f.fullName,
     departmentId: f.departmentId,
@@ -36,6 +41,7 @@ export async function loadWorkload(termIds: string[], departmentId: string | nul
     maxHours: f.maxHours,
     availability: f.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })),
   }));
+  const inactive = new Map(facultyRows.filter((f) => f.status !== "ACTIVE").map((f) => [f.id, f.fullName]));
 
   const busy = new Map<string, WMeeting[]>();
   for (const s of schedules) busy.set(s.facultyId, [...(busy.get(s.facultyId) ?? []), { scheduleId: s.id, dayOfWeek: s.dayOfWeek, startMin: s.startMin, endMin: s.endMin }]);
@@ -43,7 +49,10 @@ export async function loadWorkload(termIds: string[], departmentId: string | nul
   const inScope = new Set(faculty.map((f) => f.id));
   const groups = new Map<string, Assignment>();
   for (const s of schedules) {
-    if (!termIds.includes(s.semesterId) || !inScope.has(s.facultyId)) continue;
+    if (!termIds.includes(s.semesterId)) continue;
+    const sectionDepartment = s.section.program?.departmentId ?? null;
+    const orphan = inactive.has(s.facultyId) && (!departmentId || sectionDepartment === departmentId);
+    if (!inScope.has(s.facultyId) && !orphan) continue;
     const key = `${s.sectionId}|${s.subjectId}|${s.facultyId}`;
     const g = groups.get(key) ?? {
       key,
@@ -52,12 +61,21 @@ export async function loadWorkload(termIds: string[], departmentId: string | nul
       subjectUnits: s.subject.units,
       sectionName: s.section.name,
       sectionLevel: s.section.level,
-      departmentId: s.section.program?.departmentId ?? null,
+      departmentId: sectionDepartment,
       meetings: [],
     };
     g.meetings.push({ scheduleId: s.id, dayOfWeek: s.dayOfWeek, startMin: s.startMin, endMin: s.endMin });
     groups.set(key, g);
   }
+  const all = [...groups.values()];
 
-  return { limits, faculty, assignments: [...groups.values()], busy };
+  return {
+    limits,
+    faculty,
+    assignments: all.filter((a) => inScope.has(a.facultyId)),
+    unassigned: all.filter((a) => inactive.has(a.facultyId)),
+    inactiveNames: inactive,
+    blocked: new Set(declined),
+    busy,
+  };
 }

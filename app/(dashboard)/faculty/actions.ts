@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { canManageDepartment, OUTSIDE_DEPARTMENT, requireScope, type Scope } from "@/lib/permissions/scope";
 import { prisma } from "@/lib/db/prisma";
+import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { ACADEMIC_LEVELS } from "@/lib/academics/levels";
 
 const STAFF = ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT"] as const;
@@ -57,6 +58,7 @@ export async function createFacultyAction(formData: FormData) {
       },
     });
     revalidatePath("/faculty");
+    queueWorkloadCheck("A faculty member was added");
     return { ok: true };
   } catch {
     return { ok: false, error: "A faculty member with that employee ID or email already exists." };
@@ -74,6 +76,7 @@ export async function updateFacultyAction(id: string, formData: FormData) {
     return { ok: false, error: "Another faculty member already uses that employee ID or email." };
   }
   revalidatePath("/faculty");
+  queueWorkloadCheck("A faculty member was updated");
   return { ok: true };
 }
 
@@ -88,5 +91,6 @@ export async function deleteFacultyAction(id: string) {
   if (linkedUser) return { ok: false, error: "This faculty member has a linked user login; remove that account first." };
   await prisma.faculty.delete({ where: { id } });
   revalidatePath("/faculty");
+  queueWorkloadCheck("A faculty member was removed");
   return { ok: true };
 }

@@ -16,7 +16,7 @@ export function SettingsManager({
 }: {
   institution: { name: string; location: string };
   requireApproval: boolean;
-  workload: { measure: "HOURS" | "UNITS"; minimum: number; maximum: number };
+  workload: { measure: "HOURS" | "UNITS"; minimum: number; maximum: number; mode: "AUTOMATIC" | "APPROVAL" };
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -30,7 +30,7 @@ export function SettingsManager({
   function handleWorkload(formData: FormData) {
     startTransition(async () => {
       const res = await updateWorkloadAction(formData);
-      if (res.ok) toast.success("Teaching load limits saved.");
+      if (res.ok) toast.success("Teaching load settings saved. Loads are being rechecked.");
       else toast.error(res.error ?? "Could not save the load limits.");
     });
   }
@@ -66,7 +66,7 @@ export function SettingsManager({
           <form action={handleWorkload}>
             <FieldGroup>
               <p className="text-xs text-muted-foreground">
-                Faculty Workload Optimization flags anyone below the minimum as underloaded and above the maximum as overloaded.
+                Every schedule change rechecks all teaching loads. Anyone below the minimum is underloaded and anyone above the maximum is overloaded.
               </p>
               <Field>
                 <FieldLabel htmlFor="measure">Measure load in</FieldLabel>
@@ -85,8 +85,15 @@ export function SettingsManager({
                   <input type="number" step="0.5" min={1} name="maximum" id="maximum" defaultValue={workload.maximum} required className={inputClass} />
                 </Field>
               </div>
+              <Field>
+                <FieldLabel htmlFor="mode">When the system finds an overload or underload</FieldLabel>
+                <select name="mode" id="mode" defaultValue={workload.mode} className={inputClass}>
+                  <option value="APPROVAL">Approval required: propose fixes for the Administrator or Head of Department</option>
+                  <option value="AUTOMATIC">Fully automatic: apply fixes right away</option>
+                </select>
+              </Field>
               <Button type="submit" disabled={pending}>
-                {pending && <Loader2 className="size-4 animate-spin" />} Save Load Limits
+                {pending && <Loader2 className="size-4 animate-spin" />} Save Load Settings
               </Button>
             </FieldGroup>
           </form>

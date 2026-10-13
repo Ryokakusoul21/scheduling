@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import type { ScheduleStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { DIRECT_EDIT_ROLES, PUBLISH_ROLES, STAFF_ROLES, type AppRole } from "@/lib/permissions/roles";
 import { canManageDepartment, requireScope, type Scope } from "@/lib/permissions/scope";
 import { weeklyDoubleBooking } from "@/lib/scheduler/term-conflicts";
@@ -123,6 +124,7 @@ export async function saveClassAction(input: ClassInput): Promise<Result<Schedul
       data: { userId: user.id, action: "Edited class schedule", entity: "Schedule", entityId: id, newValue: data },
     });
     revalidate();
+    queueWorkloadCheck("A class was edited or reassigned");
     return { ok: true, data: toEntry(saved) };
   }
 
@@ -133,6 +135,7 @@ export async function saveClassAction(input: ClassInput): Promise<Result<Schedul
     data: { userId: user.id, action: "Created class schedule", entity: "Schedule", entityId: created.id, newValue: data },
   });
   revalidate();
+  queueWorkloadCheck("A class was added");
   return { ok: true, data: toEntry(created) };
 }
 
@@ -174,6 +177,7 @@ export async function moveClassAction(input: z.infer<typeof moveSchema>): Promis
     },
   });
   revalidate();
+  queueWorkloadCheck("A class was moved");
   return { ok: true, data: toEntry(saved) };
 }
 
@@ -191,6 +195,7 @@ export async function deleteClassAction(id: string): Promise<Result> {
     data: { userId: user.id, action: "Deleted class schedule", entity: "Schedule", entityId: id, oldValue: existing },
   });
   revalidate();
+  queueWorkloadCheck("A class was removed");
   return { ok: true, data: undefined };
 }
 

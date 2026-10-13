@@ -35,6 +35,30 @@ describe("workload optimizer", () => {
     expect(explain(loadReport(faculty, as, limits), after, moves)).toMatch(/After: 0 overloaded and 0 underloaded/);
   });
 
+  it("records both faculty loads before and after each move", () => {
+    const as = [asg("a", "busy", 0), asg("b", "busy", 1), asg("c", "busy", 2), asg("d", "busy", 3), asg("e", "idle", 4)];
+    const { moves } = optimize([fac("busy"), fac("idle")], as, limits, busyOf(as));
+    expect(moves[0]).toMatchObject({ fromBefore: 12, fromAfter: 9, toBefore: 3, toAfter: 6 });
+  });
+
+  it("does not repeat a move that was undone", () => {
+    const as = [asg("a", "busy", 0), asg("b", "busy", 1), asg("c", "busy", 2), asg("d", "busy", 3), asg("e", "idle", 4)];
+    const blocked = new Set(["a", "b", "c", "d"]);
+    const { moves, flags } = optimize([fac("busy"), fac("idle")], as, limits, busyOf(as), { blocked });
+    expect(moves).toHaveLength(0);
+    expect(flags.map((f) => f.kind)).toEqual(["OVERLOADED", "UNDERLOADED"]);
+    expect(flags[0].explanation).toMatch(/kept in place/);
+  });
+
+  it("reassigns classes of inactive faculty, or flags them when nobody qualifies", () => {
+    const orphan = asg("o", "gone", 2);
+    const stranded = asg("s", "gone", 3, { sectionLevel: "ELEMENTARY" });
+    const as = [asg("x", "idle", 0)];
+    const { moves, flags } = optimize([fac("idle")], as, limits, busyOf(as), { unassigned: [orphan, stranded], inactiveNames: new Map([["gone", "Former"]]) });
+    expect(moves).toEqual([expect.objectContaining({ key: "o", fromFacultyId: "gone", toFacultyId: "idle" })]);
+    expect(flags.find((f) => f.kind === "UNASSIGNED")?.explanation).toMatch(/Former is no longer active/);
+  });
+
   it("never double-books the receiver or ignores the teaching level", () => {
     const as = [asg("a", "busy", 0), asg("b", "busy", 1), asg("c", "busy", 2), asg("d", "busy", 3), asg("x", "idle", 0), asg("y", "idle", 1)];
     const clashing = { ...as[0] };

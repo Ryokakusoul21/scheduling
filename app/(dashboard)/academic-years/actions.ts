@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import type { AcademicLevel, SemesterType } from "@prisma/client";
 import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
+import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { ACADEMIC_LEVELS, QUARTER_TYPES, SEMESTER_TYPES, LEVELS, termLabel } from "@/lib/academics/levels";
 
@@ -44,6 +45,7 @@ export async function saveAcademicYearAction(id: string | null, formData: FormDa
       await prisma.academicYear.updateMany({ where: { id: { not: saved.id } }, data: { isActive: false } });
     }
     revalidate(saved.id);
+    queueWorkloadCheck("The active academic year changed");
     return { ok: true };
   } catch {
     return { ok: false, error: "An academic year with that name already exists." };
@@ -57,6 +59,7 @@ export async function setActiveAcademicYearAction(id: string): Promise<Result> {
     prisma.academicYear.update({ where: { id }, data: { isActive: true } }),
   ]);
   revalidate(id);
+  queueWorkloadCheck("The active academic year changed");
   return { ok: true };
 }
 
@@ -121,6 +124,7 @@ export async function saveTermAction(id: string | null, formData: FormData): Pro
   const saved = id ? await prisma.semester.update({ where: { id }, data }) : await prisma.semester.create({ data });
   if (saved.isActive) await activateTerm(saved.id, saved.level, saved.programId);
   revalidate(d.academicYearId);
+  queueWorkloadCheck("A term was saved");
   return { ok: true };
 }
 
@@ -129,6 +133,7 @@ export async function setActiveTermAction(id: string): Promise<Result> {
   const term = await prisma.semester.update({ where: { id }, data: { isActive: true } });
   await activateTerm(term.id, term.level, term.programId);
   revalidate(term.academicYearId);
+  queueWorkloadCheck("The active term changed");
   return { ok: true };
 }
 

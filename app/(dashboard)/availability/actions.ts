@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
+import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { TEACHING_ROLES } from "@/lib/permissions/roles";
 import { requireScope } from "@/lib/permissions/scope";
 import { notifyManagers } from "@/lib/notify";
@@ -44,6 +45,7 @@ export async function reportUnavailabilityAction(input: z.infer<typeof schema>):
   await prisma.auditLog.create({ data: { userId: scope.userId, action: "Reported unavailability", entity: "Unavailability", entityId: report.id, newValue: d } });
   revalidatePath("/availability");
   revalidatePath("/adjustments");
+  queueWorkloadCheck("A faculty member reported being unavailable");
   return { ok: true };
 }
 

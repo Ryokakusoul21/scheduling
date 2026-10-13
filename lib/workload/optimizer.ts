@@ -51,7 +51,29 @@ export interface Move {
   fromFacultyId: string;
   toFacultyId: string;
   amount: number;
+  /** Loads of both faculty members before and after this move. */
+  fromBefore: number;
+  fromAfter: number;
+  toBefore: number;
+  toAfter: number;
   reason: string;
+}
+
+/** Something the optimizer could not fix safely and a person must look at. */
+export interface Flag {
+  kind: "OVERLOADED" | "UNDERLOADED" | "UNASSIGNED" | "NOT_APPLIED";
+  facultyId: string | null;
+  label: string;
+  explanation: string;
+}
+
+export interface OptimizeOptions {
+  /** Assignments a person kept in place by undoing a fix or rejecting a proposal; they are never moved automatically. */
+  blocked?: Set<string>;
+  /** Classes whose faculty member is inactive or on leave; they must move to someone qualified. */
+  unassigned?: Assignment[];
+  /** Names of the inactive faculty owning `unassigned` classes, for explanations. */
+  inactiveNames?: Map<string, string>;
 }
 
 export type LoadStatus = "UNDERLOADED" | "BALANCED" | "OVERLOADED";
@@ -98,11 +120,17 @@ function specializationMatch(f: WFaculty, a: Assignment) {
 /**
  * Proposes moves until nobody is overloaded and underloaded faculty have been topped up
  * where a compatible class exists. `busy` holds every meeting each faculty member already
- * teaches (all departments), so receivers are never double-booked.
+ * teaches (all departments), so receivers are never double-booked. Anything that cannot be
+ * fixed without breaking a rule is returned as a flag with an explanation.
  */
-export function optimize(faculty: WFaculty[], assignments: Assignment[], limits: WorkloadLimits, busy: Map<string, WMeeting[]>) {
+export function optimize(faculty: WFaculty[], assignments: Assignment[], limits: WorkloadLimits, busy: Map<string, WMeeting[]>, opts: OptimizeOptions = {}) {
   const byId = new Map(faculty.map((f) => [f.id, f]));
+  const unassigned = opts.unassigned ?? [];
+  assignments = [...assignments, ...unassigned];
   const owner = new Map(assignments.map((a) => [a.key, a.facultyId]));
+  const nameOf = (id: string) => byId.get(id)?.name ?? opts.inactiveNames?.get(id) ?? "An inactive faculty member";
+  const unit = limits.measure === "HOURS" ? "hours" : "units";
+  const flags: Flag[] = [];
   const load = new Map(loadReport(faculty, assignments, limits).map((r) => [r.facultyId, r.load]));
   const schedule = new Map([...busy.entries()].map(([k, v]) => [k, [...v]]));
   const max = (id: string) => maximumFor(byId.get(id)!, limits);
@@ -119,12 +147,13 @@ export function optimize(faculty: WFaculty[], assignments: Assignment[], limits:
   function bestMove(donorId: string, receivers: WFaculty[], keepDonorAtLeast: number) {
     let best: { a: Assignment; r: WFaculty; score: number } | null = null;
     for (const a of assignments) {
-      if (owner.get(a.key) !== donorId || moved.has(a.key)) continue;
+      if (owner.get(a.key) !== donorId || moved.has(a.key) || opts.blocked?.has(a.key)) continue;
       const amount = amountOf(a, limits);
       if ((load.get(donorId) ?? 0) - amount < keepDonorAtLeast) continue;
       const home = a.departmentId ?? byId.get(donorId)?.departmentId;
       for (const r of receivers) {
-        if (r.id === donorId || (load.get(r.id) ?? 0) + amount > max(r.id) || !canTake(r, a)) continue;
+        if (r.id === donorId) continue;
+        if ((load.get(r.id) ?? 0) + amount > max(r.id) || !canTake(r, a)) continue;
         // Qualified means the same department, or a matching specialization when crossing departments.
         const sameDepartment = !!r.departmentId && r.departmentId === home;
         if (!sameDepartment && !specializationMatch(r, a)) continue;
@@ -142,8 +171,7 @@ export function optimize(faculty: WFaculty[], assignments: Assignment[], limits:
 
   function apply(donorId: string, a: Assignment, r: WFaculty, why: string) {
     const amount = amountOf(a, limits);
-    const unit = limits.measure === "HOURS" ? "hours" : "units";
-    const donor = byId.get(donorId)!;
+    const donor = byId.get(donorId) ?? { name: nameOf(donorId), departmentId: a.departmentId };
     const before = { d: load.get(donorId) ?? 0, r: load.get(r.id) ?? 0 };
     load.set(donorId, round1(before.d - amount));
     load.set(r.id, round1(before.r + amount));
@@ -163,19 +191,45 @@ export function optimize(faculty: WFaculty[], assignments: Assignment[], limits:
       fromFacultyId: donorId,
       toFacultyId: r.id,
       amount,
+      fromBefore: before.d,
+      fromAfter: round1(before.d - amount),
+      toBefore: before.r,
+      toAfter: round1(before.r + amount),
       reason: `${why} Moves ${amount} ${unit} from ${donor.name} (${before.d} to ${round1(before.d - amount)} ${unit}) to ${r.name} (${before.r} to ${round1(before.r + amount)} ${unit}): ${traits}.`,
     });
   }
 
   const sortedReceivers = () => [...faculty].sort((x, y) => (load.get(x.id) ?? 0) - (load.get(y.id) ?? 0));
+  const measureWord = limits.measure === "HOURS" ? "hour" : "unit";
+
+  // Phase 0: classes of inactive or on-leave faculty must go to a qualified, free colleague.
+  for (const donorId of new Set(unassigned.map((a) => a.facultyId))) {
+    for (let guard = 0; guard < 100; guard++) {
+      const m = bestMove(donorId, sortedReceivers(), -Infinity);
+      if (!m) break;
+      apply(donorId, m.a, m.r, `${nameOf(donorId)} is no longer active.`);
+    }
+  }
+  for (const a of unassigned.filter((x) => !moved.has(x.key))) {
+    flags.push({
+      kind: "UNASSIGNED",
+      facultyId: null,
+      label: `${a.subjectName}, ${a.sectionName}`,
+      explanation: `${nameOf(a.facultyId)} is no longer active, and no qualified faculty member is free at every meeting time within the maximum load. Assign it manually or add a faculty member.`,
+    });
+    moved.add(a.key);
+  }
 
   // Phase 1: bring every overloaded faculty member down to their maximum.
+  const stuck = new Set<string>();
   for (let guard = 0; guard < 200; guard++) {
-    const donor = [...faculty].filter((f) => (load.get(f.id) ?? 0) > max(f.id)).sort((x, y) => (load.get(y.id) ?? 0) - max(y.id) - ((load.get(x.id) ?? 0) - max(x.id)))[0];
+    const donor = [...faculty]
+      .filter((f) => !stuck.has(f.id) && (load.get(f.id) ?? 0) > max(f.id))
+      .sort((x, y) => (load.get(y.id) ?? 0) - max(y.id) - ((load.get(x.id) ?? 0) - max(x.id)))[0];
     if (!donor) break;
     const m = bestMove(donor.id, sortedReceivers(), 0);
-    if (!m) break;
-    apply(donor.id, m.a, m.r, `${donor.name} is over the ${max(donor.id)}-${limits.measure === "HOURS" ? "hour" : "unit"} maximum.`);
+    if (!m) stuck.add(donor.id);
+    else apply(donor.id, m.a, m.r, `${donor.name} is over the ${max(donor.id)}-${measureWord} maximum.`);
   }
 
   // Phase 2: top up underloaded faculty from colleagues who stay at or above the minimum.
@@ -194,7 +248,21 @@ export function optimize(faculty: WFaculty[], assignments: Assignment[], limits:
   }
 
   const after = faculty.map((f) => ({ id: f.id, status: statusOf(load.get(f.id) ?? 0, limits.minimum, max(f.id)) }));
-  return { moves, loadsAfter: new Map(load), after };
+  for (const f of faculty) {
+    const l = load.get(f.id) ?? 0;
+    if (l > max(f.id)) {
+      flags.push({
+        kind: "OVERLOADED", facultyId: f.id, label: f.name,
+        explanation: `${f.name} stays at ${l} ${unit} (maximum ${max(f.id)}): no qualified colleague is available and free at the class times without exceeding their own maximum${assignments.some((a) => owner.get(a.key) === f.id && opts.blocked?.has(a.key)) ? ", or the remaining classes were kept in place when a fix was undone or a proposal rejected" : ""}.`,
+      });
+    } else if (l < limits.minimum) {
+      flags.push({
+        kind: "UNDERLOADED", facultyId: f.id, label: f.name,
+        explanation: `${f.name} stays at ${l} ${unit} (minimum ${limits.minimum}): no class they are qualified and free to teach can move to them without leaving its current teacher below the minimum.`,
+      });
+    }
+  }
+  return { moves, loadsAfter: new Map(load), after, flags };
 }
 
 /** Plain-language summary of what the optimizer changed and what is still unbalanced. */

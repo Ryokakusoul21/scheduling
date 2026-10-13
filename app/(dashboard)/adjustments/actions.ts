@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
+import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { canManageDepartment, requireScope, type Scope } from "@/lib/permissions/scope";
 import {
@@ -108,6 +109,7 @@ export async function applyAdjustmentAction(input: AdjustmentRequest): Promise<R
   }
   await prisma.auditLog.create({ data: { userId: scope.userId, action: `Applied schedule adjustment: ${summary}`, entity: "AdjustmentBatch", entityId: batchId, newValue: { affected: p.items.length } } });
   revalidate();
+  queueWorkloadCheck("A schedule adjustment was applied");
   return { ok: true, data: { batchId, plan: p } };
 }
 
@@ -139,6 +141,7 @@ export async function undoAdjustmentAction(batchId: string): Promise<Result> {
   }
   await prisma.auditLog.create({ data: { userId: scope.userId, action: `Undid schedule adjustment: ${batch.summary}`, entity: "AdjustmentBatch", entityId: batchId } });
   revalidate();
+  queueWorkloadCheck("A schedule adjustment was undone");
   return { ok: true, data: undefined };
 }
 
@@ -167,6 +170,7 @@ export async function scheduleMakeUpAction(batchId: string, scheduleId: string, 
   if (problem) return { ok: false, error: problem };
   await prisma.auditLog.create({ data: { userId: b.scope.userId, action: "Scheduled make-up class", entity: "AdjustmentBatch", entityId: batchId, newValue: { scheduleId, originalDate: date, ...parsed.data } } });
   revalidate();
+  queueWorkloadCheck("A make-up class was scheduled");
   return { ok: true, data: undefined };
 }
 

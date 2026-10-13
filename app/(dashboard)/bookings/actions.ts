@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
+import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { getScope } from "@/lib/permissions/scope";
 import { loadPlan } from "@/lib/occupancy/load";
 import { applyPlan, planRoomBooking, planRoomBookingWith, undoBatch, type PlanItem } from "@/lib/occupancy/adjust";
@@ -107,6 +108,7 @@ export async function bookRoomAction(input: z.infer<typeof bookSchema>): Promise
   });
   revalidatePath("/bookings");
   revalidatePath("/calendar");
+  queueWorkloadCheck("A room was booked");
   return { ok: true, data: { bookingId: booking.id, items: plan.items } };
 }
 
@@ -133,5 +135,6 @@ export async function cancelBookingAction(id: string, keepMoves = false): Promis
   }
   revalidatePath("/bookings");
   revalidatePath("/calendar");
+  queueWorkloadCheck("A room booking was cancelled");
   return { ok: true, data: undefined };
 }
