@@ -1,70 +1,84 @@
 import { prisma } from "@/lib/db/prisma";
-import { requireRole } from "@/lib/auth/session";
-import { activeOverlapConflicts } from "@/lib/scheduler/term-conflicts";
+import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { requireScope } from "@/lib/permissions/scope";
+import { levelLabel, termLabel } from "@/lib/academics/levels";
+import { byGroup, facultyUtilization, overall, peakHeatmap, roomUtilization } from "@/lib/analytics/timetable";
+import { PageHeader } from "@/components/ux/states";
 import { AnalyticsCharts } from "./analytics-charts";
 
-export const metadata = { title: "Analytics · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Timetable Analytics · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
-const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
-const DAY_LABELS: Record<string, string> = {
-  MONDAY: "Mon", TUESDAY: "Tue", WEDNESDAY: "Wed", THURSDAY: "Thu", FRIDAY: "Fri", SATURDAY: "Sat",
-};
+/** Weekly hours a room can be used when it has no availability windows: Monday to Saturday, 7:00 AM to 7:00 PM. */
+const DEFAULT_ROOM_HOURS = 6 * 12;
 
-export default async function AnalyticsPage() {
-  await requireRole("ADMINISTRATOR", "HEAD_OF_DEPARTMENT");
+export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<{ term?: string; department?: string }> }) {
+  const scope = await requireScope(...STAFF_ROLES);
+  const params = await searchParams;
 
-  const [schedules, rooms, faculty, sections] = await Promise.all([
-    prisma.schedule.findMany({ where: { status: { not: "ARCHIVED" } } }),
-    prisma.room.findMany(),
-    prisma.faculty.findMany(),
-    prisma.section.findMany(),
+  const [terms, departments] = await Promise.all([
+    prisma.semester.findMany({ include: { academicYear: { select: { name: true } } }, orderBy: [{ startDate: "desc" }, { level: "asc" }] }),
+    prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+  ]);
+  const selectedTerm = terms.find((t) => t.id === params.term);
+  const termIds = selectedTerm ? [selectedTerm.id] : terms.filter((t) => t.isActive).map((t) => t.id);
+  // A Head of Department always sees their own department; the Administrator may pick one or see all.
+  const departmentId = scope.isAdmin ? (departments.some((d) => d.id === params.department) ? params.department! : null) : scope.departmentId;
+
+  const [schedules, rooms, faculty] = await Promise.all([
+    prisma.schedule.findMany({
+      where: { semesterId: { in: termIds }, status: { not: "ARCHIVED" }, ...(departmentId ? { section: { program: { departmentId } } } : {}) },
+      select: { roomId: true, facultyId: true, dayOfWeek: true, startMin: true, endMin: true },
+    }),
+    prisma.room.findMany({ include: { availability: true, floor: { select: { building: { select: { name: true } } } } } }),
+    prisma.faculty.findMany({ where: { status: "ACTIVE", ...(departmentId ? { departmentId } : {}) }, include: { department: { select: { name: true } } } }),
   ]);
 
-  const classesPerDay = DAYS.map((d) => ({
-    day: DAY_LABELS[d],
-    classes: schedules.filter((s) => s.dayOfWeek === d).length,
-  }));
+  // With a department filter, only rooms that department owns or uses are listed.
+  const usedRooms = new Set(schedules.map((s) => s.roomId));
+  const roomRows = roomUtilization(
+    schedules,
+    rooms
+      .filter((r) => !departmentId || r.departmentId === departmentId || usedRooms.has(r.id))
+      .map((r) => ({
+        id: r.id,
+        name: r.roomName,
+        building: r.floor?.building.name ?? "No building",
+        availableHours: r.availability.length ? r.availability.reduce((s, a) => s + (a.endMin - a.startMin), 0) / 60 : DEFAULT_ROOM_HOURS,
+      }))
+  );
+  const facultyRows = facultyUtilization(
+    // Faculty load counts every class they teach, not only the filtered department's sections.
+    departmentId
+      ? await prisma.schedule.findMany({ where: { semesterId: { in: termIds }, status: { not: "ARCHIVED" }, facultyId: { in: faculty.map((f) => f.id) } }, select: { roomId: true, facultyId: true, dayOfWeek: true, startMin: true, endMin: true } })
+      : schedules,
+    faculty.map((f) => ({ id: f.id, name: f.fullName, department: f.department?.name ?? "No department", maxHours: f.maxHours }))
+  );
 
-  const AVAILABLE_MIN_PER_WEEK = 6 * 12 * 60;
-  const roomUtilization = rooms
-    .map((r) => {
-      const min = schedules.filter((s) => s.roomId === r.id).reduce((s, e) => s + (e.endMin - e.startMin), 0);
-      return { room: r.roomNumber, utilization: Math.min(Math.round((min / AVAILABLE_MIN_PER_WEEK) * 100), 100) };
-    })
-    .sort((a, b) => b.utilization - a.utilization)
-    .slice(0, 8);
-
-  const workloadBuckets = { Underloaded: 0, Normal: 0, Overloaded: 0 };
-  for (const f of faculty) {
-    const min = schedules.filter((s) => s.facultyId === f.id).reduce((s, e) => s + (e.endMin - e.startMin), 0);
-    const utilization = (min / 60 / Math.max(f.maxHours, 1)) * 100;
-    if (utilization < 60) workloadBuckets.Underloaded++;
-    else if (utilization > 100) workloadBuckets.Overloaded++;
-    else workloadBuckets.Normal++;
-  }
-  const workloadData = Object.entries(workloadBuckets).map(([name, value]) => ({ name, value }));
-
-  const conflicts = await activeOverlapConflicts();
-
-  const enrollmentPerSection = sections
-    .map((s) => ({ section: s.name, students: s.studentCount }))
-    .sort((a, b) => b.students - a.students)
-    .slice(0, 10);
+  const termLabelOf = (t: (typeof terms)[number]) => `${levelLabel(t.level)} ${termLabel(t.type)} ${t.academicYear.name}`;
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Analytics</h1>
-        <p className="text-sm text-muted-foreground">Live operational analytics computed from the current database.</p>
-      </div>
-
+      <PageHeader
+        title="Timetable Analytics"
+        description="Room Utilization Rate, Faculty Utilization Rate, and peak scheduling hours, computed automatically from the published timetable."
+      />
       <AnalyticsCharts
-        classesPerDay={classesPerDay}
-        roomUtilization={roomUtilization}
-        workloadData={workloadData}
-        enrollmentPerSection={enrollmentPerSection}
-        totalClasses={schedules.length}
-        conflictCount={conflicts.length}
+        filters={{
+          term: selectedTerm?.id ?? "",
+          department: departmentId ?? "",
+          terms: terms.map((t) => ({ value: t.id, label: termLabelOf(t) })),
+          departments: scope.isAdmin ? departments.map((d) => ({ value: d.id, label: d.name })) : [],
+          departmentName: departments.find((d) => d.id === departmentId)?.name ?? "All departments",
+          termName: selectedTerm ? termLabelOf(selectedTerm) : "All active terms",
+        }}
+        meetings={schedules.length}
+        rooms={roomRows}
+        buildings={byGroup(roomRows)}
+        roomOverall={overall(roomRows)}
+        faculty={facultyRows}
+        departments={byGroup(facultyRows)}
+        facultyOverall={overall(facultyRows)}
+        heatmap={peakHeatmap(schedules)}
       />
     </div>
   );
