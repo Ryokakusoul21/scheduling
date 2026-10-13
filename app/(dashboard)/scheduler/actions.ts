@@ -3,9 +3,10 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import type { ScheduleStatus } from "@prisma/client";
-import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { DIRECT_EDIT_ROLES, PUBLISH_ROLES, STAFF_ROLES, type AppRole } from "@/lib/permissions/roles";
+import { canManageDepartment, requireScope, type Scope } from "@/lib/permissions/scope";
+import { weeklyDoubleBooking } from "@/lib/scheduler/term-conflicts";
 import type { SchedulerEntry } from "@/components/scheduler/types";
 
 type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -63,9 +64,9 @@ function toEntry(s: {
 }
 
 /**
- * Status after an edit. Super Admin edits apply directly (no approval). For
- * other staff, new classes start as drafts, a change to a published class goes
- * back to review, and only publishers may set PUBLISHED.
+ * Status after an edit. Administrator edits apply directly (no approval). A Head of
+ * Department's new classes start as drafts and a change to a published class goes back to
+ * review until it is approved and published.
  */
 function resolveStatus(role: AppRole, requested: ScheduleStatus | undefined, previous: ScheduleStatus | undefined) {
   const direct = DIRECT_EDIT_ROLES.includes(role);
@@ -76,13 +77,22 @@ function resolveStatus(role: AppRole, requested: ScheduleStatus | undefined, pre
   return next;
 }
 
+/** Head of Department may only change classes of sections in their own department. */
+async function sectionAllowed(scope: Scope, sectionId: string) {
+  const section = await prisma.section.findUnique({ where: { id: sectionId }, select: { program: { select: { departmentId: true } } } });
+  return canManageDepartment(scope, section?.program?.departmentId);
+}
+
+const OUTSIDE_DEPARTMENT = "You can only change classes of sections in your own department.";
+
 function revalidate() {
   revalidatePath("/scheduler");
   revalidatePath("/dashboard");
 }
 
 export async function saveClassAction(input: ClassInput): Promise<Result<SchedulerEntry>> {
-  const user = await requireRole(...STAFF_ROLES);
+  const scope = await requireScope(...STAFF_ROLES);
+  const user = { id: scope.userId, role: scope.role };
   const parsed = classSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid class details." };
   const { id, status, notes, ...data } = parsed.data;
@@ -97,6 +107,9 @@ export async function saveClassAction(input: ClassInput): Promise<Result<Schedul
   if (!section || !subject || !faculty || !room || !term) {
     return { ok: false, error: "The section, subject, faculty, room, or term no longer exists. Refresh and try again." };
   }
+  if (!(await sectionAllowed(scope, data.sectionId))) return { ok: false, error: OUTSIDE_DEPARTMENT };
+  const clash = await weeklyDoubleBooking(data, id);
+  if (clash) return { ok: false, error: clash };
 
   const role = user.role as AppRole;
   if (id) {
@@ -134,13 +147,17 @@ const moveSchema = z
 
 /** Drag-and-drop move: changes only the day and time. */
 export async function moveClassAction(input: z.infer<typeof moveSchema>): Promise<Result<SchedulerEntry>> {
-  const user = await requireRole(...STAFF_ROLES);
+  const scope = await requireScope(...STAFF_ROLES);
+  const user = { id: scope.userId, role: scope.role };
   const parsed = moveSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid move." };
   const { id, ...slot } = parsed.data;
 
   const existing = await prisma.schedule.findUnique({ where: { id } });
   if (!existing) return { ok: false, error: "This class was deleted by someone else." };
+  if (!(await sectionAllowed(scope, existing.sectionId))) return { ok: false, error: OUTSIDE_DEPARTMENT };
+  const clash = await weeklyDoubleBooking({ ...existing, ...slot }, id);
+  if (clash) return { ok: false, error: clash };
 
   const saved = await prisma.schedule.update({
     where: { id },
@@ -161,9 +178,11 @@ export async function moveClassAction(input: z.infer<typeof moveSchema>): Promis
 }
 
 export async function deleteClassAction(id: string): Promise<Result> {
-  const user = await requireRole(...STAFF_ROLES);
+  const scope = await requireScope(...STAFF_ROLES);
+  const user = { id: scope.userId };
   const existing = await prisma.schedule.findUnique({ where: { id } });
   if (!existing) return { ok: true, data: undefined };
+  if (!(await sectionAllowed(scope, existing.sectionId))) return { ok: false, error: OUTSIDE_DEPARTMENT };
   await prisma.$transaction([
     prisma.scheduleRequest.updateMany({ where: { scheduleId: id }, data: { scheduleId: null } }),
     prisma.schedule.delete({ where: { id } }),
@@ -177,11 +196,14 @@ export async function deleteClassAction(id: string): Promise<Result> {
 
 /** Bulk publish (e.g. everything visible in the current filter). */
 export async function publishClassesAction(ids: string[]): Promise<Result<{ count: number }>> {
-  const user = await requireRole(...PUBLISH_ROLES);
+  const scope = await requireScope(...PUBLISH_ROLES);
+  const user = { id: scope.userId };
   const parsed = z.array(z.string().min(1)).max(2000).safeParse(ids);
   if (!parsed.success) return { ok: false, error: "Invalid selection." };
+  // A Head of Department approves and publishes only their own department's classes.
+  const departmentFilter = scope.isAdmin ? {} : { section: { program: { departmentId: scope.manageDepartmentId } } };
   const { count } = await prisma.schedule.updateMany({
-    where: { id: { in: parsed.data }, status: { in: ["DRAFT", "REVIEW"] } },
+    where: { id: { in: parsed.data }, status: { in: ["DRAFT", "REVIEW"] }, ...departmentFilter },
     data: { status: "PUBLISHED" },
   });
   await prisma.auditLog.create({

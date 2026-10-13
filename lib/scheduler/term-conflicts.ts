@@ -46,3 +46,42 @@ export async function activeOverlapConflicts() {
   const conflicts = await detectConflictsForTerms(active.map((t) => t.id));
   return conflicts.filter(isOverlapConflict);
 }
+
+const DAY_NAMES: Record<string, string> = {
+  MONDAY: "Monday", TUESDAY: "Tuesday", WEDNESDAY: "Wednesday", THURSDAY: "Thursday", FRIDAY: "Friday", SATURDAY: "Saturday", SUNDAY: "Sunday",
+};
+
+/**
+ * Double-booking guard for one weekly class: other classes in concurrent terms that share its
+ * faculty member, room, or section at an overlapping time. Returns a readable reason or null.
+ */
+export async function weeklyDoubleBooking(entry: {
+  semesterId: string;
+  sectionId: string;
+  facultyId: string;
+  roomId: string;
+  dayOfWeek: string;
+  startMin: number;
+  endMin: number;
+}, excludeId?: string) {
+  const termIds = await concurrentTermIds(entry.semesterId);
+  const clash = await prisma.schedule.findFirst({
+    where: {
+      id: excludeId ? { not: excludeId } : undefined,
+      semesterId: { in: termIds },
+      status: { not: "ARCHIVED" },
+      dayOfWeek: entry.dayOfWeek as never,
+      startMin: { lt: entry.endMin },
+      endMin: { gt: entry.startMin },
+      OR: [{ facultyId: entry.facultyId }, { roomId: entry.roomId }, { sectionId: entry.sectionId }],
+    },
+    include: { subject: { select: { code: true } }, section: { select: { name: true } } },
+  });
+  if (!clash) return null;
+  const what = [
+    clash.facultyId === entry.facultyId && "faculty member",
+    clash.roomId === entry.roomId && "room",
+    clash.sectionId === entry.sectionId && "section",
+  ].filter(Boolean).join(", ");
+  return `Double booking: ${clash.subject.code} ${clash.section.name} already uses the ${what} on ${DAY_NAMES[clash.dayOfWeek]} at an overlapping time.`;
+}
