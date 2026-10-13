@@ -16,7 +16,7 @@ const PURPOSES = [
   "Student council meeting", "Parent orientation", "Research colloquium", "Career talk", "Quiz bee practice",
 ];
 
-const NOT_YET_OFFERED = ["Industrial Security Management 1-A", "Secondary Education 1-A"];
+const NOT_YET_OFFERED = ["Industrial Security Management 1-A", "Secondary Education 1-A", "Information Technology 2-B"];
 
 function random(seed: number) {
   return () => {
@@ -62,8 +62,20 @@ async function pastBookings(db: PrismaClient, term: Semester, from: string, to: 
   return made;
 }
 
+/** Demo login for a faculty member with an underloaded schedule (added to older databases too). */
+async function ensureUnderloadedAccount(db: PrismaClient) {
+  if (await db.user.findUnique({ where: { email: "alonzo@granby.edu.ph" } })) return;
+  const faculty = await db.faculty.findUnique({ where: { employeeId: "F-015" } });
+  const template = await db.user.findUnique({ where: { email: "faculty@granby.edu.ph" }, select: { passwordHash: true } });
+  if (!faculty || !template) return;
+  await db.user.create({
+    data: { email: "alonzo@granby.edu.ph", name: faculty.fullName, role: "FACULTY", status: "ACTIVE", emailVerified: new Date(), termsAcceptedAt: new Date(), passwordHash: template.passwordHash, facultyId: faculty.id },
+  });
+}
+
 export async function addSampleHistory(db: PrismaClient) {
   const startedAt = new Date();
+  await ensureUnderloadedAccount(db);
   const rand = random(1999);
   const ay = await db.academicYear.findFirst({ where: { isActive: true } });
   const current = await db.semester.findFirst({ where: { isActive: true, level: "COLLEGE", programId: null } });
@@ -84,7 +96,7 @@ export async function addSampleHistory(db: PrismaClient) {
     const subjectsOf = async (sectionId: string) =>
       [...new Set((await db.schedule.findMany({ where: { sectionId }, include: { subject: { select: { code: true } } } })).map((s) => s.subject.code))];
     const plans = [];
-    // Two newer programs had not opened first-year sections yet, so the past semester is a little smaller.
+    // Some sections had not opened yet, so the past semester is a little smaller.
     for (const s of currentSections.filter((x) => !NOT_YET_OFFERED.includes(x.name))) {
       const copy = await db.section.create({
         data: { name: s.name, level: s.level, yearLevel: s.yearLevel, programId: s.programId, semesterId: previous.id, studentCount: Math.round(s.studentCount * 0.94), sortOrder: s.sortOrder },

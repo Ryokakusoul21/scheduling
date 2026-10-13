@@ -7,6 +7,8 @@ import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { TEACHING_ROLES } from "@/lib/permissions/roles";
 import { requireScope } from "@/lib/permissions/scope";
 import { notifyManagers } from "@/lib/notify";
+import { planFacultyUnavailable } from "@/lib/occupancy/adjust";
+import { formatRange } from "@/lib/scheduler/timetable";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -57,4 +59,53 @@ export async function withdrawReportAction(id: string): Promise<Result> {
   revalidatePath("/availability");
   revalidatePath("/adjustments");
   return { ok: true };
+}
+
+export interface ImpactItem {
+  label: string;
+  date: string;
+  time: string;
+  room: string;
+  outcome: "COVERED" | "MOVED" | "MAKE_UP";
+  explanation: string;
+}
+
+/**
+ * What reporting these dates would do to the caller's classes, using the same planner as Schedule
+ * Adjustments. Nothing is saved; colleagues are not named, only how each class would be handled.
+ */
+export async function previewMyUnavailabilityAction(input: z.infer<typeof schema>): Promise<{ ok: true; data: { items: ImpactItem[]; hours: number; loadNote: string } } | { ok: false; error: string }> {
+  const scope = await requireScope(...TEACHING_ROLES);
+  if (!scope.facultyId) return { ok: false, error: "Your account is not linked to a faculty record." };
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the details." };
+  const d = parsed.data;
+  const days = (new Date(`${d.end}T00:00:00Z`).getTime() - new Date(`${d.start}T00:00:00Z`).getTime()) / 86400000;
+  if (days > 31) return { ok: false, error: "Preview at most 31 days at a time." };
+
+  const plan = await planFacultyUnavailable(scope.facultyId, { start: d.start, end: d.end, startMin: d.startMin, endMin: d.endMin });
+  const items: ImpactItem[] = plan.items.map((i) => {
+    const covered = !!i.after && i.after.facultyId !== scope.facultyId;
+    return {
+      label: i.label,
+      date: i.before.date,
+      time: formatRange(i.before.startMin, i.before.endMin),
+      room: i.before.roomName,
+      outcome: covered ? "COVERED" : i.after ? "MOVED" : "MAKE_UP",
+      explanation: covered
+        ? "A qualified colleague who is free at this time would cover the class."
+        : i.after
+          ? `The class would move to ${i.after.date}, ${formatRange(i.after.startMin, i.after.endMin)} in ${i.after.roomName}.`
+          : "No qualified colleague is free, so the class would be cancelled and a make-up class offered.",
+    };
+  });
+  const hours = Math.round((plan.items.reduce((s, i) => s + i.before.endMin - i.before.startMin, 0) / 60) * 10) / 10;
+  return {
+    ok: true,
+    data: {
+      items,
+      hours,
+      loadNote: "Your weekly teaching load does not change: covered or make-up classes stay assigned to you. Only these dated meetings are affected.",
+    },
+  };
 }

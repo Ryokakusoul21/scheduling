@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CircleNotch, PaperPlaneTilt } from "@phosphor-icons/react/ssr";
+import { CircleNotch, Eye, PaperPlaneTilt } from "@phosphor-icons/react/ssr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { NativeSelect } from "@/components/ux/native-select";
 import { EmptyState } from "@/components/ux/states";
 import { DEFAULT_GRID, formatRange, timeOptions } from "@/lib/scheduler/timetable";
-import { reportUnavailabilityAction, withdrawReportAction } from "./actions";
+import { previewMyUnavailabilityAction, reportUnavailabilityAction, withdrawReportAction, type ImpactItem } from "./actions";
 
 export interface ReportRow {
   id: string;
@@ -37,6 +37,20 @@ export function AvailabilityForm({ reports, linked }: { reports: ReportRow[]; li
   const [pending, startTransition] = useTransition();
   const today = new Date().toLocaleDateString("en-CA");
   const [form, setForm] = useState({ start: today, end: today, startMin: "", endMin: "", reason: "" });
+  const [impact, setImpact] = useState<{ items: ImpactItem[]; hours: number; loadNote: string } | null>(null);
+  const edit = (patch: Partial<typeof form>) => {
+    setForm((f) => ({ ...f, ...patch }));
+    setImpact(null);
+  };
+  const input = () => ({ start: form.start, end: form.end, reason: form.reason || "Preview", startMin: form.startMin ? Number(form.startMin) : null, endMin: form.endMin ? Number(form.endMin) : null });
+
+  function preview() {
+    startTransition(async () => {
+      const res = await previewMyUnavailabilityAction(input());
+      if (res.ok) setImpact(res.data);
+      else toast.error(res.error);
+    });
+  }
 
   if (!linked) {
     return <EmptyState title="Account not linked to a faculty record" description="Ask the Administrator to link your account in User Management so you can report unavailability." />;
@@ -45,12 +59,12 @@ export function AvailabilityForm({ reports, linked }: { reports: ReportRow[]; li
   function submit(e: React.FormEvent) {
     e.preventDefault();
     startTransition(async () => {
-      const res = await reportUnavailabilityAction({
-        start: form.start, end: form.end, reason: form.reason,
-        startMin: form.startMin ? Number(form.startMin) : null, endMin: form.endMin ? Number(form.endMin) : null,
-      });
+      const res = await reportUnavailabilityAction({ ...input(), reason: form.reason });
       if (!res.ok) return void toast.error(res.error);
       toast.success("Reported. Your Head of Department and the Administrator were notified.");
+      // Show right away how the report affects this faculty member's classes.
+      const effect = await previewMyUnavailabilityAction(input());
+      if (effect.ok) setImpact(effect.data);
       setForm((f) => ({ ...f, reason: "" }));
       router.refresh();
     });
@@ -64,28 +78,50 @@ export function AvailabilityForm({ reports, linked }: { reports: ReportRow[]; li
           <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="u-start">From date</FieldLabel>
-              <Input id="u-start" type="date" min={today} value={form.start} onChange={(e) => setForm((f) => ({ ...f, start: e.target.value, end: e.target.value > f.end ? e.target.value : f.end }))} />
+              <Input id="u-start" type="date" min={today} value={form.start} onChange={(e) => edit({ start: e.target.value, end: e.target.value > form.end ? e.target.value : form.end })} />
             </Field>
             <Field>
               <FieldLabel htmlFor="u-end">To date</FieldLabel>
-              <Input id="u-end" type="date" min={form.start} value={form.end} onChange={(e) => setForm((f) => ({ ...f, end: e.target.value }))} />
+              <Input id="u-end" type="date" min={form.start} value={form.end} onChange={(e) => edit({ end: e.target.value })} />
             </Field>
             <Field>
               <FieldLabel htmlFor="u-from">From time</FieldLabel>
-              <NativeSelect id="u-from" value={form.startMin} onChange={(e) => setForm((f) => ({ ...f, startMin: e.target.value }))} options={TIMES} placeholder="Whole day" />
+              <NativeSelect id="u-from" value={form.startMin} onChange={(e) => edit({ startMin: e.target.value })} options={TIMES} placeholder="Whole day" />
             </Field>
             <Field>
               <FieldLabel htmlFor="u-to">To time</FieldLabel>
-              <NativeSelect id="u-to" value={form.endMin} onChange={(e) => setForm((f) => ({ ...f, endMin: e.target.value }))} options={TIMES} placeholder="Whole day" />
+              <NativeSelect id="u-to" value={form.endMin} onChange={(e) => edit({ endMin: e.target.value })} options={TIMES} placeholder="Whole day" />
             </Field>
             <Field className="sm:col-span-2">
               <FieldLabel htmlFor="u-reason">Reason</FieldLabel>
               <Input id="u-reason" value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} placeholder="Seminar, medical appointment, official travel" required minLength={3} />
             </Field>
-            <Button type="submit" disabled={pending} className="sm:col-span-2">
+            <Button type="button" variant="outline" disabled={pending} onClick={preview}>
+              <Eye className="size-4" /> See how this affects me
+            </Button>
+            <Button type="submit" disabled={pending}>
               {pending ? <CircleNotch className="size-4 animate-spin" /> : <PaperPlaneTilt className="size-4" />} Submit report
             </Button>
           </form>
+          {impact && (
+            <div className="mt-4 space-y-2 rounded-lg border bg-muted/30 p-3 text-sm" aria-live="polite">
+              <p className="font-medium">
+                {impact.items.length === 0 ? "None of your classes meet during this time." : `${impact.items.length} class meeting(s), ${impact.hours} hours, would be affected.`}
+              </p>
+              <p className="text-xs text-muted-foreground">{impact.loadNote}</p>
+              <ul className="space-y-1.5">
+                {impact.items.map((i, n) => (
+                  <li key={n} className="rounded-md border bg-card p-2 text-xs">
+                    <p className="flex flex-wrap items-center gap-2 font-medium">
+                      {i.label}
+                      <Badge variant={i.outcome === "MAKE_UP" ? "destructive" : "secondary"}>{i.outcome === "COVERED" ? "Covered" : i.outcome === "MOVED" ? "Moved" : "Make-up needed"}</Badge>
+                    </p>
+                    <p className="text-muted-foreground">{i.date}, {i.time}, {i.room}. {i.explanation}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </CardContent>
       </Card>
 

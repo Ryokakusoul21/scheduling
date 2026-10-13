@@ -25,7 +25,6 @@ export default async function WorkloadPage() {
       />
       <WorkloadBoard
         staff={staff}
-        canReview={staff}
         measure={view.limits.measure}
         mode={view.limits.mode}
         status={view.status ? { checkedAt: view.status.checkedAt, trigger: view.status.trigger } : null}

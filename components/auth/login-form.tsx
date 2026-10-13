@@ -20,7 +20,8 @@ import type { LoginErrorCode } from "@/lib/auth/errors";
 const DEMO_ACCOUNTS = [
   { label: "Administrator", email: "administrator@granby.edu.ph" },
   { label: "Head of Department", email: "head.computing@granby.edu.ph" },
-  { label: "Faculty", email: "faculty@granby.edu.ph" },
+  { label: "Faculty (overloaded)", email: "faculty@granby.edu.ph" },
+  { label: "Faculty (underloaded)", email: "alonzo@granby.edu.ph" },
 ];
 
 const ERROR_MESSAGES: Record<LoginErrorCode, string> = {

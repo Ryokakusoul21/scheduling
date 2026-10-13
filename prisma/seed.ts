@@ -429,6 +429,8 @@ async function main() {
     { email: "head.basiceducation@granby.edu.ph", name: "Rhea Manalo", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["T-003"].id },
     { email: "faculty@granby.edu.ph", name: "Ana Santos", role: "FACULTY" as const, facultyId: faculty["F-001"].id },
     { email: "dizon@granby.edu.ph", name: "Carla Dizon", role: "FACULTY" as const, facultyId: faculty["F-005"].id },
+    // Underloaded on purpose (3 hours) so the Faculty dashboard shows a load below the minimum.
+    { email: "alonzo@granby.edu.ph", name: "Mika Alonzo", role: "FACULTY" as const, facultyId: faculty["F-015"].id },
   ];
   const user: Record<string, string> = {};
   for (const u of userDefs) {

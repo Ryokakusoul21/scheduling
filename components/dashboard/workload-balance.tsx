@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { LOAD_STATUS, LoadBar, LoadStatusLabel } from "@/components/workload/load-bar";
 import { FixLog, FlagList } from "@/components/workload/fix-log";
-import type { FixView, FacultyLoadView } from "@/lib/workload/view";
+import { ProposalCards } from "@/components/workload/proposals";
+import type { FixView, FacultyLoadView, ProposalView } from "@/lib/workload/view";
 import type { Flag } from "@/lib/workload/optimizer";
 
 const ORDER = { OVERLOADED: 0, UNDERLOADED: 1, BALANCED: 2 };
@@ -20,7 +21,8 @@ export function WorkloadBalance({
   checkedAt,
   flags,
   fixes,
-  pendingProposals,
+  proposals,
+  title = "Workload Balance",
 }: {
   rows: FacultyLoadView[];
   measure: "HOURS" | "UNITS";
@@ -28,7 +30,8 @@ export function WorkloadBalance({
   checkedAt: string | null;
   flags: Flag[];
   fixes: FixView[];
-  pendingProposals: number;
+  proposals: ProposalView[];
+  title?: string;
 }) {
   const unit = measure === "HOURS" ? "hours" : "units";
   const sorted = [...rows].sort((a, b) => ORDER[a.status] - ORDER[b.status] || b.load - a.load);
@@ -37,7 +40,7 @@ export function WorkloadBalance({
   return (
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
-        <CardTitle className="flex items-center gap-2 text-base"><Gauge className="size-4 text-primary" /> Workload Balance</CardTitle>
+        <CardTitle className="flex items-center gap-2 text-base"><Gauge className="size-4 text-primary" /> {title}</CardTitle>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <Badge variant={mode === "AUTOMATIC" ? "default" : "secondary"}>{mode === "AUTOMATIC" ? "Fully automatic" : "Approval required"}</Badge>
           {checkedAt && <span className="text-muted-foreground">Checked {new Date(checkedAt).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })}</span>}
@@ -52,11 +55,7 @@ export function WorkloadBalance({
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-4 rounded-sm bg-emerald-500/20" />Allowed range</span>
         </div>
 
-        {pendingProposals > 0 && (
-          <Link href="/workload" className="block rounded-lg border border-primary/40 bg-primary/5 p-2.5 text-sm font-medium text-primary hover:bg-primary/10">
-            {pendingProposals} automatic fix proposal(s) are waiting for approval.
-          </Link>
-        )}
+        {proposals.length > 0 && <ProposalCards proposals={proposals} unit={unit} compact />}
 
         <ul className="max-h-96 space-y-2.5 overflow-y-auto pr-1">
           {sorted.map((r) => (

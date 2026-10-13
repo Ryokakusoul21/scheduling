@@ -3,7 +3,6 @@ import type { Scope } from "@/lib/permissions/scope";
 import { levelLabel, termLabel } from "@/lib/academics/levels";
 import { dashboardAnalytics } from "@/lib/analytics/dashboard";
 import { workloadView } from "@/lib/workload/view";
-import { LiveRefresh } from "@/components/ux/live-refresh";
 import { AdminAnalytics } from "./admin-analytics";
 import { WorkloadBalance } from "./workload-balance";
 
@@ -27,7 +26,6 @@ export async function AdminPanels({ scope, params }: { scope: Scope; params: { t
 
   return (
     <div className="space-y-5">
-      <div className="flex justify-end"><LiveRefresh /></div>
       <AdminAnalytics
         data={data}
         filters={{
@@ -46,7 +44,7 @@ export async function AdminPanels({ scope, params }: { scope: Scope; params: { t
         checkedAt={workload.status?.checkedAt ?? null}
         flags={workload.flags}
         fixes={workload.fixes}
-        pendingProposals={workload.proposals.filter((p) => p.status === "PENDING").length}
+        proposals={workload.proposals.filter((p) => p.status === "PENDING")}
       />
     </div>
   );

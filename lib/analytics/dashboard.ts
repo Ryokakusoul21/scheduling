@@ -39,7 +39,7 @@ async function termFigures(term: Semester, f: DashboardFilters) {
   const [schedules, rooms, facultyRows, records, programs, termSections, conflicts, workload] = await Promise.all([
     prisma.schedule.findMany({
       where: { semesterId: term.id, status: { not: "ARCHIVED" }, ...inDept, ...inBuilding },
-      select: { id: true, roomId: true, facultyId: true, sectionId: true, dayOfWeek: true, startMin: true, endMin: true },
+      select: { id: true, roomId: true, facultyId: true, sectionId: true, subjectId: true, dayOfWeek: true, startMin: true, endMin: true },
     }),
     prisma.room.findMany({
       where: f.buildingId ? { floor: { buildingId: f.buildingId } } : {},
@@ -106,6 +106,7 @@ async function termFigures(term: Semester, f: DashboardFilters) {
     sections: new Set([...schedules.map((s) => s.sectionId), ...termSections.map((s) => s.id)]).size,
     faculty: teaching.size,
     rooms: usedRooms.size,
+    subjects: new Set(schedules.map((s) => s.subjectId)).size,
     roomRows,
     roomRate: overall(roomRows).rate,
     facultyRows: facultyRowsRated,
@@ -162,6 +163,7 @@ export async function dashboardAnalytics(f: DashboardFilters) {
     { key: "students", label: "Students enrolled", value: now.students.toLocaleString(), raw: now.students, change: countChange(now.students, before?.students || null), hint: "From enrollment records for this term" },
     { key: "sections", label: "Sections", value: String(now.sections), raw: now.sections, change: countChange(now.sections, p?.sections ?? null), hint: "Sections with classes this term" },
     { key: "faculty", label: "Faculty teaching", value: String(now.faculty), raw: now.faculty, change: countChange(now.faculty, p?.faculty ?? null), hint: "Faculty with at least one class" },
+    { key: "subjects", label: "Subjects offered", value: String(now.subjects), raw: now.subjects, change: countChange(now.subjects, p?.subjects ?? null), hint: "Subjects with classes this term" },
     { key: "rooms", label: "Rooms in use", value: String(now.rooms), raw: now.rooms, change: countChange(now.rooms, p?.rooms ?? null), hint: "Rooms hosting at least one class" },
     { key: "roomRate", label: "Room Utilization Rate", value: pctText(now.roomRate), raw: now.roomRate, change: rateChange(now.roomRate, p?.roomRate ?? null), hint: "Scheduled hours over available room hours" },
     { key: "facultyRate", label: "Faculty Utilization Rate", value: pctText(now.facultyRate), raw: now.facultyRate, change: rateChange(now.facultyRate, p?.facultyRate ?? null), hint: "Teaching hours over maximum hours" },
@@ -190,6 +192,9 @@ export async function dashboardAnalytics(f: DashboardFilters) {
     rooms,
     buildings: byGroup(now.roomRows),
     departments: byGroup(now.facultyRows),
+    facultyRates: now.facultyRows,
+    // Rooms the filtered classes use most, by scheduled hours.
+    topRooms: [...now.roomRows].filter((r) => r.usedHours > 0).sort((a, b) => b.usedHours - a.usedHours).slice(0, 6),
     heatmap: peakHeatmap(now.schedules),
     loadDistribution: [
       { status: "UNDERLOADED" as const, count: now.underloaded },

@@ -1,8 +1,6 @@
 import Link from "next/link";
 import {
-  ArrowDown,
   ArrowRight,
-  ArrowUp,
   BookOpen,
   Buildings,
   CalendarBlank,
@@ -15,7 +13,6 @@ import {
   UserCheck,
   UserMinus,
   Gauge,
-  DoorOpen,
   ArrowsClockwise,
   ChartLineUp,
   CalendarCheck,
@@ -23,15 +20,12 @@ import {
   Users,
   UsersThree,
   WarningOctagon,
-  Bell,
-  Robot,
   ChartBar,
 } from "@phosphor-icons/react/ssr";
 import { prisma } from "@/lib/db/prisma";
 import { getScope } from "@/lib/permissions/scope";
 import { loadPlan } from "@/lib/occupancy/load";
 import { ACADEMIC_LEVELS, LEVELS, levelLabel, termLabel } from "@/lib/academics/levels";
-import { recordAndGetTrend } from "@/lib/analytics/dailyStat";
 import { activeOverlapConflicts } from "@/lib/scheduler/term-conflicts";
 import { formatRange } from "@/lib/scheduler/timetable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,10 +35,8 @@ import { CardGrid } from "@/components/ux/card-grid";
 import { Kbd } from "@/components/ux/kbd";
 import { LEVEL_ACCENTS, LEVEL_ICONS } from "@/components/ux/level-icons";
 import { EmptyState, SelectCard } from "@/components/ux/states";
-import { AssistantChat, AssistantHeader } from "@/components/assistant/assistant-chat";
-import { getAssistantHistory } from "../assistant/actions";
-import { MyTeaching } from "@/components/dashboard/my-teaching";
 import { AdminPanels } from "@/components/dashboard/admin-panels";
+import { FacultyDashboard, HeadDashboard } from "@/components/dashboard/role-dashboards";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "Dashboard · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
@@ -53,60 +45,24 @@ function greeting(hour: number) {
   return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 }
 
-function TrendBadge({ value, invert = false }: { value: number | null | undefined; invert?: boolean }) {
-  if (value === null || value === undefined) return null;
-  if (value === 0) return <span className="text-[10px] text-muted-foreground">No change</span>;
-  const up = value > 0;
-  const good = invert ? !up : up;
-  return (
-    <span className={cn("flex items-center gap-0.5 text-[10px] font-medium", good ? "text-emerald-600" : "text-red-600")}>
-      {up ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
-      {Math.abs(value)}%
-    </span>
-  );
-}
-
-export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ term?: string; department?: string; building?: string }> }) {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ term?: string; department?: string; building?: string; view?: string }> }) {
   const scope = await getScope();
+  const params = await searchParams;
   const user = { id: scope.userId, name: scope.name };
   const role = scope.role;
-  const staff = role !== "FACULTY";
-  const admin = scope.isAdmin;
-  // Head of Department figures cover their own department only.
-  const dept = admin ? null : scope.manageDepartmentId;
 
   // Manila time for "today" and greetings.
   const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" }));
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
   const todayIso = now.toLocaleDateString("en-CA");
-  const [activeTerms, plan] = await Promise.all([
-    prisma.semester.findMany({
-      where: { isActive: true },
-      include: { program: { select: { code: true } }, academicYear: { select: { name: true } } },
-      orderBy: [{ level: "asc" }],
-    }),
-    loadPlan(todayIso, todayIso),
-  ]);
-  const me = { facultyId: scope.facultyId };
+  const activeTerms = await prisma.semester.findMany({
+    where: { isActive: true },
+    include: { program: { select: { code: true } }, academicYear: { select: { name: true } } },
+    orderBy: [{ level: "asc" }],
+  });
   const activeTermIds = activeTerms.map((t) => t.id);
   const inActiveTerms = { semesterId: { in: activeTermIds }, status: { not: "ARCHIVED" as const } };
-
-  // Today's real sessions, after room bookings, substitutions, suspensions, and holidays.
-  const todaysClasses = plan.sessions
-    .filter((s) => s.endMin >= nowMin)
-    .filter((s) => (role === "FACULTY" ? s.facultyId === me.facultyId : !dept || plan.classInfo.get(s.scheduleId)?.departmentId === dept || s.facultyId === me.facultyId))
-    .slice(0, 6)
-    .map((s) => ({
-      id: `${s.scheduleId}-${s.date}`,
-      startMin: s.startMin,
-      endMin: s.endMin,
-      moved: s.status !== "REGULAR",
-      subject: { code: plan.classInfo.get(s.scheduleId)?.subjectCode ?? "" },
-      section: { name: plan.classInfo.get(s.scheduleId)?.sectionName ?? "" },
-      room: { roomName: plan.roomName.get(s.roomId) ?? "" },
-      faculty: { fullName: plan.facultyName.get(s.facultyId) ?? "" },
-    }));
 
   const header = (
     <div className="flex flex-wrap items-end justify-between gap-3">
@@ -136,11 +92,45 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     </div>
   );
 
+  // Each role has its own dashboard; Faculty and Heads of Department only ever receive their own scope.
+  if (role === "FACULTY") {
+    return (
+      <div className="space-y-5">
+        {header}
+        <FacultyDashboard scope={scope} params={params} />
+      </div>
+    );
+  }
+  if (role === "HEAD_OF_DEPARTMENT") {
+    return (
+      <div className="space-y-5">
+        {header}
+        <HeadDashboard scope={scope} params={params} />
+      </div>
+    );
+  }
+
+  // Today's real sessions school-wide, after room bookings, substitutions, suspensions, and holidays.
+  const plan = await loadPlan(todayIso, todayIso);
+  const todaysClasses = plan.sessions
+    .filter((s) => s.endMin >= nowMin)
+    .slice(0, 6)
+    .map((s) => ({
+      id: `${s.scheduleId}-${s.date}`,
+      startMin: s.startMin,
+      endMin: s.endMin,
+      moved: s.status !== "REGULAR",
+      subject: { code: plan.classInfo.get(s.scheduleId)?.subjectCode ?? "" },
+      section: { name: plan.classInfo.get(s.scheduleId)?.sectionName ?? "" },
+      room: { roomName: plan.roomName.get(s.roomId) ?? "" },
+      faculty: { fullName: plan.facultyName.get(s.facultyId) ?? "" },
+    }));
+
   const todayCard = (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Clock className="size-4 text-primary" /> {role === "FACULTY" ? "Your classes today" : "Coming up today"}
+          <Clock className="size-4 text-primary" /> Coming up today
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -157,7 +147,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
                     {c.room.roomName}
-                    {role !== "FACULTY" && ` · ${c.faculty.fullName}`}
+                    {` · ${c.faculty.fullName}`}
                     {c.moved && " · Rescheduled"}
                   </span>
                 </span>
@@ -169,57 +159,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     </Card>
   );
 
-  const myTeaching = <MyTeaching facultyId={me.facultyId} userId={user.id} activeTermIds={activeTermIds} />;
-
   // ---------------------------------------------------------------------------
-  // Faculty: a focused personal view
+  // Administrator: school-wide overview
   // ---------------------------------------------------------------------------
-  if (!staff) {
-    const history = await getAssistantHistory();
-    const links = [
-      { label: "My timetable", href: me.facultyId ? `/scheduler?facultyId=${me.facultyId}` : "/scheduler", icon: CalendarDots },
-      { label: "Calendar of Activities", href: "/calendar?scope=mine", icon: CalendarCheck },
-      { label: "Book a room", href: "/bookings", icon: DoorOpen },
-      { label: "Report unavailability", href: "/availability", icon: UserMinus },
-      { label: "My teaching load", href: "/workload", icon: Gauge },
-      { label: "Schedule requests", href: "/requests", icon: ClipboardText },
-      { label: "Notifications", href: "/notifications", icon: Bell },
-      { label: "Scheduling Assistant", href: "/assistant", icon: Robot },
-    ];
-    return (
-      <div className="space-y-5">
-        {header}
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(380px,36%)]">
-          <div className="space-y-4">
-            {todayCard}
-            {myTeaching}
-            <CardGrid label="Quick links" className="xl:grid-cols-2">
-              {links.map((l) => (
-                <SelectCard key={l.href} href={l.href} icon={l.icon} title={l.label} />
-              ))}
-            </CardGrid>
-          </div>
-          <Card className="gap-0 py-0">
-            <div className="border-b p-4">
-              <AssistantHeader />
-            </div>
-            <AssistantChat initialMessages={history} userName={user.name} staff={false} className="h-[min(36rem,70dvh)]" />
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Administrator (whole school) and Head of Department (own department) overview
-  // ---------------------------------------------------------------------------
-  const inDept = dept ? { program: { departmentId: dept } } : {};
-  const deptSectionIds = dept ? new Set((await prisma.section.findMany({ where: inDept, select: { id: true } })).map((s) => s.id)) : null;
   const [
     sectionsByLevel,
     subjectsByLevel,
-    totalFaculty,
-    totalRooms,
     conflicts,
     toPublish,
     pendingRequests,
@@ -230,50 +175,26 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     pendingReports,
     pendingProposals,
   ] = await Promise.all([
-    prisma.section.groupBy({ by: ["level"], where: inDept, _count: true }),
-    prisma.subject.groupBy({ by: ["level"], where: inDept, _count: true }),
-    prisma.faculty.count({ where: { status: "ACTIVE", ...(dept ? { departmentId: dept } : {}) } }),
-    prisma.room.count({ where: dept ? { departmentId: dept } : {} }),
-    activeOverlapConflicts().then((all) => (deptSectionIds ? all.filter((c) => deptSectionIds.has(c.entryA.sectionId) || (c.entryB && deptSectionIds.has(c.entryB.sectionId))) : all)),
-    prisma.schedule.count({ where: { ...inActiveTerms, status: { in: ["DRAFT", "REVIEW"] }, ...(dept ? { section: inDept } : {}) } }),
+    prisma.section.groupBy({ by: ["level"], _count: true }),
+    prisma.subject.groupBy({ by: ["level"], _count: true }),
+    activeOverlapConflicts(),
+    prisma.schedule.count({ where: { ...inActiveTerms, status: { in: ["DRAFT", "REVIEW"] } } }),
     prisma.scheduleRequest.count({ where: { status: "PENDING" } }),
-    admin ? prisma.user.count({ where: { status: "PENDING", emailVerified: { not: null } } }) : Promise.resolve(0),
+    prisma.user.count({ where: { status: "PENDING", emailVerified: { not: null } } }),
     prisma.faculty.findMany({
-      where: { status: "ACTIVE", ...(dept ? { departmentId: dept } : {}) },
+      where: { status: "ACTIVE" },
       select: { maxHours: true, schedules: { where: inActiveTerms, select: { startMin: true, endMin: true } } },
     }),
-    prisma.schedule.findMany({ where: { ...inActiveTerms, ...(dept ? { section: inDept } : {}) }, select: { sectionId: true, section: { select: { level: true } } } }),
-    admin ? prisma.auditLog.findMany({ take: 6, orderBy: { createdAt: "desc" }, include: { user: { select: { name: true } } } }) : Promise.resolve([]),
-    prisma.unavailability.count({ where: { status: "PENDING", ...(dept ? { faculty: { departmentId: dept } } : {}) } }),
-    prisma.workloadProposal.count({ where: { status: "PENDING", ...(dept ? { departmentId: dept } : {}) } }),
+    prisma.schedule.findMany({ where: inActiveTerms, select: { sectionId: true, section: { select: { level: true } } } }),
+    prisma.auditLog.findMany({ take: 6, orderBy: { createdAt: "desc" }, include: { user: { select: { name: true } } } }),
+    prisma.unavailability.count({ where: { status: "PENDING" } }),
+    prisma.workloadProposal.count({ where: { status: "PENDING" } }),
   ]);
 
   const countFor = (rows: { level: string; _count: number }[], level: string) => rows.find((r) => r.level === level)?._count ?? 0;
   const totalSections = sectionsByLevel.reduce((s, r) => s + r._count, 0);
-  const totalSubjects = subjectsByLevel.reduce((s, r) => s + r._count, 0);
   const overloaded = facultyLoad.filter((f) => f.schedules.reduce((s, e) => s + e.endMin - e.startMin, 0) / 60 > f.maxHours).length;
   const scheduledSections = new Set(activeClasses.map((c) => c.sectionId));
-
-  // Day-over-day trends are school-wide, so only the Administrator sees them.
-  const trend = admin
-    ? await recordAndGetTrend({ totalSections, totalFaculty, totalSubjects, totalRooms, openConflicts: conflicts.length })
-    : { totalSections: null, totalFaculty: null, totalSubjects: null, totalRooms: null, openConflicts: null };
-
-  const stats = [
-    { label: "Sections", value: totalSections, icon: UsersThree, href: "/sections", trend: trend.totalSections },
-    { label: "Active faculty", value: totalFaculty, icon: UserSquare, href: "/faculty", trend: trend.totalFaculty },
-    { label: "Subjects", value: totalSubjects, icon: BookOpen, href: "/subjects", trend: trend.totalSubjects },
-    { label: "Rooms", value: totalRooms, icon: Buildings, href: "/rooms", trend: trend.totalRooms },
-    {
-      label: "Schedule conflicts",
-      value: conflicts.length,
-      icon: WarningOctagon,
-      href: "/scheduler",
-      trend: trend.openConflicts,
-      invert: true,
-      danger: conflicts.length > 0,
-    },
-  ];
 
   const attention = [
     {
@@ -344,7 +265,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   const quickActions = [
     { label: "Scheduler", hint: "g s", href: "/scheduler", icon: CalendarDots, description: "Build and fix timetables" },
-    ...(admin ? [{ label: "Academic Years & Terms", hint: "g y", href: "/academic-years", icon: CalendarBlank, description: "Semesters and quarters" }] : []),
+    { label: "Academic Years & Terms", hint: "g y", href: "/academic-years", icon: CalendarBlank, description: "Semesters and quarters" },
     { label: "Calendar of Activities", hint: "g c", href: "/calendar", icon: CalendarCheck, description: "Classes, examinations, events" },
     { label: "Schedule Adjustments", hint: "", href: "/adjustments", icon: ArrowsClockwise, description: "Unavailability and suspensions" },
     { label: "Faculty Workload", hint: "", href: "/workload", icon: Gauge, description: "Balance teaching loads" },
@@ -355,7 +276,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     { label: "Faculty", hint: "g f", href: "/faculty", icon: UserSquare, description: "Teachers and loads" },
     { label: "Rooms", hint: "g r", href: "/rooms", icon: Buildings, description: "Buildings, floors, rooms" },
     { label: "Timetable Analytics", hint: "", href: "/analytics", icon: ChartBar, description: "Utilization and peak hours" },
-    ...(admin ? [{ label: "Users & Settings", hint: "", href: "/admin/users", icon: Gear, description: "Accounts and approvals" }] : []),
+    { label: "Users & Settings", hint: "", href: "/admin/users", icon: Gear, description: "Accounts and approvals" },
   ];
 
   const classesByLevel = (level: string) => activeClasses.filter((c) => c.section.level === level);
@@ -364,36 +285,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     <div className="space-y-5">
       {header}
 
-      {admin && <AdminPanels scope={scope} params={await searchParams} />}
-
-      {/* Heads of Department keep the compact counts; the Administrator gets the full analytics above. */}
-      {!admin && (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-          {stats.map((s) => (
-            <Link
-              key={s.label}
-              href={s.href}
-              className={cn(
-                "group relative rounded-xl border bg-card p-4 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md",
-                s.danger && "border-red-500/40 bg-red-500/[0.04]"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <span className={cn("flex size-10 items-center justify-center rounded-lg", s.danger ? "bg-red-500/15 text-red-600" : "bg-primary/10 text-primary")}>
-                  <s.icon className="size-5" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-2xl font-semibold tabular-nums leading-tight">{s.value}</p>
-                  <p className="truncate text-xs text-muted-foreground">{s.label}</p>
-                </div>
-              </div>
-              <div className="absolute top-3 right-3">
-                <TrendBadge value={s.trend} invert={s.invert} />
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
+      <AdminPanels scope={scope} params={params} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-5">
@@ -483,39 +375,33 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
           {todayCard}
 
-          {!admin && myTeaching}
-
-          {admin && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Recent activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {recentAudit.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No activity yet.</p>
-                ) : (
-                  <ul className="space-y-2.5 text-sm">
-                    {recentAudit.map((log) => (
-                      <li key={log.id} className="flex gap-2">
-                        <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
-                        <span className="min-w-0">
-                          <span className="block truncate">{log.action}</span>
-                          <span className="block text-xs text-muted-foreground">
-                            {log.user?.name ?? "System"} · {log.createdAt.toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}
-                          </span>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Recent activity</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {recentAudit.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No activity yet.</p>
+              ) : (
+                <ul className="space-y-2.5 text-sm">
+                  {recentAudit.map((log) => (
+                    <li key={log.id} className="flex gap-2">
+                      <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
+                      <span className="min-w-0">
+                        <span className="block truncate">{log.action}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {log.user?.name ?? "System"} · {log.createdAt.toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}
                         </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {admin && (
-                  <Link href="/admin/audit-logs" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                    View audit log <ArrowRight className="size-3" />
-                  </Link>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Link href="/admin/audit-logs" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                View audit log <ArrowRight className="size-3" />
+              </Link>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

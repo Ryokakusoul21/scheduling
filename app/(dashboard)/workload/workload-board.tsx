@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRight, ArrowsClockwise, CheckCircle, CircleNotch, Sparkle, XCircle } from "@phosphor-icons/react/ssr";
+import { ArrowsClockwise, CircleNotch } from "@phosphor-icons/react/ssr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,16 +12,13 @@ import { NativeSelect } from "@/components/ux/native-select";
 import { ExportButtons, PrintHeader } from "@/components/ux/export-buttons";
 import { LOAD_STATUS, LoadBar, LoadStatusLabel } from "@/components/workload/load-bar";
 import { FixLog, FlagList } from "@/components/workload/fix-log";
+import { ProposalCards } from "@/components/workload/proposals";
 import type { FacultyLoadView, FixView, ProposalView } from "@/lib/workload/view";
 import type { Flag } from "@/lib/workload/optimizer";
-import { cn } from "@/lib/utils";
-import { approveProposalAction, recheckWorkloadAction, rejectProposalAction } from "./actions";
-
-const PROPOSAL_STATUS: Record<string, string> = { PENDING: "Awaiting approval", APPLIED: "Approved and applied", REJECTED: "Rejected" };
+import { recheckWorkloadAction } from "./actions";
 
 export function WorkloadBoard(props: {
   staff: boolean;
-  canReview: boolean;
   measure: "HOURS" | "UNITS";
   mode: "AUTOMATIC" | "APPROVAL";
   status: { checkedAt: string; trigger: string } | null;
@@ -45,21 +42,6 @@ export function WorkloadBoard(props: {
       const { applied, proposed, flags } = res.data;
       toast.success(applied ? `${applied} fix(es) applied.` : proposed ? "Fixes are waiting for approval." : "All loads checked; no new fix needed.");
       if (flags) toast.warning(`${flags} item(s) need manual attention.`);
-      router.refresh();
-    });
-  }
-
-  function review(id: string, approve: boolean) {
-    startTransition(async () => {
-      if (!approve) {
-        const res = await rejectProposalAction(id);
-        if (res.ok) toast.success("Proposal rejected. These moves will not be proposed again."); else toast.error(res.error);
-      } else {
-        const res = await approveProposalAction(id);
-        if (!res.ok) return void toast.error(res.error);
-        toast.success(`${res.data.applied} reassignment(s) applied and faculty notified.`);
-        res.data.skipped.forEach((s) => toast.warning(s, { duration: 10000 }));
-      }
       router.refresh();
     });
   }
@@ -104,37 +86,7 @@ export function WorkloadBoard(props: {
         </Card>
       )}
 
-      {props.proposals.map((p) => (
-        <Card key={p.id} className={cn(p.status === "PENDING" && "border-primary/40")}>
-          <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
-            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-              {p.automatic ? "Automatic fix proposal" : "Reassignment proposal"}
-              <Badge variant={p.status === "PENDING" ? "default" : "outline"}>{PROPOSAL_STATUS[p.status] ?? p.status}</Badge>
-            </CardTitle>
-            {p.canReview && props.canReview && (
-              <div className="flex gap-2">
-                <Button size="sm" variant="ghost" disabled={pending} onClick={() => review(p.id, false)}><XCircle className="size-4" /> Reject</Button>
-                <Button size="sm" disabled={pending} onClick={() => review(p.id, true)}><CheckCircle className="size-4" /> Approve and apply</Button>
-              </div>
-            )}
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm">{p.explanation}</p>
-            {p.narrative && <p className="flex gap-2 rounded-lg bg-muted/60 p-3 text-sm"><Sparkle className="mt-0.5 size-4 shrink-0 text-primary" />{p.narrative}</p>}
-            <ul className="divide-y rounded-lg border">
-              {p.moves.map((m) => (
-                <li key={m.key} className="space-y-1 p-3 text-sm">
-                  <p className="flex flex-wrap items-center gap-2 font-medium">{m.label} <Badge variant="secondary">{m.amount} {unit}</Badge></p>
-                  <p className="flex flex-wrap items-center gap-1.5 text-xs">
-                    {m.from} ({m.fromBefore} to {m.fromAfter}) <ArrowRight className="size-3" /> {m.to} ({m.toBefore} to {m.toAfter})
-                  </p>
-                  <p className="text-xs text-muted-foreground">{m.reason}</p>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      ))}
+      <ProposalCards proposals={props.proposals} unit={unit} />
 
       <Card className="print-area">
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 print:hidden">
