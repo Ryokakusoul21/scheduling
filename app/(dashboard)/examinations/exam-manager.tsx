@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { NativeSelect } from "@/components/ux/native-select";
 import { ConfirmDialog } from "@/components/ux/form-dialog";
+import { ActionButton } from "@/components/ux/action-button";
 import { ExportButtons, PrintHeader } from "@/components/ux/export-buttons";
 import { DEFAULT_GRID, formatRange, timeOptions } from "@/lib/scheduler/timetable";
 import { checkExamAction, deleteExamAction, saveExamAction, type ExamInput } from "./actions";
@@ -164,9 +165,11 @@ export function ExamManager({
                   <TableCell>{r.proctor}</TableCell>
                   <TableCell><Badge variant="secondary">{typeLabel(r.type)}</Badge></TableCell>
                   {canEdit && (
-                    <TableCell className="whitespace-nowrap print:hidden">
-                      <Button size="sm" variant="ghost" onClick={() => setEditing({ id: r.id, form: { ...r, startMin: String(r.startMin), endMin: String(r.endMin) } })}>Edit</Button>
-                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setDeleting(r)}>Delete</Button>
+                    <TableCell className="print:hidden">
+                      <div className="flex justify-end gap-1.5">
+                        <ActionButton kind="edit" onClick={() => setEditing({ id: r.id, form: { ...r, startMin: String(r.startMin), endMin: String(r.endMin) } })} />
+                        <ActionButton kind="delete" onClick={() => setDeleting(r)} />
+                      </div>
                     </TableCell>
                   )}
                 </TableRow>

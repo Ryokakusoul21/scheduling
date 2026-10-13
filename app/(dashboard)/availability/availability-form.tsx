@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { NativeSelect } from "@/components/ux/native-select";
+import { ActionButton } from "@/components/ux/action-button";
 import { EmptyState } from "@/components/ux/states";
 import { DEFAULT_GRID, formatRange, timeOptions } from "@/lib/scheduler/timetable";
 import { previewMyUnavailabilityAction, reportUnavailabilityAction, withdrawReportAction, type ImpactItem } from "./actions";
@@ -141,12 +142,10 @@ export function AvailabilityForm({ reports, linked }: { reports: ReportRow[]; li
               <div className="flex items-center gap-2">
                 <Badge variant={STATUS[r.status].variant}>{STATUS[r.status].label}</Badge>
                 {r.own && r.status === "PENDING" && (
-                  <Button size="sm" variant="ghost" disabled={pending} onClick={() => startTransition(async () => {
+                  <ActionButton kind="withdraw" disabled={pending} onClick={() => startTransition(async () => {
                     const res = await withdrawReportAction(r.id);
                     if (res.ok) { toast.success("Report withdrawn."); router.refresh(); } else toast.error(res.error);
-                  })}>
-                    Withdraw
-                  </Button>
+                  })} />
                 )}
               </div>
             </div>

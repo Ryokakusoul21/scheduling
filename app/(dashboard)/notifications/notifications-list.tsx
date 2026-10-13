@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Bell, Checks as CheckCheck, Info, CheckCircle as CheckCircle2, Warning as AlertTriangle, XCircle } from "@phosphor-icons/react/ssr";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ActionButton } from "@/components/ux/action-button";
 import { markNotificationReadAction, markAllNotificationsReadAction } from "./actions";
 
 interface Notification {
@@ -72,17 +73,14 @@ export function NotificationsList({ notifications }: { notifications: Notificati
               <p className="mt-1 text-xs text-muted-foreground">{n.createdAt}</p>
             </div>
             {!n.isRead && (
-              <Button
-                size="sm"
-                variant="ghost"
+              <ActionButton
+                kind="read"
                 disabled={pending}
                 onClick={(e) => {
                   e.preventDefault();
                   startTransition(async () => { await markNotificationReadAction(n.id); });
                 }}
-              >
-                Mark read
-              </Button>
+              />
             )}
           </div>
         );

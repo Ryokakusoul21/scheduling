@@ -3,10 +3,10 @@
 import { useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { CalendarBlank, DotsThree, PencilSimple, Plus, Star, Trash } from "@phosphor-icons/react/ssr";
+import { CalendarBlank, Plus } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
+import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CardGrid } from "@/components/ux/card-grid";
 import { EmptyState, PageHeader } from "@/components/ux/states";
 import { ConfirmDialog, FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
@@ -100,32 +100,26 @@ export function YearsManager({ years }: { years: Year[] }) {
                 <Badge variant="outline">{y.levelsConfigured}/4 levels set up</Badge>
               </div>
               <div className="absolute top-3 right-3 z-10">
-                <DropdownMenu>
-                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${y.name}`} />}>
-                    <DotsThree className="size-4" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => dialog.openEdit(y)}>
-                      <PencilSimple className="size-4" /> Edit
-                    </DropdownMenuItem>
-                    {!y.isActive && (
-                      <DropdownMenuItem
-                        onClick={() =>
-                          startTransition(async () => {
-                            await setActiveAcademicYearAction(y.id);
-                            toast.success(`${y.name} is now the active academic year`);
-                          })
-                        }
-                      >
-                        <Star className="size-4" /> Set as active
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem variant="destructive" onClick={() => del.openEdit(y)}>
-                      <Trash className="size-4" /> Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
+                  <ActionButton kind="edit" onClick={() => dialog.openEdit(y)}>
+                    Edit
+                  </ActionButton>
+                  {!y.isActive && (
+                    <ActionButton kind="activate"
+                      onClick={() =>
+                        startTransition(async () => {
+                          await setActiveAcademicYearAction(y.id);
+                          toast.success(`${y.name} is now the active academic year`);
+                        })
+                      }
+                    >
+                      Set as active
+                    </ActionButton>
+                  )}
+                  <ActionButton kind="delete" onClick={() => del.openEdit(y)}>
+                    Delete
+                  </ActionButton>
+                </div>
               </div>
             </div>
           ))}

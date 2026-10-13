@@ -3,17 +3,11 @@
 import { ROLE_LABELS } from "@/lib/permissions/roles";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Plus, DotsThree as MoreHorizontal, PencilSimple as Pencil, Key as KeyRound, Trash as Trash2, CircleNotch as Loader2, CheckCircle } from "@phosphor-icons/react/ssr";
-
+import { Plus, Trash as Trash2, CircleNotch as Loader2 } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
+import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -162,7 +156,7 @@ export function UsersManager({ users, faculty }: { users: Row[]; faculty: { valu
               <TableHead>Role</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Created</TableHead>
-              <TableHead className="w-10" />
+              <TableHead><span className="sr-only">Actions</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -174,44 +168,36 @@ export function UsersManager({ users, faculty }: { users: Row[]; faculty: { valu
                 <TableCell><Badge variant={u.status === "ACTIVE" ? "default" : u.status === "PENDING" ? "secondary" : "destructive"}>{u.status}</Badge></TableCell>
                 <TableCell>{u.createdAt}</TableCell>
                 <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />}>
-                      <MoreHorizontal className="size-4" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {u.status === "PENDING" && (
-                        <DropdownMenuItem onClick={() => handleApprove(u.id)}>
-                          <CheckCircle className="size-4" /> Approve
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onClick={() => setEditRow(u)}>
-                        <Pencil className="size-4" /> Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setResetRow(u)}>
-                        <KeyRound className="size-4" /> Reset Password
-                      </DropdownMenuItem>
-                      <AlertDialog>
-                        <AlertDialogTrigger
-                          nativeButton={false}
-                          render={<DropdownMenuItem variant="destructive" onClick={(e) => e.preventDefault()} />}
-                        >
-                          <Trash2 className="size-4" /> Delete
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete this user?</AlertDialogTitle>
-                            <AlertDialogDescription>This removes the login for {u.email}.</AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction className="bg-destructive text-white hover:bg-destructive/90" onClick={() => handleDelete(u.id)}>
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
+                    {u.status === "PENDING" && (
+                      <ActionButton kind="approve" onClick={() => handleApprove(u.id)}>
+                        Approve
+                      </ActionButton>
+                    )}
+                    <ActionButton kind="edit" onClick={() => setEditRow(u)}>
+                      Edit
+                    </ActionButton>
+                    <ActionButton kind="reset" onClick={() => setResetRow(u)}>
+                      Reset Password
+                    </ActionButton>
+                    <AlertDialog>
+                      <AlertDialogTrigger render={<Button size="sm" variant="destructive" />}>
+                        <Trash2 className="size-3.5" /> Delete
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete this user?</AlertDialogTitle>
+                          <AlertDialogDescription>This removes the login for {u.email}.</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction className="bg-destructive text-white hover:bg-destructive/90" onClick={() => handleDelete(u.id)}>
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

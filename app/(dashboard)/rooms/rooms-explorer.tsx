@@ -5,22 +5,18 @@ import Link from "next/link";
 import {
   Buildings,
   CaretDown,
-  CalendarDots,
-  DotsThree,
   Door,
   MagnifyingGlass,
-  PencilSimple,
   Plus,
   Stack,
-  Trash,
   UploadSimple,
   X,
 } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
+import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog, FormDialog, type ActionResult, type FormField } from "@/components/ux/form-dialog";
 import { DragHandle, SortableList } from "@/components/ux/sortable-list";
 import { EmptyState, PageHeader } from "@/components/ux/states";
@@ -266,23 +262,17 @@ export function RoomsExplorer({
                       <CaretDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} />
                     </button>
                     {isAdmin && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${b.name}`} />}>
-                          <DotsThree className="size-4" />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setEditor({ kind: "floor", buildingId: b.id })}>
-                            <Stack className="size-4" /> Add floor
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setEditor({ kind: "building", item: buildings.find((x) => x.id === b.id) })}>
-                            <PencilSimple className="size-4" /> Edit building
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem variant="destructive" onClick={() => setDeleting({ kind: "building", id: b.id, label: b.name })}>
-                            <Trash className="size-4" /> Delete building
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
+                        <ActionButton kind="add" onClick={() => setEditor({ kind: "floor", buildingId: b.id })}>
+                          Add floor
+                        </ActionButton>
+                        <ActionButton kind="edit" onClick={() => setEditor({ kind: "building", item: buildings.find((x) => x.id === b.id) })}>
+                          Edit
+                        </ActionButton>
+                        <ActionButton kind="delete" onClick={() => setDeleting({ kind: "building", id: b.id, label: b.name })}>
+                          Delete
+                        </ActionButton>
+                      </div>
                     )}
                   </div>
 
@@ -384,23 +374,15 @@ function FloorPanel({
           <span className="font-medium">{floor.name}</span>
           <Badge variant="secondary">{floor.rooms.length} rooms</Badge>
         </button>
-        <Button size="sm" variant="ghost" onClick={onAddRoom}>
-          <Plus className="size-3.5" /> Room
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${floor.name}`} />}>
-            <DotsThree className="size-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onEditFloor}>
-              <PencilSimple className="size-4" /> Rename floor
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={onDeleteFloor}>
-              <Trash className="size-4" /> Delete floor
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <ActionButton kind="add" onClick={onAddRoom}>Add room</ActionButton>
+        <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
+          <ActionButton kind="edit" onClick={onEditFloor}>
+            Rename
+          </ActionButton>
+          <ActionButton kind="delete" onClick={onDeleteFloor}>
+            Delete
+          </ActionButton>
+        </div>
       </div>
 
       {expanded && (
@@ -419,7 +401,7 @@ function FloorPanel({
                   <TableHead className="text-right">Capacity</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-40">Use this term</TableHead>
-                  <TableHead className="w-10">
+                  <TableHead>
                     <span className="sr-only">Actions</span>
                   </TableHead>
                 </TableRow>
@@ -468,23 +450,17 @@ function FloorPanel({
                       </div>
                     </TableCell>
                     <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${r.roomName}`} />}>
-                          <DotsThree className="size-4" />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => onEditRoom(r)}>
-                            <PencilSimple className="size-4" /> Edit / move
-                          </DropdownMenuItem>
-                          <DropdownMenuItem render={<Link href={`/scheduler?roomId=${r.id}`} />}>
-                            <CalendarDots className="size-4" /> View timetable
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem variant="destructive" onClick={() => onDeleteRoom(r)}>
-                            <Trash className="size-4" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
+                        <ActionButton kind="edit" onClick={() => onEditRoom(r)}>
+                          Edit
+                        </ActionButton>
+                        <ActionButton kind="view" nativeButton={false} render={<Link href={`/scheduler?roomId=${r.id}`} />}>
+                          Timetable
+                        </ActionButton>
+                        <ActionButton kind="delete" onClick={() => onDeleteRoom(r)}>
+                          Delete
+                        </ActionButton>
+                      </div>
                     </TableCell>
                   </TableRow>
                 )}

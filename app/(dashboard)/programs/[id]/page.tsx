@@ -9,6 +9,7 @@ import { Breadcrumbs } from "@/components/ux/breadcrumbs";
 import { PageHeader } from "@/components/ux/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ActionButton } from "@/components/ux/action-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EditProgramButton } from "./edit-program-button";
@@ -110,12 +111,10 @@ export default async function ProgramDetailPage({ params }: { params: Promise<{ 
                     <TableCell>{sub.length}</TableCell>
                     <TableCell>{sub.reduce((sum, s) => sum + s.units, 0)}</TableCell>
                     <TableCell className="space-x-1 text-right">
-                      <Button size="sm" variant="ghost" nativeButton={false} render={<Link href={`/sections?${base}&${st.param}`} />}>
-                        Sections
-                      </Button>
-                      <Button size="sm" variant="ghost" nativeButton={false} render={<Link href={`/subjects?${base}&${st.param}`} />}>
-                        Subjects
-                      </Button>
+                      <div className="flex justify-end gap-1.5">
+                        <ActionButton kind="view" nativeButton={false} render={<Link href={`/sections?${base}&${st.param}`} />}>View sections</ActionButton>
+                        <ActionButton kind="view" nativeButton={false} render={<Link href={`/subjects?${base}&${st.param}`} />}>View subjects</ActionButton>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );

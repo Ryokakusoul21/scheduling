@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { NativeSelect } from "@/components/ux/native-select";
+import { ActionButton } from "@/components/ux/action-button";
 import { ChangeList } from "@/components/scheduler/change-list";
 import { DEFAULT_GRID, formatRange, timeOptions } from "@/lib/scheduler/timetable";
 import type { AdjustmentPlan, Placement, PlanItem } from "@/lib/occupancy/adjust";
@@ -286,18 +287,15 @@ export function AdjustmentWorkspace(props: {
               </p>
               <p className="text-xs">{r.reason}</p>
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => { setForm(fromReport(r)); setPreview(null); setApplied(null); }}>Review</Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
+                <ActionButton kind="view" onClick={() => { setForm(fromReport(r)); setPreview(null); setApplied(null); }}>Review</ActionButton>
+                <ActionButton
+                  kind="dismiss"
                   disabled={pending}
                   onClick={() => startTransition(async () => {
                     const res = await dismissReportAction(r.id);
                     if (res.ok) { toast.success("Report dismissed."); router.refresh(); } else toast.error(res.error);
                   })}
-                >
-                  Dismiss
-                </Button>
+                />
               </div>
             </div>
           ))}

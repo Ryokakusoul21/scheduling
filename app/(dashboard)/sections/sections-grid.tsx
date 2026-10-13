@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDots, DotsThree, PencilSimple, Plus, Trash, UsersThree } from "@phosphor-icons/react/ssr";
+import { CalendarDots, Plus, UsersThree } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
+import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog, FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
 import { DragHandle, SortableList } from "@/components/ux/sortable-list";
 import { EmptyState } from "@/components/ux/states";
@@ -129,20 +129,14 @@ export function SectionsGrid({
                     <p className="truncate font-semibold">{s.name}</p>
                     <p className="text-sm text-muted-foreground">{s.studentCount} learners</p>
                   </button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${s.name}`} />}>
-                      <DotsThree className="size-4" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => dialog.openEdit(s)}>
-                        <PencilSimple className="size-4" /> Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem variant="destructive" onClick={() => del.openEdit(s)}>
-                        <Trash className="size-4" /> Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
+                    <ActionButton kind="edit" onClick={() => dialog.openEdit(s)}>
+                      Edit
+                    </ActionButton>
+                    <ActionButton kind="delete" onClick={() => del.openEdit(s)}>
+                      Delete
+                    </ActionButton>
+                  </div>
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-1.5">
                   {s.program && <Badge variant="secondary">{s.program}</Badge>}

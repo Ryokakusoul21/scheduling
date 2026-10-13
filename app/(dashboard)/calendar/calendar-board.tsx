@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ux/native-select";
+import { ActionButton } from "@/components/ux/action-button";
 import { eachDate } from "@/lib/occupancy/engine";
 import {
   EVENT_COLORS,
@@ -253,9 +254,9 @@ function EventDialog({ event, onClose, canEdit, onEdit, onDeleted }: { event: Ca
           {event.href && <Button variant="outline" nativeButton={false} render={<Link href={event.href} />}>Open {event.type === "CLASS_SUSPENSION" ? "Schedule Adjustments" : EVENT_LABELS[event.type]}</Button>}
           {canEdit(event) && (
             <>
-              <Button
-                variant="ghost"
-                className="text-destructive"
+              <ActionButton
+                kind="delete"
+                size="default"
                 disabled={pending}
                 onClick={() =>
                   startTransition(async () => {
@@ -265,10 +266,8 @@ function EventDialog({ event, onClose, canEdit, onEdit, onDeleted }: { event: Ca
                     onDeleted();
                   })
                 }
-              >
-                Delete
-              </Button>
-              <Button onClick={() => onEdit(event)}>Edit</Button>
+              />
+              <ActionButton kind="edit" size="default" onClick={() => onEdit(event)} />
             </>
           )}
         </DialogFooter>

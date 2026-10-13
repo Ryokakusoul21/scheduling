@@ -3,10 +3,11 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRight, CheckCircle, Sparkle, XCircle } from "@phosphor-icons/react/ssr";
+import { ArrowRight, CheckCircle, Sparkle } from "@phosphor-icons/react/ssr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ActionButton } from "@/components/ux/action-button";
 import type { ProposalView } from "@/lib/workload/view";
 import { approveProposalAction, rejectProposalAction } from "@/app/(dashboard)/workload/actions";
 import { cn } from "@/lib/utils";
@@ -44,7 +45,7 @@ export function ProposalCards({ proposals, unit, compact = false }: { proposals:
             </CardTitle>
             {p.canReview && (
               <div className="flex gap-2">
-                <Button size="sm" variant="ghost" disabled={pending} onClick={() => review(p.id, false)}><XCircle className="size-4" /> Reject</Button>
+                <ActionButton kind="reject" disabled={pending} onClick={() => review(p.id, false)} />
                 <Button size="sm" disabled={pending} onClick={() => review(p.id, true)}><CheckCircle className="size-4" /> Approve and apply</Button>
               </div>
             )}

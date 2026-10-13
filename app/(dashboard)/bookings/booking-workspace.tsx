@@ -12,6 +12,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { NativeSelect } from "@/components/ux/native-select";
+import { ActionButton } from "@/components/ux/action-button";
 import { ExportButtons, PrintHeader } from "@/components/ux/export-buttons";
 import { ChangeList } from "@/components/scheduler/change-list";
 import { DEFAULT_GRID, formatRange, timeOptions } from "@/lib/scheduler/timetable";
@@ -236,7 +237,7 @@ export function BookingWorkspace({ bookings, showBookedBy }: { bookings: Booking
                     <TableCell><Badge variant={b.status === "CONFIRMED" ? "default" : "outline"}>{b.status === "CONFIRMED" ? "Confirmed" : "Cancelled"}</Badge></TableCell>
                     <TableCell className="print:hidden">
                       {b.status === "CONFIRMED" && b.canCancel && (
-                        <Button size="sm" variant="ghost" disabled={pending} onClick={() => cancel(b.id)}>Cancel</Button>
+                        <ActionButton kind="cancel" disabled={pending} onClick={() => cancel(b.id)}>Cancel booking</ActionButton>
                       )}
                     </TableCell>
                   </TableRow>

@@ -1,11 +1,11 @@
 "use client";
 
-import { BookOpen, DotsThree, PencilSimple, Plus, Trash } from "@phosphor-icons/react/ssr";
+import { BookOpen, Plus } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
+import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog, FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
 import { DragHandle, SortableList } from "@/components/ux/sortable-list";
 import { EmptyState } from "@/components/ux/states";
@@ -133,7 +133,7 @@ export function SubjectsList({
                 <TableHead className="text-right">Units</TableHead>
                 <TableHead className="text-right">Lec / Lab hrs</TableHead>
                 <TableHead>Room</TableHead>
-                <TableHead className="w-10">
+                <TableHead>
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
@@ -172,20 +172,14 @@ export function SubjectsList({
                     <Badge variant="outline">{ROOM_TYPES.find((r) => r.value === s.requiredRoomType)?.label ?? s.requiredRoomType}</Badge>
                   </TableCell>
                   <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${s.code}`} />}>
-                        <DotsThree className="size-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => dialog.openEdit(s)}>
-                          <PencilSimple className="size-4" /> Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem variant="destructive" onClick={() => del.openEdit(s)}>
-                          <Trash className="size-4" /> Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
+                      <ActionButton kind="edit" onClick={() => dialog.openEdit(s)}>
+                        Edit
+                      </ActionButton>
+                      <ActionButton kind="delete" onClick={() => del.openEdit(s)}>
+                        Delete
+                      </ActionButton>
+                    </div>
                   </TableCell>
                 </TableRow>
               )}

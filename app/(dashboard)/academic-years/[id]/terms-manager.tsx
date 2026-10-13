@@ -2,11 +2,11 @@
 
 import { useTransition } from "react";
 import { toast } from "sonner";
-import { CalendarPlus, DotsThree, PencilSimple, Plus, Star, Trash, Sparkle } from "@phosphor-icons/react/ssr";
+import { CalendarPlus, Plus, Sparkle } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
+import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog, FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
 import { useShortcut } from "@/components/ux/shortcuts";
 import { LEVELS, termLabel, termTypesFor, type AcademicLevel } from "@/lib/academics/levels";
@@ -133,25 +133,19 @@ export function TermsManager({
                         </p>
                         <p className="text-xs text-muted-foreground">{t.classes} scheduled classes</p>
                       </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${termLabel(t.type)}`} />}>
-                          <DotsThree className="size-4" />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => dialog.openEdit({ term: t, programId: t.programId })}>
-                            <PencilSimple className="size-4" /> Edit dates
-                          </DropdownMenuItem>
-                          {!t.isActive && (
-                            <DropdownMenuItem onClick={() => setActive(t)}>
-                              <Star className="size-4" /> Set as active
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem variant="destructive" onClick={() => del.openEdit(t)}>
-                            <Trash className="size-4" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
+                        <ActionButton kind="edit" onClick={() => dialog.openEdit({ term: t, programId: t.programId })}>
+                          Edit dates
+                        </ActionButton>
+                        {!t.isActive && (
+                          <ActionButton kind="activate" onClick={() => setActive(t)}>
+                            Set as active
+                          </ActionButton>
+                        )}
+                        <ActionButton kind="delete" onClick={() => del.openEdit(t)}>
+                          Delete
+                        </ActionButton>
+                      </div>
                     </li>
                   ))}
                 </ul>

@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { DotsThree, PencilSimple, Plus, Trash, GraduationCap, Student, ArrowRight } from "@phosphor-icons/react/ssr";
+import { Plus, GraduationCap, Student, ArrowRight } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
+import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog, FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
 import { EmptyState, PageHeader } from "@/components/ux/states";
 import { DragHandle, SortableList } from "@/components/ux/sortable-list";
@@ -161,20 +161,14 @@ function ProgramSection({
                     <p className="line-clamp-2 text-sm text-muted-foreground">{p.name}</p>
                     {p.department && <p className="mt-1 truncate text-xs text-muted-foreground">{p.department}</p>}
                   </Link>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${p.code}`} />}>
-                      <DotsThree className="size-4" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onEdit(p)}>
-                        <PencilSimple className="size-4" /> Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem variant="destructive" onClick={() => onDelete(p)}>
-                        <Trash className="size-4" /> Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
+                    <ActionButton kind="edit" onClick={() => onEdit(p)}>
+                      Edit
+                    </ActionButton>
+                    <ActionButton kind="delete" onClick={() => onDelete(p)}>
+                      Delete
+                    </ActionButton>
+                  </div>
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-1.5">
                   <Badge variant="secondary">{p.sections} sections</Badge>

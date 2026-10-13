@@ -2,14 +2,14 @@
 
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { CalendarDots, DotsThree, MagnifyingGlass, PencilSimple, Plus, Rows, SquaresFour, Trash, UserSquare, X } from "@phosphor-icons/react/ssr";
+import { MagnifyingGlass, Plus, Rows, SquaresFour, UserSquare, X } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
+import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog, FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
 import { NativeSelect } from "@/components/ux/native-select";
 import { EmptyState, PageHeader } from "@/components/ux/states";
@@ -110,23 +110,17 @@ export function FacultyBrowser({
   ];
 
   const menu = (f: FacultyRow) => (
-    <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${f.fullName}`} />}>
-        <DotsThree className="size-4" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => dialog.openEdit(f)}>
-          <PencilSimple className="size-4" /> Edit
-        </DropdownMenuItem>
-        <DropdownMenuItem render={<Link href={`/scheduler?facultyId=${f.id}`} />}>
-          <CalendarDots className="size-4" /> View timetable
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onClick={() => del.openEdit(f)}>
-          <Trash className="size-4" /> Delete
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
+      <ActionButton kind="edit" onClick={() => dialog.openEdit(f)}>
+        Edit
+      </ActionButton>
+      <ActionButton kind="view" nativeButton={false} render={<Link href={`/scheduler?facultyId=${f.id}`} />}>
+        Timetable
+      </ActionButton>
+      <ActionButton kind="delete" onClick={() => del.openEdit(f)}>
+        Delete
+      </ActionButton>
+    </div>
   );
 
   const loadBar = (f: FacultyRow) => {
@@ -266,7 +260,7 @@ export function FacultyBrowser({
                 <TableHead>Levels</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-48">Load</TableHead>
-                <TableHead className="w-10">
+                <TableHead>
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
