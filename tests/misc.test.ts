@@ -3,7 +3,8 @@ import { rankFaculty, rankRooms } from "@/lib/scheduler/suggest";
 import { ANY_YEAR, GENERAL, flowHref, isComplete, parseFlow } from "@/lib/academics/flow";
 import { LEVELS, levelForGrade, stageLabel, termTypesFor } from "@/lib/academics/levels";
 import { canAccessPath, rolesForPath } from "@/lib/permissions/routes";
-import { NAV_GROUPS } from "@/components/layout/nav-config";
+import { NAV_GROUPS, filterNavForRole } from "@/components/layout/nav-config";
+import { ROLES } from "@/lib/permissions/roles";
 import { eventToKey } from "@/lib/keyboard";
 
 const slot = { dayOfWeek: "MONDAY" as const, startMin: 480, endMin: 570 };
@@ -76,18 +77,20 @@ describe("card-flow URL state", () => {
 
 describe("RBAC route guards", () => {
   it("restricts admin and setup pages", () => {
-    expect(canAccessPath("/admin/users", "SCHEDULER")).toBe(false);
-    expect(canAccessPath("/admin/users", "SUPER_ADMIN")).toBe(true);
+    expect(canAccessPath("/admin/users", "HEAD_OF_DEPARTMENT")).toBe(false);
+    expect(canAccessPath("/admin/users", "ADMINISTRATOR")).toBe(true);
     expect(canAccessPath("/rooms", "FACULTY")).toBe(false);
-    expect(canAccessPath("/rooms/anything", "REGISTRAR")).toBe(true);
-    expect(canAccessPath("/scheduler", "STUDENT")).toBe(true);
-    expect(canAccessPath("/roomsXYZ", "STUDENT")).toBe(true); // prefix match is per path segment
+    expect(canAccessPath("/rooms/anything", "HEAD_OF_DEPARTMENT")).toBe(true);
+    expect(canAccessPath("/bookings", "FACULTY")).toBe(true);
+    expect(canAccessPath("/roomsXYZ", "FACULTY")).toBe(true); // prefix match is per path segment
+    expect(rolesForPath("/scheduler")).toBeNull();
   });
 
-  it("matches the sidebar: every restricted nav item is guarded with the same roles", () => {
-    for (const item of NAV_GROUPS.flatMap((g) => g.items)) {
-      if (!item.roles) continue;
-      expect(rolesForPath(item.href)?.slice().sort(), item.href).toEqual(item.roles.slice().sort());
+  it("matches the sidebar: a role can open a page exactly when its sidebar links to it", () => {
+    const hrefs = [...new Set(NAV_GROUPS.flatMap((g) => g.items.map((i) => i.href)))];
+    for (const role of ROLES) {
+      const visible = filterNavForRole(role).flatMap((g) => g.items.map((i) => i.href));
+      for (const href of hrefs) expect(canAccessPath(href, role), `${role} ${href}`).toBe(visible.includes(href));
     }
   });
 });

@@ -14,14 +14,14 @@ function layout(title: string, bodyHtml: string) {
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
         <tr><td style="background:${BRAND};color:#ffffff;padding:18px 24px;font-size:15px;font-weight:600;letter-spacing:.3px">
-          GCST Scheduling System
+          GRANBY COLLEGES OF SCIENCE & TECHNOLOGY Scheduling System
         </td></tr>
         <tr><td style="padding:24px">
           <h1 style="margin:0 0 12px;font-size:20px">${escape(title)}</h1>
           ${bodyHtml}
         </td></tr>
         <tr><td style="padding:14px 24px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280">
-          Granby Colleges of Science &amp; Technology · Naic, Cavite<br/>
+          GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY · Naic, Cavite<br/>
           This is an automated message. Please do not reply.
         </td></tr>
       </table>

@@ -1,9 +1,13 @@
+/**
+ * Sample data for GRANBY COLLEGES OF SCIENCE & TECHNOLOGY so every feature can be demonstrated immediately.
+ * Dates are computed from the day the seed runs, so the current term, calendar, and examinations are always "now".
+ * Run on an empty database: `npx prisma migrate reset` (drops data, migrates, then seeds).
+ */
 import {
   PrismaClient,
   type AcademicLevel,
   type DayOfWeek,
   type GradeLevel,
-  type Role,
   type RoomType,
   type SemesterType,
   type YearLevel,
@@ -19,55 +23,53 @@ const DEV_PASSWORD = "Passw0rd!";
 const WEEKDAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
 const SCHOOL_DAYS: DayOfWeek[] = [...WEEKDAYS, "SATURDAY"];
 
-async function hash(pw: string) {
-  return bcrypt.hash(pw, 12);
+const pad = (n: number) => String(n).padStart(2, "0");
+const ymd = (y: number, m: number, d: number) => `${y}-${pad(m)}-${pad(d)}`;
+const date = (s: string) => new Date(`${s}T00:00:00Z`);
+const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
+
+/** Date string `days` after today (local calendar date). */
+function fromToday(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return ymd(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 
-/** Terms have no natural unique key (programId is nullable), so look them up first. */
-async function upsertTerm(data: {
-  academicYearId: string;
-  level: AcademicLevel;
-  programId?: string | null;
-  type: SemesterType;
-  name: string;
-  startDate: string;
-  endDate: string;
-  isActive?: boolean;
-}) {
-  const existing = await prisma.semester.findFirst({
-    where: { academicYearId: data.academicYearId, level: data.level, programId: data.programId ?? null, type: data.type },
-  });
-  if (existing) return existing;
-  return prisma.semester.create({
-    data: { ...data, programId: data.programId ?? null, startDate: new Date(data.startDate), endDate: new Date(data.endDate) },
-  });
+/** Next date on or after `fromDays` from today that falls on the given weekday (0 = Sunday). */
+function nextWeekday(weekday: number, fromDays: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + fromDays);
+  while (d.getDay() !== weekday) d.setDate(d.getDate() + 1);
+  return ymd(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 
-async function upsertSection(data: {
-  name: string;
-  level: AcademicLevel;
-  yearLevel?: YearLevel;
-  gradeLevel?: GradeLevel;
-  programId?: string | null;
-  semesterId?: string | null;
-  studentCount: number;
-  sortOrder: number;
-}) {
-  const existing = await prisma.section.findFirst({ where: { name: data.name, semesterId: data.semesterId ?? null } });
-  if (existing) {
-    return prisma.section.update({
-      where: { id: existing.id },
-      data: { level: data.level, gradeLevel: data.gradeLevel ?? null, sortOrder: data.sortOrder },
-    });
-  }
-  return prisma.section.create({ data });
+/** Small deterministic random generator so enrollment history is identical on every seed. */
+function mulberry32(seed: number) {
+  return () => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 async function main() {
-  console.log("Seeding Granby Colleges of Science & Technology scheduling database...");
+  if ((await prisma.user.count()) > 0) {
+    console.log("Database already has data. Run `npx prisma migrate reset` to start over with fresh sample data.");
+    return;
+  }
+  console.log("Seeding GRANBY COLLEGES OF SCIENCE & TECHNOLOGY scheduling database...");
 
   // -------------------------------------------------------------------
-  // Departments, college programs, and SHS strands
+  // Academic calendar relative to today (academic year starts in August)
+  // -------------------------------------------------------------------
+  const now = new Date();
+  const ayYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+  const inFirstSemester = now.getMonth() >= 6;
+
+  // -------------------------------------------------------------------
+  // Departments, college programs, and Senior High School strands
   // -------------------------------------------------------------------
   const departmentDefs = [
     { code: "CCS", name: "College of Computer Studies" },
@@ -78,118 +80,102 @@ async function main() {
     { code: "CAS", name: "College of Arts and Sciences" },
     { code: "BED", name: "Basic Education Department" },
   ];
-  const deptByCode: Record<string, { id: string }> = {};
-  for (const d of departmentDefs) {
-    deptByCode[d.code] = await prisma.department.upsert({ where: { code: d.code }, update: {}, create: d });
-  }
+  const dept: Record<string, string> = {};
+  for (const d of departmentDefs) dept[d.code] = (await prisma.department.create({ data: d })).id;
 
-  const programByCode: Record<string, { id: string }> = {};
+  const program: Record<string, string> = {};
   for (const [i, p] of DEFAULT_COLLEGE_PROGRAMS.entries()) {
-    programByCode[p.code] = await prisma.program.upsert({
-      where: { code: p.code },
-      update: { level: "COLLEGE", sortOrder: i },
-      create: { code: p.code, name: p.name, level: "COLLEGE", sortOrder: i, departmentId: deptByCode[p.department].id },
-    });
+    program[p.code] = (
+      await prisma.program.create({ data: { code: p.code, name: p.name, level: "COLLEGE", sortOrder: i, departmentId: dept[p.department] } })
+    ).id;
   }
   for (const [i, s] of DEFAULT_SHS_STRANDS.entries()) {
-    programByCode[s.code] = await prisma.program.upsert({
-      where: { code: s.code },
-      update: { level: "SENIOR_HIGH", sortOrder: i },
-      create: { code: s.code, name: s.name, level: "SENIOR_HIGH", sortOrder: i, departmentId: deptByCode.BED.id },
-    });
+    program[s.code] = (
+      await prisma.program.create({ data: { code: s.code, name: s.name, level: "SENIOR_HIGH", sortOrder: i, departmentId: dept.BED } })
+    ).id;
   }
 
   // -------------------------------------------------------------------
   // Academic years and terms
   // -------------------------------------------------------------------
-  const ay2526 = await prisma.academicYear.upsert({
-    where: { name: "2025-2026" },
-    update: { isActive: true },
-    create: { name: "2025-2026", startDate: new Date("2025-08-01"), endDate: new Date("2026-06-30"), isActive: true },
+  await prisma.academicYear.create({
+    data: { name: `${ayYear - 1}-${ayYear}`, startDate: date(ymd(ayYear - 1, 8, 1)), endDate: date(ymd(ayYear, 6, 30)) },
   });
-  await prisma.academicYear.upsert({
-    where: { name: "2024-2025" },
-    update: {},
-    create: { name: "2024-2025", startDate: new Date("2024-08-01"), endDate: new Date("2025-06-30"), isActive: false },
+  const ay = await prisma.academicYear.create({
+    data: { name: `${ayYear}-${ayYear + 1}`, startDate: date(ymd(ayYear, 8, 1)), endDate: date(ymd(ayYear + 1, 6, 30)), isActive: true },
   });
+  const term = (level: AcademicLevel, type: SemesterType, name: string, start: string, end: string, isActive = false) =>
+    prisma.semester.create({ data: { academicYearId: ay.id, level, type, name, startDate: date(start), endDate: date(end), isActive } });
 
-  // College semesters shared by every course (programId = null). Per-course semesters can be added in the UI.
-  const firstSem = await upsertTerm({
-    academicYearId: ay2526.id, level: "COLLEGE", type: "FIRST", name: "First Semester",
-    startDate: "2025-08-01", endDate: "2025-12-15", isActive: true,
-  });
-  await upsertTerm({ academicYearId: ay2526.id, level: "COLLEGE", type: "SECOND", name: "Second Semester", startDate: "2026-01-05", endDate: "2026-05-15" });
-  await upsertTerm({ academicYearId: ay2526.id, level: "COLLEGE", type: "SUMMER", name: "Summer", startDate: "2026-06-01", endDate: "2026-06-30" });
+  const firstSem = await term("COLLEGE", "FIRST", "First Semester", ymd(ayYear, 8, 3), ymd(ayYear, 12, 18), inFirstSemester);
+  const secondSem = await term("COLLEGE", "SECOND", "Second Semester", ymd(ayYear + 1, 1, 11), ymd(ayYear + 1, 5, 21), !inFirstSemester);
+  await term("COLLEGE", "SUMMER", "Summer", ymd(ayYear + 1, 6, 1), ymd(ayYear + 1, 6, 30));
+  const collegeTerm = inFirstSemester ? firstSem : secondSem;
 
-  const quarterDates = [
-    { type: "QUARTER_1" as const, name: "First Quarter", startDate: "2025-08-04", endDate: "2025-10-17" },
-    { type: "QUARTER_2" as const, name: "Second Quarter", startDate: "2025-10-20", endDate: "2026-01-16" },
-    { type: "QUARTER_3" as const, name: "Third Quarter", startDate: "2026-01-19", endDate: "2026-03-27" },
-    { type: "QUARTER_4" as const, name: "Fourth Quarter", startDate: "2026-03-30", endDate: "2026-06-05" },
+  const quarters = [
+    { type: "QUARTER_1" as const, name: "First Quarter", start: ymd(ayYear, 8, 3), end: ymd(ayYear, 10, 16) },
+    { type: "QUARTER_2" as const, name: "Second Quarter", start: ymd(ayYear, 10, 19), end: ymd(ayYear + 1, 1, 15) },
+    { type: "QUARTER_3" as const, name: "Third Quarter", start: ymd(ayYear + 1, 1, 18), end: ymd(ayYear + 1, 3, 26) },
+    { type: "QUARTER_4" as const, name: "Fourth Quarter", start: ymd(ayYear + 1, 3, 29), end: ymd(ayYear + 1, 6, 4) },
   ];
-  const firstQuarterByLevel: Partial<Record<AcademicLevel, { id: string }>> = {};
+  const today = fromToday(0);
+  const currentQuarter = quarters.find((q) => today >= q.start && today <= q.end) ?? quarters[0];
+  const quarterTerm: Partial<Record<AcademicLevel, { id: string }>> = {};
   for (const level of ["SENIOR_HIGH", "JUNIOR_HIGH", "ELEMENTARY"] as const) {
-    for (const q of quarterDates) {
-      const term = await upsertTerm({ academicYearId: ay2526.id, level, ...q, isActive: q.type === "QUARTER_1" });
-      if (q.type === "QUARTER_1") firstQuarterByLevel[level] = term;
+    for (const q of quarters) {
+      const t = await term(level, q.type, q.name, q.start, q.end, q === currentQuarter);
+      if (q === currentQuarter) quarterTerm[level] = t;
     }
   }
 
   // -------------------------------------------------------------------
-  // Buildings -> floors -> rooms
+  // Buildings -> floors -> rooms (rooms owned by a department or shared)
   // -------------------------------------------------------------------
-  const buildingDefs: { name: string; code: string; floors: string[] }[] = [
-    { name: "Main Building", code: "MB", floors: ["Ground Floor", "2nd Floor", "3rd Floor"] },
-    { name: "IT Building", code: "ITB", floors: ["Ground Floor", "2nd Floor"] },
-    { name: "Science Building", code: "SB", floors: ["Ground Floor"] },
-    { name: "Basic Education Building", code: "BEB", floors: ["Ground Floor", "2nd Floor"] },
-    { name: "Admin Building", code: "AB", floors: ["Ground Floor"] },
+  const buildingDefs = [
+    { name: "Main Building", floors: ["Ground Floor", "Second Floor", "Third Floor"] },
+    { name: "Information Technology Building", floors: ["Ground Floor", "Second Floor"] },
+    { name: "Science Building", floors: ["Ground Floor"] },
+    { name: "Basic Education Building", floors: ["Ground Floor", "Second Floor"] },
+    { name: "Administration Building", floors: ["Ground Floor"] },
   ];
   const floorId: Record<string, string> = {};
   for (const [i, b] of buildingDefs.entries()) {
-    const building = await prisma.building.upsert({
-      where: { name: b.name },
-      update: { code: b.code, sortOrder: i },
-      create: { name: b.name, code: b.code, sortOrder: i },
-    });
-    for (const [n, floorName] of b.floors.entries()) {
-      const floor = await prisma.floor.upsert({
-        where: { buildingId_name: { buildingId: building.id, name: floorName } },
-        update: { number: n + 1 },
-        create: { buildingId: building.id, name: floorName, number: n + 1 },
-      });
-      floorId[`${b.name}/${floorName}`] = floor.id;
+    const building = await prisma.building.create({ data: { name: b.name, sortOrder: i } });
+    for (const [n, name] of b.floors.entries()) {
+      floorId[`${b.name}/${name}`] = (await prisma.floor.create({ data: { buildingId: building.id, name, number: n + 1 } })).id;
     }
   }
 
-  const roomDefs: { number: string; name: string; floor: string; capacity: number; type: RoomType; equipment: string[] }[] = [
+  type RoomDef = { number: string; name: string; floor: string; capacity: number; type: RoomType; equipment: string[]; dept?: string };
+  const roomDefs: RoomDef[] = [
     { number: "101", name: "Room 101", floor: "Main Building/Ground Floor", capacity: 45, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Projector"] },
     { number: "102", name: "Room 102", floor: "Main Building/Ground Floor", capacity: 45, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Projector"] },
-    { number: "201", name: "Room 201", floor: "Main Building/2nd Floor", capacity: 40, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Projector"] },
-    { number: "202", name: "Room 202", floor: "Main Building/2nd Floor", capacity: 40, type: "LECTURE_ROOM", equipment: ["Whiteboard"] },
-    { number: "301", name: "Room 301", floor: "Main Building/3rd Floor", capacity: 40, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Projector", "Aircon"] },
-    { number: "302", name: "Room 302", floor: "Main Building/3rd Floor", capacity: 35, type: "LECTURE_ROOM", equipment: ["Whiteboard"] },
-    { number: "303", name: "Room 303", floor: "Main Building/3rd Floor", capacity: 38, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Projector"] },
-    { number: "LAB1", name: "Computer Laboratory 1", floor: "IT Building/Ground Floor", capacity: 40, type: "COMPUTER_LABORATORY", equipment: ["40 PCs", "Projector", "Aircon"] },
-    { number: "LAB2", name: "Computer Laboratory 2", floor: "IT Building/Ground Floor", capacity: 40, type: "COMPUTER_LABORATORY", equipment: ["40 PCs", "Projector", "Aircon"] },
-    { number: "LAB3", name: "Computer Laboratory 3", floor: "IT Building/2nd Floor", capacity: 35, type: "COMPUTER_LABORATORY", equipment: ["35 PCs", "Projector"] },
-    { number: "LAB4", name: "Computer Laboratory 4", floor: "IT Building/2nd Floor", capacity: 30, type: "COMPUTER_LABORATORY", equipment: ["30 PCs"] },
-    { number: "LAB5", name: "Computer Laboratory 5", floor: "IT Building/2nd Floor", capacity: 40, type: "COMPUTER_LABORATORY", equipment: ["40 PCs", "Projector"] },
-    { number: "SCI1", name: "Science Laboratory 1", floor: "Science Building/Ground Floor", capacity: 35, type: "SCIENCE_LABORATORY", equipment: ["Lab benches", "Fume hood"] },
-    { number: "SCI2", name: "Science Laboratory 2", floor: "Science Building/Ground Floor", capacity: 35, type: "SCIENCE_LABORATORY", equipment: ["Lab benches"] },
-    { number: "BE101", name: "Classroom BE-101", floor: "Basic Education Building/Ground Floor", capacity: 40, type: "LECTURE_ROOM", equipment: ["Whiteboard", "TV"] },
-    { number: "BE102", name: "Classroom BE-102", floor: "Basic Education Building/Ground Floor", capacity: 40, type: "LECTURE_ROOM", equipment: ["Whiteboard", "TV"] },
-    { number: "BE103", name: "Classroom BE-103", floor: "Basic Education Building/Ground Floor", capacity: 35, type: "LECTURE_ROOM", equipment: ["Whiteboard"] },
-    { number: "BE201", name: "Classroom BE-201", floor: "Basic Education Building/2nd Floor", capacity: 45, type: "LECTURE_ROOM", equipment: ["Whiteboard", "TV"] },
-    { number: "BE202", name: "Classroom BE-202", floor: "Basic Education Building/2nd Floor", capacity: 45, type: "LECTURE_ROOM", equipment: ["Whiteboard", "TV"] },
-    { number: "CONF1", name: "Conference Room A", floor: "Admin Building/Ground Floor", capacity: 20, type: "CONFERENCE_ROOM", equipment: ["Smart TV", "Video Conferencing"] },
+    { number: "103", name: "Room 103", floor: "Main Building/Ground Floor", capacity: 50, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Projector", "Air conditioning"] },
+    { number: "201", name: "Room 201", floor: "Main Building/Second Floor", capacity: 40, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Projector"] },
+    { number: "202", name: "Room 202", floor: "Main Building/Second Floor", capacity: 40, type: "LECTURE_ROOM", equipment: ["Whiteboard"] },
+    { number: "203", name: "Room 203", floor: "Main Building/Second Floor", capacity: 42, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Television"] },
+    { number: "301", name: "Room 301", floor: "Main Building/Third Floor", capacity: 40, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Projector", "Air conditioning"] },
+    { number: "302", name: "Room 302", floor: "Main Building/Third Floor", capacity: 35, type: "LECTURE_ROOM", equipment: ["Whiteboard"] },
+    { number: "303", name: "Room 303", floor: "Main Building/Third Floor", capacity: 38, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Projector"] },
+    { number: "1101", name: "Computer Laboratory 1", floor: "Information Technology Building/Ground Floor", capacity: 40, type: "COMPUTER_LABORATORY", equipment: ["40 computers", "Projector", "Air conditioning"], dept: "CCS" },
+    { number: "1102", name: "Computer Laboratory 2", floor: "Information Technology Building/Ground Floor", capacity: 40, type: "COMPUTER_LABORATORY", equipment: ["40 computers", "Projector", "Air conditioning"], dept: "CCS" },
+    { number: "1201", name: "Computer Laboratory 3", floor: "Information Technology Building/Second Floor", capacity: 35, type: "COMPUTER_LABORATORY", equipment: ["35 computers", "Projector"], dept: "CCS" },
+    { number: "1202", name: "Computer Laboratory 4", floor: "Information Technology Building/Second Floor", capacity: 30, type: "COMPUTER_LABORATORY", equipment: ["30 computers"], dept: "CCS" },
+    { number: "1203", name: "Lecture Room 1203", floor: "Information Technology Building/Second Floor", capacity: 40, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Projector"], dept: "CCS" },
+    { number: "2101", name: "Science Laboratory 1", floor: "Science Building/Ground Floor", capacity: 35, type: "SCIENCE_LABORATORY", equipment: ["Laboratory benches", "Fume hood"], dept: "CAS" },
+    { number: "2102", name: "Science Laboratory 2", floor: "Science Building/Ground Floor", capacity: 35, type: "SCIENCE_LABORATORY", equipment: ["Laboratory benches"], dept: "CAS" },
+    { number: "3101", name: "Classroom 3101", floor: "Basic Education Building/Ground Floor", capacity: 45, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Television"], dept: "BED" },
+    { number: "3102", name: "Classroom 3102", floor: "Basic Education Building/Ground Floor", capacity: 45, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Television"], dept: "BED" },
+    { number: "3103", name: "Classroom 3103", floor: "Basic Education Building/Ground Floor", capacity: 35, type: "LECTURE_ROOM", equipment: ["Whiteboard"], dept: "BED" },
+    { number: "3201", name: "Classroom 3201", floor: "Basic Education Building/Second Floor", capacity: 45, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Television"], dept: "BED" },
+    { number: "3202", name: "Classroom 3202", floor: "Basic Education Building/Second Floor", capacity: 45, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Television"], dept: "BED" },
+    { number: "4101", name: "Conference Room A", floor: "Administration Building/Ground Floor", capacity: 20, type: "CONFERENCE_ROOM", equipment: ["Smart television", "Video conferencing"] },
+    { number: "4102", name: "Audio-Visual Room", floor: "Administration Building/Ground Floor", capacity: 120, type: "OTHER", equipment: ["Sound system", "Projector", "Air conditioning"] },
   ];
-  const roomByNumber: Record<string, { id: string }> = {};
+  const rooms: (RoomDef & { id: string })[] = [];
   for (const [i, r] of roomDefs.entries()) {
-    roomByNumber[r.number] = await prisma.room.upsert({
-      where: { roomNumber: r.number },
-      update: { floorId: floorId[r.floor], sortOrder: i },
-      create: {
+    const room = await prisma.room.create({
+      data: {
         roomNumber: r.number,
         roomName: r.name,
         floorId: floorId[r.floor],
@@ -197,103 +183,83 @@ async function main() {
         capacity: r.capacity,
         roomType: r.type,
         equipment: r.equipment,
-        status: "AVAILABLE",
+        departmentId: r.dept ? dept[r.dept] : null,
         availability: { create: SCHOOL_DAYS.map((d) => ({ dayOfWeek: d, startMin: 7 * 60, endMin: 19 * 60 })) },
       },
     });
+    rooms.push({ ...r, id: room.id });
   }
-  // Remove the placeholder building the migration may have created once its rooms are re-homed.
-  const unassigned = await prisma.building.findUnique({ where: { name: "Unassigned" }, include: { floors: { include: { rooms: true } } } });
-  if (unassigned && unassigned.floors.every((f) => f.rooms.length === 0)) {
-    await prisma.building.delete({ where: { id: unassigned.id } });
-  }
+  const roomByNumber = Object.fromEntries(rooms.map((r) => [r.number, r]));
 
   // -------------------------------------------------------------------
-  // Sections (College, SHS, JHS, Elementary)
+  // Sections
   // -------------------------------------------------------------------
-  const collegeSections: { name: string; program: string; year: YearLevel; count: number }[] = [
-    { name: "BSIT 1A", program: "BSIT", year: "FIRST", count: 38 },
-    { name: "BSIT 1B", program: "BSIT", year: "FIRST", count: 35 },
-    { name: "BSIT 2A", program: "BSIT", year: "SECOND", count: 34 },
-    { name: "BSIT 2B", program: "BSIT", year: "SECOND", count: 30 },
-    { name: "BSIT 3A", program: "BSIT", year: "THIRD", count: 32 },
-    { name: "BSIT 4A", program: "BSIT", year: "FOURTH", count: 28 },
-    { name: "BSCS 1A", program: "BSCS", year: "FIRST", count: 33 },
-    { name: "BSCS 2A", program: "BSCS", year: "SECOND", count: 29 },
-    { name: "BSCrim 1A", program: "BSCrim", year: "FIRST", count: 42 },
-    { name: "BSA 1A", program: "BSA", year: "FIRST", count: 36 },
-    { name: "BSBA 1A", program: "BSBA", year: "FIRST", count: 40 },
-    { name: "BSTM 1A", program: "BSTM", year: "FIRST", count: 34 },
-    { name: "BSISM 1A", program: "BSISM", year: "FIRST", count: 30 },
-    { name: "BEED 1A", program: "BEED", year: "FIRST", count: 28 },
-    { name: "BSED 1A", program: "BSED", year: "FIRST", count: 25 },
+  type SectionDef = { name: string; program?: string; year?: YearLevel; grade?: GradeLevel; level: AcademicLevel; count: number; subjects?: string[] };
+  const collegeSections: SectionDef[] = [
+    { name: "Information Technology 1-A", program: "BSIT", year: "FIRST", level: "COLLEGE", count: 38, subjects: ["GE101", "GE102", "GE104", "IT101", "IT102", "GRANBY100"] },
+    { name: "Information Technology 1-B", program: "BSIT", year: "FIRST", level: "COLLEGE", count: 35, subjects: ["GE101", "GE102", "GE103", "IT101", "IT102", "GRANBY100"] },
+    { name: "Information Technology 2-A", program: "BSIT", year: "SECOND", level: "COLLEGE", count: 34, subjects: ["IT201", "IT202", "IT203"] },
+    { name: "Information Technology 2-B", program: "BSIT", year: "SECOND", level: "COLLEGE", count: 30, subjects: ["IT201", "IT202", "IT203"] },
+    { name: "Information Technology 3-A", program: "BSIT", year: "THIRD", level: "COLLEGE", count: 32, subjects: ["IT301", "IT302", "IT303"] },
+    { name: "Information Technology 4-A", program: "BSIT", year: "FOURTH", level: "COLLEGE", count: 28, subjects: ["IT401", "IT302"] },
+    { name: "Computer Science 1-A", program: "BSCS", year: "FIRST", level: "COLLEGE", count: 33, subjects: ["GE101", "GE104", "IT101", "GRANBY100"] },
+    { name: "Computer Science 2-A", program: "BSCS", year: "SECOND", level: "COLLEGE", count: 29, subjects: ["CS201", "CS202", "IT201"] },
+    { name: "Criminology 1-A", program: "BSCrim", year: "FIRST", level: "COLLEGE", count: 42, subjects: ["GE101", "GE103", "CRIM101", "GRANBY100"] },
+    { name: "Accountancy 1-A", program: "BSA", year: "FIRST", level: "COLLEGE", count: 36, subjects: ["GE101", "GE102", "ACC101", "GRANBY100"] },
+    { name: "Business Administration 1-A", program: "BSBA", year: "FIRST", level: "COLLEGE", count: 40, subjects: ["GE103", "GE104", "BA101", "GRANBY100"] },
+    { name: "Tourism Management 1-A", program: "BSTM", year: "FIRST", level: "COLLEGE", count: 34, subjects: ["GE102", "TM101", "GRANBY100"] },
+    { name: "Industrial Security Management 1-A", program: "BSISM", year: "FIRST", level: "COLLEGE", count: 30, subjects: ["GE103", "ISM101"] },
+    { name: "Elementary Education 1-A", program: "BEED", year: "FIRST", level: "COLLEGE", count: 28, subjects: ["GE104", "EED101"] },
+    { name: "Secondary Education 1-A", program: "BSED", year: "FIRST", level: "COLLEGE", count: 25, subjects: ["GE102", "ED101", "SCI101"] },
   ];
-  const sectionByName: Record<string, { id: string }> = {};
-  for (const [i, s] of collegeSections.entries()) {
-    sectionByName[s.name] = await upsertSection({
-      name: s.name, level: "COLLEGE", yearLevel: s.year, programId: programByCode[s.program].id,
-      semesterId: firstSem.id, studentCount: s.count, sortOrder: i,
-    });
-  }
-
-  const shsSections: { name: string; strand: string; grade: GradeLevel; count: number }[] = [
-    { name: "11-STEM A", strand: "STEM", grade: "GRADE_11", count: 40 },
-    { name: "11-ABM A", strand: "ABM", grade: "GRADE_11", count: 38 },
-    { name: "11-HUMSS A", strand: "HUMSS", grade: "GRADE_11", count: 40 },
-    { name: "11-ICT A", strand: "ICT", grade: "GRADE_11", count: 32 },
-    { name: "12-STEM A", strand: "STEM", grade: "GRADE_12", count: 36 },
-    { name: "12-GAS A", strand: "GAS", grade: "GRADE_12", count: 35 },
-    { name: "12-TVL A", strand: "TVL", grade: "GRADE_12", count: 30 },
-    { name: "12-IA A", strand: "IA", grade: "GRADE_12", count: 28 },
+  const basicSections: SectionDef[] = [
+    { name: "Grade 11 - Newton", program: "STEM", grade: "GRADE_11", level: "SENIOR_HIGH", count: 40 },
+    { name: "Grade 11 - Pacioli", program: "ABM", grade: "GRADE_11", level: "SENIOR_HIGH", count: 38 },
+    { name: "Grade 11 - Balagtas", program: "HUMSS", grade: "GRADE_11", level: "SENIOR_HIGH", count: 40 },
+    { name: "Grade 11 - Turing", program: "ICT", grade: "GRADE_11", level: "SENIOR_HIGH", count: 32 },
+    { name: "Grade 12 - Curie", program: "STEM", grade: "GRADE_12", level: "SENIOR_HIGH", count: 36 },
+    { name: "Grade 12 - Socrates", program: "GAS", grade: "GRADE_12", level: "SENIOR_HIGH", count: 35 },
+    { name: "Grade 12 - Edison", program: "TVL", grade: "GRADE_12", level: "SENIOR_HIGH", count: 30 },
+    { name: "Grade 7 - Rizal", grade: "GRADE_7", level: "JUNIOR_HIGH", count: 42 },
+    { name: "Grade 7 - Bonifacio", grade: "GRADE_7", level: "JUNIOR_HIGH", count: 40 },
+    { name: "Grade 8 - Mabini", grade: "GRADE_8", level: "JUNIOR_HIGH", count: 41 },
+    { name: "Grade 9 - Luna", grade: "GRADE_9", level: "JUNIOR_HIGH", count: 39 },
+    { name: "Grade 10 - Aguinaldo", grade: "GRADE_10", level: "JUNIOR_HIGH", count: 38 },
+    { name: "Kinder - Sampaguita", grade: "KINDER", level: "ELEMENTARY", count: 25 },
+    { name: "Grade 1 - Rosal", grade: "GRADE_1", level: "ELEMENTARY", count: 32 },
+    { name: "Grade 2 - Ilang-Ilang", grade: "GRADE_2", level: "ELEMENTARY", count: 33 },
+    { name: "Grade 3 - Gumamela", grade: "GRADE_3", level: "ELEMENTARY", count: 34 },
+    { name: "Grade 4 - Dahlia", grade: "GRADE_4", level: "ELEMENTARY", count: 35 },
+    { name: "Grade 5 - Orchid", grade: "GRADE_5", level: "ELEMENTARY", count: 34 },
+    { name: "Grade 6 - Camia", grade: "GRADE_6", level: "ELEMENTARY", count: 36 },
   ];
-  for (const [i, s] of shsSections.entries()) {
-    sectionByName[s.name] = await upsertSection({
-      name: s.name, level: "SENIOR_HIGH", gradeLevel: s.grade, programId: programByCode[s.strand].id,
-      studentCount: s.count, sortOrder: i,
+  const section: Record<string, { id: string; count: number }> = {};
+  for (const [i, s] of [...collegeSections, ...basicSections].entries()) {
+    const row = await prisma.section.create({
+      data: {
+        name: s.name,
+        level: s.level,
+        yearLevel: s.year,
+        gradeLevel: s.grade,
+        programId: s.program ? program[s.program] : null,
+        semesterId: s.level === "COLLEGE" ? collegeTerm.id : null,
+        studentCount: s.count,
+        sortOrder: i,
+      },
     });
-  }
-
-  const basicSections: { name: string; level: AcademicLevel; grade: GradeLevel; count: number }[] = [
-    { name: "Grade 7 - Rizal", level: "JUNIOR_HIGH", grade: "GRADE_7", count: 42 },
-    { name: "Grade 7 - Bonifacio", level: "JUNIOR_HIGH", grade: "GRADE_7", count: 40 },
-    { name: "Grade 8 - Mabini", level: "JUNIOR_HIGH", grade: "GRADE_8", count: 41 },
-    { name: "Grade 9 - Luna", level: "JUNIOR_HIGH", grade: "GRADE_9", count: 39 },
-    { name: "Grade 10 - Aguinaldo", level: "JUNIOR_HIGH", grade: "GRADE_10", count: 38 },
-    { name: "Kinder - Sampaguita", level: "ELEMENTARY", grade: "KINDER", count: 25 },
-    { name: "Grade 1 - Rosal", level: "ELEMENTARY", grade: "GRADE_1", count: 32 },
-    { name: "Grade 2 - Ilang-Ilang", level: "ELEMENTARY", grade: "GRADE_2", count: 33 },
-    { name: "Grade 3 - Gumamela", level: "ELEMENTARY", grade: "GRADE_3", count: 34 },
-    { name: "Grade 4 - Dahlia", level: "ELEMENTARY", grade: "GRADE_4", count: 35 },
-    { name: "Grade 5 - Orchid", level: "ELEMENTARY", grade: "GRADE_5", count: 34 },
-    { name: "Grade 6 - Camia", level: "ELEMENTARY", grade: "GRADE_6", count: 36 },
-  ];
-  for (const [i, s] of basicSections.entries()) {
-    sectionByName[s.name] = await upsertSection({
-      name: s.name, level: s.level, gradeLevel: s.grade, studentCount: s.count, sortOrder: i,
-    });
+    section[s.name] = { id: row.id, count: s.count };
   }
 
   // -------------------------------------------------------------------
   // Subjects
   // -------------------------------------------------------------------
-  type SubjectDef = {
-    code: string;
-    name: string;
-    units: number;
-    lecture: number;
-    lab: number;
-    room: RoomType;
-    level?: AcademicLevel;
-    program?: string;
-    year?: YearLevel;
-    grade?: GradeLevel;
-  };
+  type SubjectDef = { code: string; name: string; units: number; lecture: number; lab: number; room: RoomType; level?: AcademicLevel; program?: string; year?: YearLevel; grade?: GradeLevel };
   const subjectDefs: SubjectDef[] = [
     { code: "GE101", name: "Mathematics in the Modern World", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", year: "FIRST" },
     { code: "GE102", name: "Purposive Communication", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", year: "FIRST" },
     { code: "GE103", name: "Readings in Philippine History", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", year: "FIRST" },
     { code: "GE104", name: "Understanding the Self", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", year: "FIRST" },
-    { code: "GCST100", name: "Granby Values", units: 1, lecture: 1, lab: 0, room: "LECTURE_ROOM" },
+    { code: "GRANBY100", name: "Granby Values", units: 1, lecture: 1, lab: 0, room: "LECTURE_ROOM" },
     { code: "IT101", name: "Introduction to Computing", units: 3, lecture: 2, lab: 1, room: "COMPUTER_LABORATORY", program: "BSIT", year: "FIRST" },
     { code: "IT102", name: "Computer Programming 1", units: 3, lecture: 2, lab: 1, room: "COMPUTER_LABORATORY", program: "BSIT", year: "FIRST" },
     { code: "IT103", name: "Computer Programming 2", units: 3, lecture: 2, lab: 1, room: "COMPUTER_LABORATORY", program: "BSIT", year: "FIRST" },
@@ -314,8 +280,6 @@ async function main() {
     { code: "ISM101", name: "Introduction to Industrial Security", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", program: "BSISM", year: "FIRST" },
     { code: "EED101", name: "Child and Adolescent Development", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", program: "BEED", year: "FIRST" },
     { code: "ED101", name: "The Teaching Profession", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", program: "BSED", year: "FIRST" },
-
-    // Senior High School (strand-specific when `program` is set, otherwise core)
     { code: "SHS-ORALCOM", name: "Oral Communication in Context", units: 1, lecture: 4, lab: 0, room: "LECTURE_ROOM", level: "SENIOR_HIGH", grade: "GRADE_11" },
     { code: "SHS-GENMATH", name: "General Mathematics", units: 1, lecture: 4, lab: 0, room: "LECTURE_ROOM", level: "SENIOR_HIGH", grade: "GRADE_11" },
     { code: "SHS-EARTHSCI", name: "Earth and Life Science", units: 1, lecture: 3, lab: 1, room: "SCIENCE_LABORATORY", level: "SENIOR_HIGH", grade: "GRADE_11" },
@@ -324,240 +288,337 @@ async function main() {
     { code: "SHS-CREATIVE", name: "Creative Writing", units: 1, lecture: 4, lab: 0, room: "LECTURE_ROOM", level: "SENIOR_HIGH", grade: "GRADE_11", program: "HUMSS" },
     { code: "SHS-CSS", name: "Computer Systems Servicing", units: 1, lecture: 1, lab: 3, room: "COMPUTER_LABORATORY", level: "SENIOR_HIGH", grade: "GRADE_11", program: "ICT" },
     { code: "SHS-STATPROB", name: "Statistics and Probability", units: 1, lecture: 4, lab: 0, room: "LECTURE_ROOM", level: "SENIOR_HIGH", grade: "GRADE_12" },
-    { code: "SHS-PR2", name: "Practical Research 2", units: 1, lecture: 4, lab: 0, room: "LECTURE_ROOM", level: "SENIOR_HIGH", grade: "GRADE_12" },
+    { code: "SHS-RESEARCH2", name: "Practical Research 2", units: 1, lecture: 4, lab: 0, room: "LECTURE_ROOM", level: "SENIOR_HIGH", grade: "GRADE_12" },
     { code: "SHS-GENBIO", name: "General Biology", units: 1, lecture: 3, lab: 1, room: "SCIENCE_LABORATORY", level: "SENIOR_HIGH", grade: "GRADE_12", program: "STEM" },
   ];
-
-  // Junior High and Elementary core subjects, one set per grade.
-  const jhsCore = ["Filipino", "English", "Mathematics", "Science", "Araling Panlipunan", "MAPEH", "TLE", "Edukasyon sa Pagpapakatao"];
+  const juniorHighCore = ["Filipino", "English", "Mathematics", "Science", "Araling Panlipunan", "Music, Arts, Physical Education and Health", "Technology and Livelihood Education", "Edukasyon sa Pagpapakatao"];
+  const codeOf = (name: string) => name.replace(/[^A-Za-z]/g, "").slice(0, 6).toUpperCase();
   for (const g of [7, 8, 9, 10]) {
-    for (const name of jhsCore) {
-      const isScience = name === "Science";
-      subjectDefs.push({
-        code: `${name.replace(/[^A-Za-z]/g, "").slice(0, 6).toUpperCase()}${g}`,
-        name: `${name} ${g}`,
-        units: 1,
-        lecture: isScience ? 3 : 4,
-        lab: isScience ? 1 : 0,
-        room: isScience ? "SCIENCE_LABORATORY" : "LECTURE_ROOM",
-        level: "JUNIOR_HIGH",
-        grade: `GRADE_${g}` as GradeLevel,
-      });
+    for (const name of juniorHighCore) {
+      const science = name === "Science";
+      subjectDefs.push({ code: `${codeOf(name)}${g}`, name: `${name} ${g}`, units: 1, lecture: science ? 3 : 4, lab: science ? 1 : 0, room: science ? "SCIENCE_LABORATORY" : "LECTURE_ROOM", level: "JUNIOR_HIGH", grade: `GRADE_${g}` as GradeLevel });
     }
   }
-  const elemCore = ["Filipino", "English", "Mathematics", "Science", "Araling Panlipunan", "MAPEH", "Edukasyon sa Pagpapakatao"];
   subjectDefs.push(
     { code: "K-LITERACY", name: "Kindergarten Literacy", units: 1, lecture: 3, lab: 0, room: "LECTURE_ROOM", level: "ELEMENTARY", grade: "KINDER" },
     { code: "K-NUMERACY", name: "Kindergarten Numeracy", units: 1, lecture: 3, lab: 0, room: "LECTURE_ROOM", level: "ELEMENTARY", grade: "KINDER" },
   );
+  const elementaryCore = ["Filipino", "English", "Mathematics", "Science", "Araling Panlipunan", "Music, Arts, Physical Education and Health", "Edukasyon sa Pagpapakatao"];
   for (const g of [1, 2, 3, 4, 5, 6]) {
-    for (const name of elemCore) {
+    for (const name of elementaryCore) {
       if (name === "Science" && g < 3) continue;
-      subjectDefs.push({
-        code: `E${g}-${name.replace(/[^A-Za-z]/g, "").slice(0, 5).toUpperCase()}`,
-        name: `${name} ${g}`,
-        units: 1,
-        lecture: 3,
-        lab: 0,
-        room: "LECTURE_ROOM",
-        level: "ELEMENTARY",
-        grade: `GRADE_${g}` as GradeLevel,
-      });
+      subjectDefs.push({ code: `ELEM${g}-${codeOf(name).slice(0, 5)}`, name: `${name} ${g}`, units: 1, lecture: 3, lab: 0, room: "LECTURE_ROOM", level: "ELEMENTARY", grade: `GRADE_${g}` as GradeLevel });
     }
   }
-
-  const subjectByCode: Record<string, { id: string; lectureHours: number; labHours: number; requiredRoomType: RoomType }> = {};
+  const subject: Record<string, SubjectDef & { id: string }> = {};
   for (const [i, s] of subjectDefs.entries()) {
-    const level = s.level ?? "COLLEGE";
-    subjectByCode[s.code] = await prisma.subject.upsert({
-      where: { code: s.code },
-      update: { level, gradeLevel: s.grade ?? null, sortOrder: i },
-      create: {
-        code: s.code,
-        name: s.name,
-        units: s.units,
-        lectureHours: s.lecture,
-        labHours: s.lab,
-        requiredRoomType: s.room,
-        level,
-        programId: s.program ? programByCode[s.program].id : undefined,
-        yearLevel: s.year,
-        gradeLevel: s.grade,
-        sortOrder: i,
+    const row = await prisma.subject.create({
+      data: {
+        code: s.code, name: s.name, units: s.units, lectureHours: s.lecture, labHours: s.lab, requiredRoomType: s.room,
+        level: s.level ?? "COLLEGE", programId: s.program ? program[s.program] : null, yearLevel: s.year, gradeLevel: s.grade, sortOrder: i,
       },
     });
+    subject[s.code] = { ...s, id: row.id };
   }
 
   // -------------------------------------------------------------------
-  // Faculty
+  // Faculty (honorifics omitted; the position field carries the rank)
   // -------------------------------------------------------------------
-  const facultyDefs: {
-    employeeId: string;
-    fullName: string;
-    email: string;
-    dept: string;
-    position: string;
-    specialization: string;
-    maxHours: number;
-    levels: AcademicLevel[];
-  }[] = [
-    { employeeId: "F-001", fullName: "Prof. Ana Santos", email: "santos@gcst.edu.ph", dept: "CCS", position: "Associate Professor", specialization: "Programming", maxHours: 24, levels: ["COLLEGE"] },
-    { employeeId: "F-002", fullName: "Prof. Ramon Reyes", email: "reyes@gcst.edu.ph", dept: "CCS", position: "Assistant Professor", specialization: "Web Development", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
-    { employeeId: "F-003", fullName: "Prof. Liza Cruz", email: "cruz@gcst.edu.ph", dept: "CCS", position: "Professor", specialization: "Database", maxHours: 21, levels: ["COLLEGE"] },
-    { employeeId: "F-004", fullName: "Prof. Miguel Torres", email: "torres@gcst.edu.ph", dept: "CCS", position: "Instructor", specialization: "Networking", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
-    { employeeId: "F-005", fullName: "Prof. Carla Dizon", email: "dizon@gcst.edu.ph", dept: "CCS", position: "Instructor", specialization: "Data Structures", maxHours: 24, levels: ["COLLEGE"] },
-    { employeeId: "F-006", fullName: "Prof. Noel Villanueva", email: "villanueva@gcst.edu.ph", dept: "CCS", position: "Assistant Professor", specialization: "Information Security", maxHours: 21, levels: ["COLLEGE"] },
-    { employeeId: "F-007", fullName: "Prof. Grace Mercado", email: "mercado@gcst.edu.ph", dept: "CCS", position: "Instructor", specialization: "Systems Analysis", maxHours: 24, levels: ["COLLEGE"] },
-    { employeeId: "F-008", fullName: "Prof. Daniel Ramos", email: "ramos@gcst.edu.ph", dept: "CAS", position: "Professor", specialization: "Mathematics", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
-    { employeeId: "F-009", fullName: "Prof. Ella Fernandez", email: "fernandez@gcst.edu.ph", dept: "CAS", position: "Assistant Professor", specialization: "Communication", maxHours: 21, levels: ["COLLEGE", "SENIOR_HIGH"] },
-    { employeeId: "F-010", fullName: "Prof. Victor Aquino", email: "aquino@gcst.edu.ph", dept: "CAS", position: "Instructor", specialization: "History", maxHours: 24, levels: ["COLLEGE"] },
-    { employeeId: "F-011", fullName: "Prof. Sonia Bautista", email: "bautista@gcst.edu.ph", dept: "CAS", position: "Instructor", specialization: "Chemistry", maxHours: 21, levels: ["COLLEGE", "SENIOR_HIGH"] },
-    { employeeId: "F-012", fullName: "Prof. Ricardo Lim", email: "lim@gcst.edu.ph", dept: "CBA", position: "Associate Professor", specialization: "Management", maxHours: 24, levels: ["COLLEGE"] },
-    { employeeId: "F-013", fullName: "Prof. Teresa Navarro", email: "navarro@gcst.edu.ph", dept: "CTE", position: "Assistant Professor", specialization: "Education", maxHours: 24, levels: ["COLLEGE"] },
-    { employeeId: "F-014", fullName: "Prof. Paolo Garcia", email: "garcia@gcst.edu.ph", dept: "CCS", position: "Instructor", specialization: "Discrete Mathematics", maxHours: 24, levels: ["COLLEGE"] },
-    { employeeId: "F-015", fullName: "Prof. Mika Alonzo", email: "alonzo@gcst.edu.ph", dept: "CCS", position: "Instructor", specialization: "Automata Theory", maxHours: 24, levels: ["COLLEGE"] },
-    { employeeId: "F-016", fullName: "Prof. Arnel Castillo", email: "castillo@gcst.edu.ph", dept: "CCJE", position: "Instructor", specialization: "Criminology", maxHours: 24, levels: ["COLLEGE"] },
-    { employeeId: "F-017", fullName: "Prof. Joy Salazar", email: "salazar@gcst.edu.ph", dept: "CBA", position: "Instructor", specialization: "Accounting", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
-    { employeeId: "F-018", fullName: "Prof. Karen Ocampo", email: "ocampo@gcst.edu.ph", dept: "CHTM", position: "Instructor", specialization: "Tourism", maxHours: 24, levels: ["COLLEGE"] },
-    { employeeId: "T-001", fullName: "Ms. Liza Domingo", email: "domingo@gcst.edu.ph", dept: "BED", position: "Teacher II", specialization: "English", maxHours: 30, levels: ["JUNIOR_HIGH"] },
-    { employeeId: "T-002", fullName: "Mr. Jerome Pascual", email: "pascual@gcst.edu.ph", dept: "BED", position: "Teacher I", specialization: "Mathematics", maxHours: 30, levels: ["JUNIOR_HIGH", "SENIOR_HIGH"] },
-    { employeeId: "T-003", fullName: "Ms. Rhea Manalo", email: "manalo@gcst.edu.ph", dept: "BED", position: "Teacher III", specialization: "Science", maxHours: 30, levels: ["JUNIOR_HIGH"] },
-    { employeeId: "T-004", fullName: "Ms. Joan Velasco", email: "velasco@gcst.edu.ph", dept: "BED", position: "Teacher I", specialization: "Filipino", maxHours: 30, levels: ["ELEMENTARY", "JUNIOR_HIGH"] },
-    { employeeId: "T-005", fullName: "Ms. Marites Soriano", email: "soriano@gcst.edu.ph", dept: "BED", position: "Teacher II", specialization: "Early Childhood Education", maxHours: 30, levels: ["ELEMENTARY"] },
-    { employeeId: "T-006", fullName: "Mr. Benjie Tolentino", email: "tolentino@gcst.edu.ph", dept: "BED", position: "Teacher I", specialization: "MAPEH", maxHours: 30, levels: ["ELEMENTARY", "JUNIOR_HIGH"] },
+  const facultyDefs: { id: string; name: string; email: string; dept: string; position: string; specialization: string; maxHours: number; levels: AcademicLevel[] }[] = [
+    { id: "F-001", name: "Ana Santos", email: "santos@granby.edu.ph", dept: "CCS", position: "Associate Professor", specialization: "Programming", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "F-002", name: "Ramon Reyes", email: "reyes@granby.edu.ph", dept: "CCS", position: "Assistant Professor", specialization: "Web Development", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
+    { id: "F-003", name: "Liza Cruz", email: "cruz@granby.edu.ph", dept: "CCS", position: "Professor", specialization: "Database Systems", maxHours: 21, levels: ["COLLEGE"] },
+    { id: "F-004", name: "Miguel Torres", email: "torres@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Networking", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
+    { id: "F-005", name: "Carla Dizon", email: "dizon@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Data Structures", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "F-006", name: "Noel Villanueva", email: "villanueva@granby.edu.ph", dept: "CCS", position: "Assistant Professor", specialization: "Information Security", maxHours: 21, levels: ["COLLEGE"] },
+    { id: "F-007", name: "Grace Mercado", email: "mercado@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Systems Analysis", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "F-008", name: "Daniel Ramos", email: "ramos@granby.edu.ph", dept: "CAS", position: "Professor", specialization: "Mathematics", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
+    { id: "F-009", name: "Ella Fernandez", email: "fernandez@granby.edu.ph", dept: "CAS", position: "Assistant Professor", specialization: "Communication", maxHours: 21, levels: ["COLLEGE", "SENIOR_HIGH"] },
+    { id: "F-010", name: "Victor Aquino", email: "aquino@granby.edu.ph", dept: "CAS", position: "Instructor", specialization: "History", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "F-011", name: "Sonia Bautista", email: "bautista@granby.edu.ph", dept: "CAS", position: "Instructor", specialization: "Chemistry", maxHours: 21, levels: ["COLLEGE", "SENIOR_HIGH"] },
+    { id: "F-012", name: "Ricardo Lim", email: "lim@granby.edu.ph", dept: "CBA", position: "Associate Professor", specialization: "Management", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "F-013", name: "Teresa Navarro", email: "navarro@granby.edu.ph", dept: "CTE", position: "Assistant Professor", specialization: "Education", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "F-014", name: "Paolo Garcia", email: "garcia@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Discrete Mathematics and Programming", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "F-015", name: "Mika Alonzo", email: "alonzo@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Automata Theory and Programming", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "F-016", name: "Arnel Castillo", email: "castillo@granby.edu.ph", dept: "CCJE", position: "Instructor", specialization: "Criminology", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "F-017", name: "Joy Salazar", email: "salazar@granby.edu.ph", dept: "CBA", position: "Instructor", specialization: "Accounting", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
+    { id: "F-018", name: "Karen Ocampo", email: "ocampo@granby.edu.ph", dept: "CHTM", position: "Instructor", specialization: "Tourism", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "T-001", name: "Liza Domingo", email: "domingo@granby.edu.ph", dept: "BED", position: "Teacher II", specialization: "English", maxHours: 30, levels: ["JUNIOR_HIGH"] },
+    { id: "T-002", name: "Jerome Pascual", email: "pascual@granby.edu.ph", dept: "BED", position: "Teacher I", specialization: "Mathematics", maxHours: 30, levels: ["JUNIOR_HIGH", "SENIOR_HIGH"] },
+    { id: "T-003", name: "Rhea Manalo", email: "manalo@granby.edu.ph", dept: "BED", position: "Teacher III", specialization: "Science", maxHours: 30, levels: ["JUNIOR_HIGH"] },
+    { id: "T-004", name: "Joan Velasco", email: "velasco@granby.edu.ph", dept: "BED", position: "Teacher I", specialization: "Filipino", maxHours: 30, levels: ["ELEMENTARY", "JUNIOR_HIGH"] },
+    { id: "T-005", name: "Marites Soriano", email: "soriano@granby.edu.ph", dept: "BED", position: "Teacher II", specialization: "Early Childhood Education", maxHours: 30, levels: ["ELEMENTARY"] },
+    { id: "T-006", name: "Benjie Tolentino", email: "tolentino@granby.edu.ph", dept: "BED", position: "Teacher I", specialization: "Music, Arts, Physical Education and Health", maxHours: 30, levels: ["ELEMENTARY", "JUNIOR_HIGH"] },
   ];
-
-  const facultyByEmployeeId: Record<string, { id: string }> = {};
+  // Ana Santos teaches only Friday mornings, which the scheduler and the automatic adjustments respect.
+  const fridayMorningOnly = new Set(["F-001"]);
+  const faculty: Record<string, { id: string; windows: { day: DayOfWeek; start: number; end: number }[] }> = {};
   for (const f of facultyDefs) {
-    facultyByEmployeeId[f.employeeId] = await prisma.faculty.upsert({
-      where: { employeeId: f.employeeId },
-      update: { teachingLevels: f.levels },
-      create: {
-        employeeId: f.employeeId,
-        fullName: f.fullName,
-        email: f.email,
-        departmentId: deptByCode[f.dept].id,
-        position: f.position,
-        specialization: f.specialization,
-        maxHours: f.maxHours,
-        status: "ACTIVE",
-        teachingLevels: f.levels,
-        availability: { create: WEEKDAYS.map((d) => ({ dayOfWeek: d, startMin: 7 * 60, endMin: 18 * 60 })) },
+    const windows = WEEKDAYS.map((d) => ({ day: d, start: 7 * 60, end: d === "FRIDAY" && fridayMorningOnly.has(f.id) ? 12 * 60 : 18 * 60 }));
+    const row = await prisma.faculty.create({
+      data: {
+        employeeId: f.id, fullName: f.name, email: f.email, departmentId: dept[f.dept], position: f.position,
+        specialization: f.specialization, maxHours: f.maxHours, teachingLevels: f.levels,
+        availability: { create: windows.map((w) => ({ dayOfWeek: w.day, startMin: w.start, endMin: w.end })) },
       },
     });
+    faculty[f.id] = { id: row.id, windows };
   }
 
-  // Prof. Santos: unavailable Friday afternoon (shows an availability warning in the Scheduler).
-  const santos = facultyByEmployeeId["F-001"];
-  await prisma.facultyAvailability.deleteMany({ where: { facultyId: santos.id, dayOfWeek: "FRIDAY" } });
-  await prisma.facultyAvailability.create({
-    data: { facultyId: santos.id, dayOfWeek: "FRIDAY", startMin: 7 * 60, endMin: 12 * 60 },
-  });
+  // -------------------------------------------------------------------
+  // College timetables: greedy placement that never double-books a room, faculty member, or section
+  // -------------------------------------------------------------------
+  const teacherFor: Record<string, string[]> = {
+    GE101: ["F-008", "F-014"], GE102: ["F-009", "F-013"], GE103: ["F-010"], GE104: ["F-009", "F-010", "F-013"],
+    GRANBY100: ["F-010", "F-013"], IT101: ["F-001", "F-005"], IT102: ["F-001", "F-005"], IT201: ["F-005", "F-001"],
+    IT202: ["F-003", "F-001"], IT203: ["F-004"], IT301: ["F-002"], IT302: ["F-007"], IT303: ["F-006"], IT401: ["F-007", "F-002"],
+    CS201: ["F-014"], CS202: ["F-015"], SCI101: ["F-011"], CRIM101: ["F-016"], ACC101: ["F-017"], BA101: ["F-012"],
+    TM101: ["F-018"], ISM101: ["F-016"], EED101: ["F-013"], ED101: ["F-013"],
+  };
+  // Ana Santos is assigned extra laboratory sections on purpose so Workload Optimization has someone to rebalance.
+  const overloadExtras: Record<string, string> = { "Information Technology 2-B|IT201": "F-001", "Computer Science 2-A|IT201": "F-001" };
 
-  // -------------------------------------------------------------------
-  // Sample timetables (only for sections that have no classes yet)
-  // -------------------------------------------------------------------
-  type Meeting = { subject: string; faculty: string; room: string; day: DayOfWeek; start: string; end: string; lab?: boolean };
-  const sampleTimetables: { section: string; termId: string; meetings: Meeting[] }[] = [
+  type Busy = { day: DayOfWeek; start: number; end: number };
+  const busy = new Map<string, Busy[]>();
+  const isFree = (key: string, day: DayOfWeek, start: number, end: number) =>
+    !(busy.get(key) ?? []).some((b) => b.day === day && b.start < end && start < b.end);
+  const occupy = (key: string, day: DayOfWeek, start: number, end: number) => busy.set(key, [...(busy.get(key) ?? []), { day, start, end }]);
+  const facultyAvailable = (fid: string, day: DayOfWeek, start: number, end: number) =>
+    faculty[fid].windows.some((w) => w.day === day && start >= w.start && end <= w.end);
+
+  const startTimes = Array.from({ length: 21 }, (_, i) => 7 * 60 + 30 + i * 30).filter((t) => t <= 17 * 60);
+  const dayPatterns: DayOfWeek[][] = [["MONDAY", "WEDNESDAY"], ["TUESDAY", "THURSDAY"], ["WEDNESDAY", "FRIDAY"], ["MONDAY", "THURSDAY"]];
+  const singleDays: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
+
+  type Meeting = { day: DayOfWeek; start: number; end: number; roomId: string; facultyId: string; lab: boolean };
+  const created: { sectionId: string; subjectId: string; meeting: Meeting }[] = [];
+
+  /** Places all meetings of one component on the first pattern and time where everything is free. */
+  function place(sectionName: string, code: string, fid: string, lab: boolean, minutes: number, meetings: number, rotate: number) {
+    const sec = section[sectionName];
+    const subj = subject[code];
+    // College classes use shared rooms and their own laboratories, never Basic Education classrooms.
+    const roomPool = rooms.filter((r) => (lab ? r.type === subj.room : r.type === "LECTURE_ROOM") && r.capacity >= sec.count && r.dept !== "BED");
+    const patterns = meetings === 2 ? dayPatterns : singleDays.map((d) => [d]);
+    for (let p = 0; p < patterns.length; p++) {
+      const days = patterns[(p + rotate) % patterns.length];
+      for (const start of startTimes) {
+        const end = start + minutes;
+        if (end > 18 * 60) continue;
+        const fKey = `f:${faculty[fid].id}`;
+        const okPeople = days.every((d) => isFree(`s:${sec.id}`, d, start, end) && isFree(fKey, d, start, end) && facultyAvailable(fid, d, start, end));
+        if (!okPeople) continue;
+        const room = roomPool.find((r) => days.every((d) => isFree(`r:${r.id}`, d, start, end)));
+        if (!room) continue;
+        for (const d of days) {
+          occupy(`s:${sec.id}`, d, start, end);
+          occupy(fKey, d, start, end);
+          occupy(`r:${room.id}`, d, start, end);
+          created.push({ sectionId: sec.id, subjectId: subj.id, meeting: { day: d, start, end, roomId: room.id, facultyId: faculty[fid].id, lab } });
+        }
+        return true;
+      }
+    }
+    console.warn(`Could not place ${code} for ${sectionName}`);
+    return false;
+  }
+
+  // Basic education sample timetables (fixed meetings).
+  type FixedMeeting = { subject: string; faculty: string; room: string; day: DayOfWeek; start: string; end: string; lab?: boolean };
+  const fixed: { section: string; termId: string; meetings: FixedMeeting[] }[] = [
     {
-      section: "BSIT 1A",
-      termId: firstSem.id,
+      section: "Grade 11 - Newton",
+      termId: quarterTerm.SENIOR_HIGH!.id,
       meetings: [
-        { subject: "GE101", faculty: "F-008", room: "101", day: "MONDAY", start: "08:00", end: "09:30" },
-        { subject: "GE101", faculty: "F-008", room: "101", day: "WEDNESDAY", start: "08:00", end: "09:30" },
-        { subject: "IT101", faculty: "F-001", room: "201", day: "MONDAY", start: "10:00", end: "12:00" },
-        { subject: "IT101", faculty: "F-001", room: "LAB1", day: "THURSDAY", start: "13:00", end: "16:00", lab: true },
-        { subject: "IT102", faculty: "F-005", room: "202", day: "TUESDAY", start: "08:00", end: "10:00" },
-        { subject: "IT102", faculty: "F-005", room: "LAB2", day: "FRIDAY", start: "08:00", end: "11:00", lab: true },
-        { subject: "GE102", faculty: "F-009", room: "101", day: "TUESDAY", start: "13:00", end: "14:30" },
-        { subject: "GE102", faculty: "F-009", room: "101", day: "THURSDAY", start: "08:00", end: "09:30" },
-      ],
-    },
-    {
-      section: "11-STEM A",
-      termId: firstQuarterByLevel.SENIOR_HIGH!.id,
-      meetings: [
-        { subject: "SHS-ORALCOM", faculty: "F-009", room: "BE201", day: "MONDAY", start: "07:30", end: "08:30" },
-        { subject: "SHS-GENMATH", faculty: "F-008", room: "BE201", day: "MONDAY", start: "13:00", end: "14:00" },
-        { subject: "SHS-PRECAL", faculty: "T-002", room: "BE201", day: "TUESDAY", start: "07:30", end: "08:30" },
-        { subject: "SHS-EARTHSCI", faculty: "F-011", room: "SCI1", day: "WEDNESDAY", start: "13:00", end: "15:00", lab: true },
+        { subject: "SHS-ORALCOM", faculty: "F-009", room: "3201", day: "MONDAY", start: "07:30", end: "08:30" },
+        { subject: "SHS-GENMATH", faculty: "T-002", room: "3201", day: "MONDAY", start: "13:00", end: "14:00" },
+        { subject: "SHS-PRECAL", faculty: "T-002", room: "3201", day: "TUESDAY", start: "07:30", end: "08:30" },
+        { subject: "SHS-EARTHSCI", faculty: "T-003", room: "2102", day: "THURSDAY", start: "13:00", end: "15:00", lab: true },
       ],
     },
     {
       section: "Grade 7 - Rizal",
-      termId: firstQuarterByLevel.JUNIOR_HIGH!.id,
+      termId: quarterTerm.JUNIOR_HIGH!.id,
       meetings: [
-        { subject: "ENGLIS7", faculty: "T-001", room: "BE101", day: "MONDAY", start: "07:30", end: "08:30" },
-        { subject: "MATHEM7", faculty: "T-002", room: "BE101", day: "MONDAY", start: "08:30", end: "09:30" },
-        { subject: "SCIENC7", faculty: "T-003", room: "BE101", day: "TUESDAY", start: "07:30", end: "08:30" },
-        { subject: "FILIPI7", faculty: "T-004", room: "BE101", day: "TUESDAY", start: "08:30", end: "09:30" },
+        { subject: "ENGLIS7", faculty: "T-001", room: "3101", day: "MONDAY", start: "07:30", end: "08:30" },
+        { subject: "MATHEM7", faculty: "T-002", room: "3101", day: "MONDAY", start: "08:30", end: "09:30" },
+        { subject: "SCIENC7", faculty: "T-003", room: "3101", day: "TUESDAY", start: "07:30", end: "08:30" },
+        { subject: "FILIPI7", faculty: "T-004", room: "3101", day: "TUESDAY", start: "08:30", end: "09:30" },
+        { subject: "MUSICA7", faculty: "T-006", room: "3101", day: "WEDNESDAY", start: "07:30", end: "08:30" },
+      ],
+    },
+    {
+      section: "Grade 1 - Rosal",
+      termId: quarterTerm.ELEMENTARY!.id,
+      meetings: [
+        { subject: "ELEM1-ENGLI", faculty: "T-005", room: "3103", day: "MONDAY", start: "08:00", end: "09:00" },
+        { subject: "ELEM1-FILIP", faculty: "T-004", room: "3103", day: "MONDAY", start: "09:30", end: "10:30" },
+        { subject: "ELEM1-MATHE", faculty: "T-005", room: "3103", day: "TUESDAY", start: "08:00", end: "09:00" },
       ],
     },
   ];
-  const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
-  for (const t of sampleTimetables) {
-    const section = sectionByName[t.section];
-    if (!section || (await prisma.schedule.count({ where: { sectionId: section.id } })) > 0) continue;
+  // Reserve the fixed meetings first so the college generator works around them.
+  for (const t of fixed) {
+    for (const m of t.meetings) {
+      occupy(`s:${section[t.section].id}`, m.day, toMin(m.start), toMin(m.end));
+      occupy(`f:${faculty[m.faculty].id}`, m.day, toMin(m.start), toMin(m.end));
+      occupy(`r:${roomByNumber[m.room].id}`, m.day, toMin(m.start), toMin(m.end));
+    }
     await prisma.schedule.createMany({
-      data: t.meetings
-        .filter((m) => subjectByCode[m.subject] && facultyByEmployeeId[m.faculty] && roomByNumber[m.room])
-        .map((m) => ({
-          semesterId: t.termId,
-          sectionId: section.id,
-          subjectId: subjectByCode[m.subject].id,
-          facultyId: facultyByEmployeeId[m.faculty].id,
-          roomId: roomByNumber[m.room].id,
-          component: m.lab ? ("LABORATORY" as const) : ("LECTURE" as const),
-          dayOfWeek: m.day,
-          startMin: toMin(m.start),
-          endMin: toMin(m.end),
-          status: "PUBLISHED" as const,
-        })),
+      data: t.meetings.map((m) => ({
+        semesterId: t.termId, sectionId: section[t.section].id, subjectId: subject[m.subject].id, facultyId: faculty[m.faculty].id,
+        roomId: roomByNumber[m.room].id, component: m.lab ? ("LABORATORY" as const) : ("LECTURE" as const), dayOfWeek: m.day,
+        startMin: toMin(m.start), endMin: toMin(m.end), status: "PUBLISHED" as const,
+      })),
     });
   }
 
+  collegeSections.forEach((s, si) => {
+    for (const code of s.subjects ?? []) {
+      const subj = subject[code];
+      const candidates = overloadExtras[`${s.name}|${code}`] ? [overloadExtras[`${s.name}|${code}`]] : teacherFor[code];
+      const fid = candidates[si % candidates.length];
+      if (subj.lecture > 0) {
+        const twice = subj.lecture === 3;
+        place(s.name, code, fid, false, twice ? 90 : subj.lecture * 60, twice ? 2 : 1, si);
+      }
+      for (let k = 0; k < subj.lab; k++) place(s.name, code, fid, true, 180, 1, si + k + 1);
+    }
+  });
+
+  await prisma.schedule.createMany({
+    data: created.map((c) => ({
+      semesterId: collegeTerm.id, sectionId: c.sectionId, subjectId: c.subjectId, facultyId: c.meeting.facultyId, roomId: c.meeting.roomId,
+      component: c.meeting.lab ? ("LABORATORY" as const) : ("LECTURE" as const), dayOfWeek: c.meeting.day,
+      startMin: c.meeting.start, endMin: c.meeting.end, status: "PUBLISHED" as const,
+    })),
+  });
+
   // -------------------------------------------------------------------
-  // Demo accounts (all roles)
+  // Demo accounts: one per role; Head of Department and Faculty are linked to faculty records
   // -------------------------------------------------------------------
-  const passwordHash = await hash(DEV_PASSWORD);
-  const demoUsers: { email: string; name: string; role: Role; facultyId?: string }[] = [
-    { email: "admin@gcst.edu.ph", name: "System Administrator", role: "SUPER_ADMIN" },
-    { email: "administrator@gcst.edu.ph", name: "College Administrator", role: "ADMINISTRATOR" },
-    { email: "registrar@gcst.edu.ph", name: "College Registrar", role: "REGISTRAR" },
-    { email: "scheduler@gcst.edu.ph", name: "Scheduling Officer", role: "SCHEDULER" },
-    { email: "faculty@gcst.edu.ph", name: "Prof. Ana Santos", role: "FACULTY", facultyId: santos.id },
-    { email: "student@gcst.edu.ph", name: "Demo Student", role: "STUDENT" },
+  const passwordHash = await bcrypt.hash(DEV_PASSWORD, 12);
+  const userDefs = [
+    { email: "administrator@granby.edu.ph", name: "Cecilia Robles", role: "ADMINISTRATOR" as const },
+    { email: "head.computing@granby.edu.ph", name: "Liza Cruz", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["F-003"].id },
+    { email: "head.basiceducation@granby.edu.ph", name: "Rhea Manalo", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["T-003"].id },
+    { email: "faculty@granby.edu.ph", name: "Ana Santos", role: "FACULTY" as const, facultyId: faculty["F-001"].id },
+    { email: "dizon@granby.edu.ph", name: "Carla Dizon", role: "FACULTY" as const, facultyId: faculty["F-005"].id },
   ];
-  for (const u of demoUsers) {
-    await prisma.user.upsert({
-      where: { email: u.email },
-      update: { role: u.role, name: u.name },
-      create: {
-        email: u.email,
-        name: u.name,
-        role: u.role,
-        status: "ACTIVE",
-        emailVerified: new Date(),
-        passwordHash,
-        facultyId: u.facultyId,
+  const user: Record<string, string> = {};
+  for (const u of userDefs) {
+    user[u.email] = (
+      await prisma.user.create({ data: { ...u, status: "ACTIVE", emailVerified: new Date(), termsAcceptedAt: new Date(), passwordHash } })
+    ).id;
+  }
+
+  // -------------------------------------------------------------------
+  // Examinations (Saturday, when no regular college classes meet)
+  // -------------------------------------------------------------------
+  const examDay = nextWeekday(6, 3);
+  const examDefs = [
+    { section: "Information Technology 1-A", subject: "IT101", room: "101", proctor: "F-005", start: "08:00", end: "10:00" },
+    { section: "Information Technology 1-B", subject: "IT101", room: "102", proctor: "F-014", start: "08:00", end: "10:00" },
+    { section: "Information Technology 2-A", subject: "IT202", room: "201", proctor: "F-003", start: "10:30", end: "12:30" },
+    { section: "Information Technology 2-B", subject: "IT202", room: "202", proctor: "F-015", start: "10:30", end: "12:30" },
+    { section: "Computer Science 2-A", subject: "CS201", room: "203", proctor: "F-014", start: "13:00", end: "15:00" },
+  ];
+  for (const e of examDefs) {
+    await prisma.examination.create({
+      data: {
+        semesterId: collegeTerm.id, sectionId: section[e.section].id, subjectId: subject[e.subject].id, roomId: roomByNumber[e.room].id,
+        proctorId: faculty[e.proctor].id, type: "MIDTERM", date: date(examDay), startMin: toMin(e.start), endMin: toMin(e.end),
       },
     });
   }
 
   // -------------------------------------------------------------------
-  // System settings
+  // Calendar activities, a room booking, and a pending unavailability report
   // -------------------------------------------------------------------
-  await prisma.systemSetting.upsert({
-    where: { key: "institution" },
-    update: {},
-    create: {
-      key: "institution",
-      value: { name: "Granby Colleges of Science & Technology", shortName: "GCST", location: "Naic, Cavite, Philippines" },
+  const holidays = [
+    { title: "National Heroes Day", day: (() => { const d = new Date(Date.UTC(ayYear, 7, 31)); while (d.getUTCDay() !== 1) d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); })() },
+    { title: "All Saints' Day", day: ymd(ayYear, 11, 1) },
+    { title: "Bonifacio Day", day: ymd(ayYear, 11, 30) },
+    { title: "Feast of the Immaculate Conception", day: ymd(ayYear, 12, 8) },
+    { title: "Rizal Day", day: ymd(ayYear, 12, 30) },
+  ];
+  for (const h of holidays) {
+    await prisma.activity.create({ data: { type: "HOLIDAY", title: h.title, startDate: date(h.day), endDate: date(h.day), sectionIds: [] } });
+  }
+  await prisma.activity.createMany({
+    data: [
+      { type: "SCHOOL_EVENT", title: "Faculty General Assembly", description: "Audio-Visual Room. All faculty members are expected to attend.", startDate: date(fromToday(1)), endDate: date(fromToday(1)), startMin: 16 * 60, endMin: 17 * 60 + 30, sectionIds: [] },
+      { type: "SCHOOL_EVENT", title: "Foundation Week", description: "Exhibits, sports festival, and the Granby Values recognition rites.", startDate: date(fromToday(14)), endDate: date(fromToday(18)), sectionIds: [] },
+      { type: "SCHOOL_EVENT", title: "Midterm Examination Day", description: "College midterm examinations.", startDate: date(examDay), endDate: date(examDay), sectionIds: [] },
+    ],
+  });
+  await prisma.roomBooking.create({
+    data: {
+      roomId: roomByNumber["4101"].id, bookedById: user["head.computing@granby.edu.ph"], purpose: "College of Computer Studies curriculum meeting",
+      date: date(nextWeekday(3, 2)), startMin: 13 * 60, endMin: 15 * 60, attendees: 12,
+    },
+  });
+  const dizonDay = created.find((c) => c.meeting.facultyId === faculty["F-005"].id)?.meeting.day ?? "TUESDAY";
+  const dizonDate = nextWeekday(["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"].indexOf(dizonDay), 4);
+  await prisma.unavailability.create({
+    data: {
+      kind: "FACULTY", facultyId: faculty["F-005"].id, startDate: date(dizonDate), endDate: date(dizonDate),
+      reason: "Attending the regional data science seminar", reportedById: user["dizon@granby.edu.ph"],
+    },
+  });
+  await prisma.notification.create({
+    data: {
+      userId: user["head.computing@granby.edu.ph"], type: "WARNING", title: "Faculty unavailability reported",
+      message: "Carla Dizon reported being unavailable. Review it in Schedule Adjustments to reassign the affected classes.", link: "/adjustments",
     },
   });
 
-  console.log("Seed complete.");
-  console.log(`Demo login password for all demo accounts: ${DEV_PASSWORD}`);
+  // -------------------------------------------------------------------
+  // Enrollment history (seven academic years) for forecasting
+  // -------------------------------------------------------------------
+  const random = mulberry32(2026);
+  const trends: { level: AcademicLevel; program?: string; base: number; growth: number }[] = [
+    { level: "COLLEGE", program: "BSIT", base: 160, growth: 0.09 },
+    { level: "COLLEGE", program: "BSCS", base: 55, growth: 0.07 },
+    { level: "COLLEGE", program: "BSCrim", base: 120, growth: 0.03 },
+    { level: "COLLEGE", program: "BSISM", base: 40, growth: -0.02 },
+    { level: "COLLEGE", program: "BSA", base: 70, growth: 0.04 },
+    { level: "COLLEGE", program: "BSBA", base: 110, growth: 0.02 },
+    { level: "COLLEGE", program: "BSTM", base: 90, growth: -0.04 },
+    { level: "COLLEGE", program: "BEED", base: 45, growth: 0.01 },
+    { level: "COLLEGE", program: "BSED", base: 50, growth: 0.0 },
+    ...DEFAULT_SHS_STRANDS.map((s, i) => ({ level: "SENIOR_HIGH" as const, program: s.code, base: 45 + i * 8, growth: 0.03 })),
+    { level: "JUNIOR_HIGH", base: 210, growth: 0.02 },
+    { level: "ELEMENTARY", base: 230, growth: 0.015 },
+  ];
+  const records = [];
+  for (let y = ayYear - 6; y <= ayYear; y++) {
+    const yearIndex = y - (ayYear - 6);
+    for (const t of trends) {
+      const base = t.base * Math.pow(1 + t.growth, yearIndex) * (y === ayYear - 5 ? 0.88 : 1); // a pandemic-era dip
+      const first = Math.round(base * (0.95 + random() * 0.1));
+      const academicYear = `${y}-${y + 1}`;
+      records.push({ level: t.level, programId: t.program ? program[t.program] : null, academicYear, termType: "FIRST" as const, enrolled: first });
+      // College runs two semesters; the second has some attrition. The current second semester has not happened yet.
+      if (t.level === "COLLEGE" && !(y === ayYear && inFirstSemester)) {
+        records.push({ level: t.level, programId: program[t.program!], academicYear, termType: "SECOND" as const, enrolled: Math.round(first * (0.9 + random() * 0.05)) });
+      }
+    }
+  }
+  await prisma.enrollmentRecord.createMany({ data: records });
+
+  // -------------------------------------------------------------------
+  // System settings
+  // -------------------------------------------------------------------
+  await prisma.systemSetting.createMany({
+    data: [
+      { key: "institution", value: { name: "GRANBY COLLEGES OF SCIENCE & TECHNOLOGY", location: "Naic, Cavite, Philippines" } },
+      { key: "workload", value: { measure: "HOURS", minimum: 12, maximum: 24 } },
+    ],
+  });
+
+  console.log(`Seed complete: ${created.length} college class meetings placed in ${collegeTerm.name} ${ay.name}.`);
+  console.log(`Demo login password for every demo account: ${DEV_PASSWORD}`);
 }
 
 main()

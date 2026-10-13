@@ -1,5 +1,6 @@
 "use client";
 
+import { ROLE_LABELS } from "@/lib/permissions/roles";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Plus, DotsThree as MoreHorizontal, PencilSimple as Pencil, Key as KeyRound, Trash as Trash2, CircleNotch as Loader2, CheckCircle } from "@phosphor-icons/react/ssr";
@@ -34,19 +35,26 @@ interface Row {
   email: string;
   role: string;
   status: string;
+  facultyId: string | null;
   createdAt: string;
 }
 
-const ROLES = [
-  { value: "SUPER_ADMIN", label: "Super Admin" },
-  { value: "ADMINISTRATOR", label: "Administrator" },
-  { value: "REGISTRAR", label: "Registrar" },
-  { value: "SCHEDULER", label: "Scheduler" },
-  { value: "FACULTY", label: "Faculty" },
-  { value: "STUDENT", label: "Student" },
-];
+/** Links an account to a faculty record so Faculty and Head of Department users see their own classes. */
+function FacultyLinkField({ id, options, value }: { id: string; options: { value: string; label: string }[]; value?: string | null }) {
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>Linked faculty record</FieldLabel>
+      <select name="facultyId" id={id} defaultValue={value ?? ""} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+        <option value="">None (Administrator accounts)</option>
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </Field>
+  );
+}
 
-export function UsersManager({ users }: { users: Row[] }) {
+const ROLES = Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }));
+
+export function UsersManager({ users, faculty }: { users: Row[]; faculty: { value: string; label: string }[] }) {
   const [pending, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
   const [editRow, setEditRow] = useState<Row | null>(null);
@@ -130,6 +138,7 @@ export function UsersManager({ users }: { users: Row[] }) {
                     {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                   </select>
                 </Field>
+                <FacultyLinkField id="faculty" options={faculty} />
                 <Field>
                   <FieldLabel htmlFor="password">Password</FieldLabel>
                   <input type="password" name="password" id="password" required minLength={8} placeholder="8+ chars, upper, lower, number, symbol" className="h-9 rounded-md border border-input bg-background px-2 text-sm" />
@@ -161,7 +170,7 @@ export function UsersManager({ users }: { users: Row[] }) {
               <TableRow key={u.id}>
                 <TableCell className="font-medium">{u.name}</TableCell>
                 <TableCell>{u.email}</TableCell>
-                <TableCell><Badge variant="secondary">{u.role.replace("_", " ")}</Badge></TableCell>
+                <TableCell><Badge variant="secondary">{ROLE_LABELS[u.role as keyof typeof ROLE_LABELS] ?? u.role}</Badge></TableCell>
                 <TableCell><Badge variant={u.status === "ACTIVE" ? "default" : u.status === "PENDING" ? "secondary" : "destructive"}>{u.status}</Badge></TableCell>
                 <TableCell>{u.createdAt}</TableCell>
                 <TableCell>
@@ -226,6 +235,7 @@ export function UsersManager({ users }: { users: Row[] }) {
                     {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                   </select>
                 </Field>
+                <FacultyLinkField id="edit-faculty" options={faculty} value={editRow.facultyId} />
                 <Field>
                   <FieldLabel htmlFor="edit-status">Status</FieldLabel>
                   <select name="status" id="edit-status" defaultValue={editRow.status} className="h-9 rounded-md border border-input bg-background px-2 text-sm">

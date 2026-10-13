@@ -10,14 +10,17 @@ import { appUrl, sendMail } from "@/lib/email/mailer";
 import { accountApprovedEmail } from "@/lib/email/templates";
 import { passwordSchema } from "@/lib/validation/auth";
 
-const ADMIN = ["SUPER_ADMIN", "ADMINISTRATOR"] as const;
+const ADMIN = ["ADMINISTRATOR"] as const;
 
 const createSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
-  role: z.enum(["SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER", "FACULTY", "STUDENT"]),
+  role: z.enum(["ADMINISTRATOR", "HEAD_OF_DEPARTMENT", "FACULTY"]),
+  facultyId: z.string().optional(),
   password: passwordSchema,
 });
+
+const LINK_TAKEN = "That faculty record is already linked to another account.";
 
 export async function createUserAction(formData: FormData) {
   const admin = await requireRole(...ADMIN);
@@ -29,7 +32,15 @@ export async function createUserAction(formData: FormData) {
     const passwordHash = await bcrypt.hash(d.password, AUTH.bcryptRounds);
     const user = await prisma.user.create({
       // Admin-created accounts are trusted, so they skip email verification.
-      data: { name: d.name, email: d.email, role: d.role, passwordHash, status: "ACTIVE", emailVerified: new Date() },
+      data: {
+        name: d.name,
+        email: d.email,
+        role: d.role,
+        facultyId: d.facultyId || null,
+        passwordHash,
+        status: "ACTIVE",
+        emailVerified: new Date(),
+      },
     });
     await prisma.auditLog.create({
       data: { userId: admin.id, action: `Created user account (${d.role})`, entity: "User", entityId: user.id },
@@ -37,21 +48,26 @@ export async function createUserAction(formData: FormData) {
     revalidatePath("/admin/users");
     return { ok: true };
   } catch {
-    return { ok: false, error: "A user with that email already exists." };
+    return { ok: false, error: `A user with that email already exists, or ${LINK_TAKEN.toLowerCase()}` };
   }
 }
 
 const updateSchema = z.object({
   name: z.string().min(1),
-  role: z.enum(["SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER", "FACULTY", "STUDENT"]),
+  role: z.enum(["ADMINISTRATOR", "HEAD_OF_DEPARTMENT", "FACULTY"]),
   status: z.enum(["PENDING", "ACTIVE", "INACTIVE", "SUSPENDED"]),
+  facultyId: z.string().optional(),
 });
 
 export async function updateUserAction(id: string, formData: FormData) {
   const admin = await requireRole(...ADMIN);
   const parsed = updateSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
-  await prisma.user.update({ where: { id }, data: parsed.data });
+  try {
+    await prisma.user.update({ where: { id }, data: { ...parsed.data, facultyId: parsed.data.facultyId || null } });
+  } catch {
+    return { ok: false, error: LINK_TAKEN };
+  }
   await prisma.auditLog.create({
     data: { userId: admin.id, action: "Updated user account", entity: "User", entityId: id },
   });

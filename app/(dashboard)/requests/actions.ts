@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser, requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 
-const STAFF = ["SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER"] as const;
+const STAFF = ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT"] as const;
 
 const createSchema = z.object({
   type: z.enum(["NEW_SCHEDULE", "CHANGE_TIME", "CHANGE_ROOM", "CHANGE_FACULTY", "CANCEL_SCHEDULE"]),
@@ -31,7 +31,7 @@ export async function createRequestAction(formData: FormData) {
 
   await prisma.notification.createMany({
     data: (
-      await prisma.user.findMany({ where: { role: { in: ["SUPER_ADMIN", "ADMINISTRATOR", "SCHEDULER"] } }, select: { id: true } })
+      await prisma.user.findMany({ where: { role: { in: ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT"] } }, select: { id: true } })
     ).map((u) => ({
       userId: u.id,
       type: "INFO",

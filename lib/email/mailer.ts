@@ -49,7 +49,7 @@ export async function sendMail(message: MailMessage) {
   }
   try {
     await t.sendMail({
-      from: process.env.EMAIL_FROM ?? "GCST Scheduling <no-reply@gcst.edu.ph>",
+      from: process.env.EMAIL_FROM ?? "GRANBY COLLEGES OF SCIENCE & TECHNOLOGY <no-reply@granby.edu.ph>",
       ...message,
     });
   } catch (err) {

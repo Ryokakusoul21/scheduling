@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-export const metadata = { title: "Room Utilization · GCST Scheduling" };
+export const metadata = { title: "Room Utilization · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 const AVAILABLE_MIN_PER_WEEK = 6 * 12 * 60;
 const DAY_LABELS: Record<string, string> = {
@@ -13,7 +13,7 @@ const DAY_LABELS: Record<string, string> = {
 };
 
 export default async function RoomUtilizationPage() {
-  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER");
+  await requireRole("ADMINISTRATOR", "HEAD_OF_DEPARTMENT");
 
   const rooms = await prisma.room.findMany({
     include: { schedules: { where: { status: { not: "ARCHIVED" } } } },

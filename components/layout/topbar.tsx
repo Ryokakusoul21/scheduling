@@ -87,10 +87,8 @@ export function Topbar({
         </Sheet>
 
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold tracking-tight">Scheduling Management System</h1>
-          <p className="hidden truncate text-xs text-muted-foreground sm:block">
-            Smarter Scheduling. Better Learning. Greater Efficiency.
-          </p>
+          <p className="truncate text-sm font-semibold tracking-tight sm:text-base">GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY</p>
+          <p className="hidden truncate text-xs text-muted-foreground sm:block">Class Scheduling and Room Booking System</p>
         </div>
       </div>
 

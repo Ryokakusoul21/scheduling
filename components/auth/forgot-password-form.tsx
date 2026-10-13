@@ -68,7 +68,7 @@ export function ForgotPasswordForm() {
             id="email"
             type="email"
             autoComplete="email"
-            placeholder="you@gcst.edu.ph"
+            placeholder="you@granby.edu.ph"
             aria-invalid={!!errors.email}
             {...register("email")}
           />

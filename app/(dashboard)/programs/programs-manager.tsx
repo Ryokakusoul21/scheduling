@@ -86,7 +86,7 @@ export function ProgramsManager({ programs, departments }: { programs: ProgramRo
       <FormDialog
         open={!!dialog.state}
         onOpenChange={(o) => !o && dialog.close()}
-        title={editing ? `Edit ${editing.code}` : level === "COLLEGE" ? "Add college course" : "Add SHS strand"}
+        title={editing ? `Edit ${editing.code}` : level === "COLLEGE" ? "Add college course" : "Add Senior High School strand"}
         fields={programFields(level, departments)}
         values={editing ?? { level }}
         submitLabel={editing ? "Save changes" : "Add"}

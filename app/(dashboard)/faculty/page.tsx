@@ -3,7 +3,7 @@ import { requireRole } from "@/lib/auth/session";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { FacultyBrowser } from "./faculty-browser";
 
-export const metadata = { title: "Faculty · GCST Scheduling" };
+export const metadata = { title: "Faculty · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function FacultyPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   await requireRole(...STAFF_ROLES);

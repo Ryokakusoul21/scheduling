@@ -184,7 +184,7 @@ export function AssistantHeader() {
         <Sparkles className="size-4" />
       </div>
       <div>
-        <p className="text-sm font-semibold leading-tight">GCST AI Assistant</p>
+        <p className="text-sm font-semibold leading-tight">Scheduling Assistant</p>
         <p className="text-xs text-muted-foreground">Answers from your scheduling data</p>
       </div>
     </div>

@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/ux/states";
 import { cn } from "@/lib/utils";
 import { SubjectsList } from "./subjects-list";
 
-export const metadata = { title: "Subjects · GCST Scheduling" };
+export const metadata = { title: "Subjects · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function SubjectsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   await requireRole(...STAFF_ROLES);

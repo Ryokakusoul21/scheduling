@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { TermsManager } from "./terms-manager";
 import { LEVEL_ACCENTS, LEVEL_ICONS } from "@/components/ux/level-icons";
 
-export const metadata = { title: "Academic Year · GCST Scheduling" };
+export const metadata = { title: "Academic Year · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function AcademicYearDetailPage({
   params,

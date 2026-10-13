@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GCST Scheduling System",
-  description: "AI-Powered Scheduling Management System for Granby Colleges of Science & Technology",
+  title: "GRANBY COLLEGES OF SCIENCE & TECHNOLOGY Scheduling System",
+  description: "AI-Powered Scheduling Management System for GRANBY COLLEGES OF SCIENCE & TECHNOLOGY",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {

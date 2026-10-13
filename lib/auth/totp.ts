@@ -67,7 +67,7 @@ export function verifyTotp(secret: string, code: string) {
   return false;
 }
 
-export function totpUri(secret: string, accountName: string, issuer = "GCST Scheduling") {
+export function totpUri(secret: string, accountName: string, issuer = "GRANBY COLLEGES OF SCIENCE & TECHNOLOGY") {
   const label = encodeURIComponent(`${issuer}:${accountName}`);
   const params = new URLSearchParams({ secret, issuer, algorithm: "SHA1", digits: "6", period: "30" });
   return `otpauth://totp/${label}?${params}`;

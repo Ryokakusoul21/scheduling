@@ -32,7 +32,7 @@ export function Sidebar({ role }: { role: AppRole }) {
     >
       <div className="flex items-center gap-2.5 border-b border-black/10 bg-card px-3.5 py-3.5 text-card-foreground">
         <div className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ring-2 ring-gold/50">
-          <Image src="/branding/logo.jpg" alt="GCST Seal" fill sizes="40px" className="object-cover" />
+          <Image src="/branding/logo.jpg" alt="GRANBY COLLEGES OF SCIENCE & TECHNOLOGY Seal" fill sizes="40px" className="object-cover" />
         </div>
         {!collapsed && (
           <div className="min-w-0">
@@ -100,7 +100,7 @@ export function Sidebar({ role }: { role: AppRole }) {
         <div className="relative h-20 shrink-0 overflow-hidden border-t border-black/10">
           <Image
             src="/branding/school.jpg"
-            alt="GCST Campus"
+            alt="GRANBY COLLEGES OF SCIENCE & TECHNOLOGY Campus"
             fill
             sizes="256px"
             loading="eager"
@@ -109,7 +109,7 @@ export function Sidebar({ role }: { role: AppRole }) {
           <div className="absolute inset-0 bg-gradient-to-t from-sidebar via-sidebar/85 to-sidebar/25" />
           <div className="absolute inset-x-0 bottom-0 p-2.5">
             <p className="truncate text-[11px] font-semibold leading-tight">
-              Granby Colleges of Science &amp; Technology
+              GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY
             </p>
             <p className="truncate text-[10px] leading-tight text-sidebar-foreground/70">Naic, Cavite</p>
           </div>

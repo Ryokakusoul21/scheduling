@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireUser } from "@/lib/auth/session";
 import { NotificationsList } from "./notifications-list";
 
-export const metadata = { title: "Notifications · GCST Scheduling" };
+export const metadata = { title: "Notifications · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function NotificationsPage() {
   const user = await requireUser();

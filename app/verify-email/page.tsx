@@ -3,7 +3,7 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { verifyEmailToken } from "@/actions/auth";
 
-export const metadata = { title: "Verify Email · GCST Scheduling" };
+export const metadata = { title: "Verify Email · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function VerifyEmailPage({
   searchParams,

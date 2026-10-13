@@ -6,7 +6,7 @@ import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { ACADEMIC_LEVELS } from "@/lib/academics/levels";
 
-const STAFF = ["SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER"] as const;
+const STAFF = ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT"] as const;
 
 /** FormData -> object, keeping repeated keys (checkbox groups) as arrays. */
 function formObject(formData: FormData) {

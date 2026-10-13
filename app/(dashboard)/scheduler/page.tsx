@@ -7,7 +7,7 @@ import { AcademicYearSwitcher } from "@/components/scheduler/academic-year-switc
 import type { SchedulerData } from "@/components/scheduler/types";
 import { EmptyState } from "@/components/ux/states";
 
-export const metadata = { title: "Scheduler · GCST Scheduling" };
+export const metadata = { title: "Scheduler · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 function location(r: { floor: { name: string; building: { name: string } } | null }) {
   return r.floor ? `${r.floor.building.name}, ${r.floor.name}` : "No building";

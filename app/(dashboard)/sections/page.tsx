@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/ux/states";
 import { cn } from "@/lib/utils";
 import { SectionsGrid } from "./sections-grid";
 
-export const metadata = { title: "Sections · GCST Scheduling" };
+export const metadata = { title: "Sections · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function SectionsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   await requireRole(...STAFF_ROLES);

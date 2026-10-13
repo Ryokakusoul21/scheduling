@@ -2,10 +2,10 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { ScheduleReportTable } from "./report-table";
 
-export const metadata = { title: "Schedule Reports · GCST Scheduling" };
+export const metadata = { title: "Schedule Reports · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function ReportsPage() {
-  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER");
+  await requireRole("ADMINISTRATOR", "HEAD_OF_DEPARTMENT");
 
   const [schedules, semesters, sections, faculty, rooms] = await Promise.all([
     prisma.schedule.findMany({
@@ -30,7 +30,7 @@ export default async function ReportsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Schedule Reports</h1>
         <p className="text-sm text-muted-foreground">
-          Granby Colleges of Science &amp; Technology — Class Schedule Report
+          GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY — Class Schedule Report
         </p>
       </div>
 

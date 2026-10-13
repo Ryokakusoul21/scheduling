@@ -1,17 +1,17 @@
 import { LegalPage } from "@/components/legal/legal-page";
 
-export const metadata = { title: "Terms of Service · GCST Scheduling" };
+export const metadata = { title: "Terms of Service · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default function TermsPage() {
   return (
     <LegalPage title="Terms of Service" updated="October 8, 2026">
       <p>
-        These terms govern your use of the GCST Scheduling Management System (&quot;the System&quot;) operated by
-        Granby Colleges of Science &amp; Technology.
+        These terms govern your use of the GRANBY COLLEGES OF SCIENCE & TECHNOLOGY Scheduling Management System (&quot;the System&quot;) operated by
+        GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY.
       </p>
       <h2>1. Eligibility and accounts</h2>
       <p>
-        The System is for GCST students, faculty, and staff. You are responsible for keeping your credentials
+        The System is for GRANBY COLLEGES OF SCIENCE & TECHNOLOGY students, faculty, and staff. You are responsible for keeping your credentials
         confidential and for all activity under your account. Notify the administrator immediately of any
         unauthorized use.
       </p>

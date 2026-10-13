@@ -4,7 +4,7 @@ import { roleLabel, type AppRole } from "@/lib/permissions/roles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SecuritySettings } from "./security-settings";
 
-export const metadata = { title: "Profile · GCST Scheduling" };
+export const metadata = { title: "Profile · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function ProfilePage() {
   const { id } = await requireUser();

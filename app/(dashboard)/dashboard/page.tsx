@@ -39,7 +39,7 @@ import { AssistantChat, AssistantHeader } from "@/components/assistant/assistant
 import { getAssistantHistory } from "../assistant/actions";
 import { cn } from "@/lib/utils";
 
-export const metadata = { title: "Dashboard · GCST Scheduling" };
+export const metadata = { title: "Dashboard · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 const DAY_NAMES = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
 
@@ -309,8 +309,8 @@ export default async function DashboardPage() {
   const quickActions = [
     { label: "Scheduler", hint: "g s", href: "/scheduler", icon: CalendarDots, description: "Build and fix timetables" },
     { label: "Academic Years & Terms", hint: "g y", href: "/academic-years", icon: CalendarBlank, description: "Semesters and quarters" },
-    { label: "Programs & Strands", hint: "g p", href: "/programs", icon: Stack, description: "Courses and SHS strands" },
-    { label: "Sections", hint: "g e", href: "/sections", icon: UsersThree, description: "K–12 and college sections" },
+    { label: "Programs & Strands", hint: "g p", href: "/programs", icon: Stack, description: "Courses and Senior High School strands" },
+    { label: "Sections", hint: "g e", href: "/sections", icon: UsersThree, description: "Basic education and college sections" },
     { label: "Subjects", hint: "g u", href: "/subjects", icon: BookOpen, description: "Subjects, units, and hours" },
     { label: "Faculty", hint: "g f", href: "/faculty", icon: UserSquare, description: "Teachers and loads" },
     { label: "Rooms", hint: "g r", href: "/rooms", icon: Buildings, description: "Buildings, floors, rooms" },

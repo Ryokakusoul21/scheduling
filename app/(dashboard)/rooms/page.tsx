@@ -3,7 +3,7 @@ import { requireRole } from "@/lib/auth/session";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { RoomsExplorer } from "./rooms-explorer";
 
-export const metadata = { title: "Rooms · GCST Scheduling" };
+export const metadata = { title: "Rooms · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 /** Mon–Sat, 7 AM–7 PM. */
 const AVAILABLE_MIN_PER_WEEK = 6 * 12 * 60;

@@ -3,7 +3,7 @@ import { requireRole } from "@/lib/auth/session";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { ProgramsManager } from "./programs-manager";
 
-export const metadata = { title: "Programs & Strands · GCST Scheduling" };
+export const metadata = { title: "Programs & Strands · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function ProgramsPage() {
   await requireRole(...STAFF_ROLES);

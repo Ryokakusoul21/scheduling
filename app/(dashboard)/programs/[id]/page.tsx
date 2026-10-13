@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EditProgramButton } from "./edit-program-button";
 
-export const metadata = { title: "Program · GCST Scheduling" };
+export const metadata = { title: "Program · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function ProgramDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireRole(...STAFF_ROLES);

@@ -11,12 +11,9 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 enum Role {
-  SUPER_ADMIN
   ADMINISTRATOR
-  REGISTRAR
-  SCHEDULER
+  HEAD_OF_DEPARTMENT
   FACULTY
-  STUDENT
 }
 
 enum UserStatus {
@@ -135,6 +132,56 @@ enum RequestStatus {
 
 
 
+enum ExaminationType {
+  PRELIMINARY
+  MIDTERM
+  FINAL
+  SPECIAL
+}
+
+/// Calendar activities stored directly; classes, examinations, and bookings come from their own tables.
+enum ActivityType {
+  SCHOOL_EVENT
+  HOLIDAY
+  CLASS_SUSPENSION
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+enum UnavailabilityKind {
+  FACULTY
+  ROOM
+}
+
+enum UnavailabilityStatus {
+  PENDING
+  APPLIED
+  DISMISSED
+}
+
+enum AdjustmentCause {
+  ROOM_BOOKING
+  FACULTY_UNAVAILABLE
+  ROOM_UNAVAILABLE
+  CLASS_SUSPENSION
+}
+
+/// What happened to one dated class meeting.
+enum AdjustmentKind {
+  MOVED
+  CANCELLED
+  MAKE_UP
+}
+
+enum ProposalStatus {
+  PENDING
+  APPLIED
+  REJECTED
+}
+
 enum NotificationType {
   INFO
   SUCCESS
@@ -179,6 +226,7 @@ model User {
   requestsReviewed ScheduleRequest[] @relation("ReviewedBy")
   aiConversations  AIConversation[]
   authTokens       AuthToken[]
+  bookings         RoomBooking[]
 
   @@index([role])
 }
@@ -224,6 +272,7 @@ model Department {
 
   programs Program[]
   faculty  Faculty[]
+  rooms    Room[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -275,8 +324,9 @@ model Semester {
   endDate        DateTime
   isActive       Boolean      @default(false)
 
-  sections  Section[]
-  schedules Schedule[]
+  sections     Section[]
+  schedules    Schedule[]
+  examinations Examination[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -302,7 +352,8 @@ model Subject {
   programId String?
   program   Program? @relation(fields: [programId], references: [id])
 
-  schedules Schedule[]
+  schedules    Schedule[]
+  examinations Examination[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -325,7 +376,8 @@ model Section {
   semesterId String?
   semester   Semester? @relation(fields: [semesterId], references: [id])
 
-  schedules Schedule[]
+  schedules    Schedule[]
+  examinations Examination[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -352,9 +404,11 @@ model Faculty {
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id])
 
-  user         User?
-  availability FacultyAvailability[]
-  schedules    Schedule[]
+  user           User?
+  availability   FacultyAvailability[]
+  schedules      Schedule[]
+  proctoring     Examination[]
+  unavailability Unavailability[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -416,9 +470,15 @@ model Room {
   roomType   RoomType
   equipment  String[]
   status     RoomStatus @default(AVAILABLE)
+  /// Owning department; null means a shared room managed by the Administrator.
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
 
-  availability RoomAvailability[]
-  schedules    Schedule[]
+  availability   RoomAvailability[]
+  schedules      Schedule[]
+  examinations   Examination[]
+  bookings       RoomBooking[]
+  unavailability Unavailability[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -477,7 +537,8 @@ model Schedule {
   score       Float?
   notes       String?
 
-  requests ScheduleRequest[]
+  requests    ScheduleRequest[]
+  adjustments ScheduleAdjustment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -489,6 +550,182 @@ model Schedule {
   @@index([dayOfWeek])
 }
 
+// ---------------------------------------------------------------------------
+// Examinations, calendar, bookings, and dated adjustments
+// ---------------------------------------------------------------------------
+
+model Examination {
+  id String @id @default(cuid())
+
+  semesterId String
+  semester   Semester @relation(fields: [semesterId], references: [id])
+  subjectId  String
+  subject    Subject  @relation(fields: [subjectId], references: [id])
+  sectionId  String
+  section    Section  @relation(fields: [sectionId], references: [id])
+  roomId     String
+  room       Room     @relation(fields: [roomId], references: [id])
+  proctorId  String
+  proctor    Faculty  @relation(fields: [proctorId], references: [id])
+
+  type     ExaminationType @default(MIDTERM)
+  date     DateTime        @db.Date
+  startMin Int
+  endMin   Int
+  notes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+}
+
+/// School events, holidays, and class suspensions shown on the calendar.
+model Activity {
+  id          String       @id @default(cuid())
+  type        ActivityType
+  title       String
+  description String?
+  startDate   DateTime     @db.Date
+  endDate     DateTime     @db.Date
+  /// Null times mean the activity lasts all day.
+  startMin    Int?
+  endMin      Int?
+  /// Suspensions only: affected sections; empty means every section.
+  sectionIds  String[]
+
+  batchId String?          @unique
+  batch   AdjustmentBatch? @relation(fields: [batchId], references: [id])
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([startDate, endDate])
+}
+
+model RoomBooking {
+  id String @id @default(cuid())
+
+  roomId     String
+  room       Room   @relation(fields: [roomId], references: [id])
+  bookedById String
+  bookedBy   User   @relation(fields: [bookedById], references: [id])
+
+  purpose   String
+  date      DateTime      @db.Date
+  startMin  Int
+  endMin    Int
+  attendees Int
+  status    BookingStatus @default(CONFIRMED)
+
+  /// Classes moved to make room for this booking.
+  batchId String?          @unique
+  batch   AdjustmentBatch? @relation(fields: [batchId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId, date])
+}
+
+/// A faculty member or room that cannot be used for a date range.
+model Unavailability {
+  id   String             @id @default(cuid())
+  kind UnavailabilityKind
+
+  facultyId String?
+  faculty   Faculty? @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  roomId    String?
+  room      Room?    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  startDate DateTime             @db.Date
+  endDate   DateTime             @db.Date
+  startMin  Int?
+  endMin    Int?
+  reason    String
+  status    UnavailabilityStatus @default(PENDING)
+
+  reportedById String?
+  batchId      String?          @unique
+  batch        AdjustmentBatch? @relation(fields: [batchId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// One automatic rescheduling run; undoing it reverts every adjustment inside.
+model AdjustmentBatch {
+  id          String          @id @default(cuid())
+  cause       AdjustmentCause
+  summary     String
+  createdById String?
+  undoneAt    DateTime?
+  createdAt   DateTime        @default(now())
+
+  adjustments    ScheduleAdjustment[]
+  booking        RoomBooking?
+  activity       Activity?
+  unavailability Unavailability?
+}
+
+/// Overrides one dated meeting of a weekly class (moved, cancelled, or a make-up session).
+model ScheduleAdjustment {
+  id String @id @default(cuid())
+
+  batchId    String
+  batch      AdjustmentBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  scheduleId String
+  schedule   Schedule        @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  kind      AdjustmentKind
+  /// The regular meeting date this adjustment replaces.
+  date      DateTime       @db.Date
+  /// Make-up sessions only: the new date.
+  newDate   DateTime?      @db.Date
+  /// New values; null keeps the original.
+  roomId    String?
+  facultyId String?
+  startMin  Int?
+  endMin    Int?
+  reason    String
+
+  createdAt DateTime @default(now())
+
+  @@index([scheduleId, date])
+}
+
+// ---------------------------------------------------------------------------
+// Workload optimization and enrollment forecasting
+// ---------------------------------------------------------------------------
+
+/// Suggested faculty reassignments waiting for Head of Department or Administrator approval.
+model WorkloadProposal {
+  id           String         @id @default(cuid())
+  semesterId   String
+  departmentId String?
+  status       ProposalStatus @default(PENDING)
+  /// Array of { scheduleIds, fromFacultyId, toFacultyId, hours, reason }.
+  items        Json
+  explanation  String
+  narrative    String?
+  createdById  String
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime       @default(now())
+}
+
+/// Historical enrollment per program (or per level when there is no program) and term.
+model EnrollmentRecord {
+  id           String        @id @default(cuid())
+  level        AcademicLevel
+  programId    String?
+  academicYear String
+  termType     SemesterType
+  enrolled     Int
+
+  @@index([level, programId])
+}
 
 model ScheduleRequest {
   id     String        @id @default(cuid())

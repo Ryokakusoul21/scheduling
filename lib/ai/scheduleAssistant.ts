@@ -243,7 +243,7 @@ async function buildStaffOverview(termIds: string[]): Promise<string[]> {
 
 function systemInstruction(context: string, role: AppRole) {
   const staff = isStaff(role);
-  return `You are the GCST Scheduling Assistant, a helpful chat assistant inside the scheduling system of Granby Colleges of Science & Technology (Naic, Cavite).
+  return `You are the Scheduling Assistant, a helpful chat assistant inside the scheduling system of GRANBY COLLEGES OF SCIENCE & TECHNOLOGY (Naic, Cavite).
 
 Your job is to answer questions about this scheduling system: ${
     staff

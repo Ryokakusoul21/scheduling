@@ -18,10 +18,9 @@ import { loginSchema, type LoginInput } from "@/lib/validation/auth";
 import type { LoginErrorCode } from "@/lib/auth/errors";
 
 const DEMO_ACCOUNTS = [
-  { label: "Super Admin", email: "admin@gcst.edu.ph" },
-  { label: "Scheduler", email: "scheduler@gcst.edu.ph" },
-  { label: "Faculty", email: "faculty@gcst.edu.ph" },
-  { label: "Student", email: "student@gcst.edu.ph" },
+  { label: "Administrator", email: "administrator@granby.edu.ph" },
+  { label: "Head of Department", email: "head.computing@granby.edu.ph" },
+  { label: "Faculty", email: "faculty@granby.edu.ph" },
 ];
 
 const ERROR_MESSAGES: Record<LoginErrorCode, string> = {
@@ -122,7 +121,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
                 id="email"
                 type="email"
                 autoComplete="email"
-                placeholder="you@gcst.edu.ph"
+                placeholder="you@granby.edu.ph"
                 aria-invalid={!!errors.email}
                 {...register("email")}
               />

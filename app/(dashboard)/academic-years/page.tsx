@@ -3,7 +3,7 @@ import { requireRole } from "@/lib/auth/session";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { YearsManager } from "./years-manager";
 
-export const metadata = { title: "Academic Years & Terms · GCST Scheduling" };
+export const metadata = { title: "Academic Years & Terms · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function AcademicYearsPage() {
   await requireRole(...STAFF_ROLES);

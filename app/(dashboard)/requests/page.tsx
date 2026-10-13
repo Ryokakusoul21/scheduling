@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth/session";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { RequestsManager } from "./manager";
 
-export const metadata = { title: "Schedule Requests · GCST Scheduling" };
+export const metadata = { title: "Schedule Requests · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function RequestsPage() {
   const user = await requireUser();

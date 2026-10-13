@@ -1,22 +1,29 @@
-import type { AppRole } from "@/lib/permissions/roles";
+import { TEACHING_ROLES, type AppRole } from "@/lib/permissions/roles";
 import type { Icon } from "@phosphor-icons/react";
 import {
   SquaresFour as LayoutDashboard,
   CalendarDots as CalendarClock,
+  CalendarCheck,
   ClipboardText as ClipboardList,
   CalendarBlank as CalendarDays,
   BookOpen,
   Stack as Layers,
   Users,
   UserSquare as UserSquare2,
+  UserMinus,
   Buildings as Building2,
   ChartBar as BarChart3,
-  ChartPie as PieChart,
+  ChartLineUp,
   Bell,
   ClockCounterClockwise as History,
   Gear as Settings,
   Robot as Bot,
   UsersThree,
+  Exam,
+  DoorOpen,
+  ArrowsClockwise,
+  Gauge,
+  UploadSimple,
 } from "@phosphor-icons/react/ssr";
 
 export interface NavItem {
@@ -33,8 +40,8 @@ export interface NavGroup {
   items: NavItem[];
 }
 
-const STAFF: AppRole[] = ["SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER"];
-const ADMIN: AppRole[] = ["SUPER_ADMIN", "ADMINISTRATOR"];
+const STAFF: AppRole[] = ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT"];
+const ADMIN: AppRole[] = ["ADMINISTRATOR"];
 
 export const NAV_GROUPS: NavGroup[] = [
   {
@@ -48,28 +55,40 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Scheduling",
     items: [
       { label: "Scheduler", href: "/scheduler", icon: CalendarClock, shortcut: "g s" },
+      { label: "Calendar of Activities", href: "/calendar", icon: CalendarCheck, shortcut: "g c" },
+      { label: "Examinations", href: "/examinations", icon: Exam, shortcut: "g x" },
+      { label: "Room Booking", href: "/bookings", icon: DoorOpen, shortcut: "g b" },
+      { label: "Schedule Adjustments", href: "/adjustments", icon: ArrowsClockwise, roles: STAFF },
       { label: "Schedule Requests", href: "/requests", icon: ClipboardList },
       { label: "AI Assistant", href: "/assistant", icon: Bot },
     ],
   },
   {
+    label: "My Teaching",
+    items: [
+      { label: "My Teaching Load", href: "/workload", icon: Gauge, roles: ["FACULTY"] },
+      { label: "Report Unavailability", href: "/availability", icon: UserMinus, roles: TEACHING_ROLES },
+    ],
+  },
+  {
     label: "Academic Setup",
     items: [
-      { label: "Academic Years & Terms", href: "/academic-years", icon: CalendarDays, roles: STAFF, shortcut: "g y" },
+      { label: "Academic Years & Terms", href: "/academic-years", icon: CalendarDays, roles: ADMIN, shortcut: "g y" },
       { label: "Programs & Strands", href: "/programs", icon: Layers, roles: STAFF, shortcut: "g p" },
       { label: "Subjects", href: "/subjects", icon: BookOpen, roles: STAFF, shortcut: "g u" },
       { label: "Sections", href: "/sections", icon: UsersThree, roles: STAFF, shortcut: "g e" },
       { label: "Faculty", href: "/faculty", icon: UserSquare2, roles: STAFF, shortcut: "g f" },
       { label: "Rooms", href: "/rooms", icon: Building2, roles: STAFF, shortcut: "g r" },
+      { label: "Bulk Data Import", href: "/import", icon: UploadSimple, roles: STAFF },
     ],
   },
   {
     label: "Reports & Analytics",
     items: [
+      { label: "Timetable Analytics", href: "/analytics", icon: BarChart3, roles: STAFF },
+      { label: "Faculty Workload", href: "/workload", icon: Gauge, roles: STAFF },
+      { label: "Enrollment Forecast", href: "/forecast", icon: ChartLineUp, roles: STAFF },
       { label: "Schedule Reports", href: "/reports", icon: BarChart3, roles: STAFF },
-      { label: "Faculty Workload", href: "/reports/faculty-workload", icon: BarChart3, roles: STAFF },
-      { label: "Room Utilization", href: "/reports/room-utilization", icon: PieChart, roles: STAFF },
-      { label: "Analytics", href: "/analytics", icon: BarChart3, roles: STAFF },
     ],
   },
   {

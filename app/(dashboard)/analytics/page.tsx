@@ -3,7 +3,7 @@ import { requireRole } from "@/lib/auth/session";
 import { activeOverlapConflicts } from "@/lib/scheduler/term-conflicts";
 import { AnalyticsCharts } from "./analytics-charts";
 
-export const metadata = { title: "Analytics · GCST Scheduling" };
+export const metadata = { title: "Analytics · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 const DAY_LABELS: Record<string, string> = {
@@ -11,7 +11,7 @@ const DAY_LABELS: Record<string, string> = {
 };
 
 export default async function AnalyticsPage() {
-  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER");
+  await requireRole("ADMINISTRATOR", "HEAD_OF_DEPARTMENT");
 
   const [schedules, rooms, faculty, sections] = await Promise.all([
     prisma.schedule.findMany({ where: { status: { not: "ARCHIVED" } } }),

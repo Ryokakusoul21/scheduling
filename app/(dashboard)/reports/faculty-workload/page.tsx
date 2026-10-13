@@ -5,10 +5,10 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-export const metadata = { title: "Faculty Workload · GCST Scheduling" };
+export const metadata = { title: "Faculty Workload · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function FacultyWorkloadPage() {
-  await requireRole("SUPER_ADMIN", "ADMINISTRATOR", "REGISTRAR", "SCHEDULER");
+  await requireRole("ADMINISTRATOR", "HEAD_OF_DEPARTMENT");
 
   const faculty = await prisma.faculty.findMany({
     where: { status: "ACTIVE" },

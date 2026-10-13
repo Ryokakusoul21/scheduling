@@ -74,7 +74,7 @@ export async function registerAction(
       name,
       email,
       passwordHash: await bcrypt.hash(password, AUTH.bcryptRounds),
-      role: "STUDENT",
+      role: "FACULTY",
       status: needsApproval ? "PENDING" : "ACTIVE",
       termsAcceptedAt: new Date(),
     },
@@ -117,7 +117,7 @@ export async function verifyEmailToken(token: string) {
 
   if (user.status === "PENDING") {
     const admins = await prisma.user.findMany({
-      where: { role: { in: ["SUPER_ADMIN", "ADMINISTRATOR"] }, status: "ACTIVE" },
+      where: { role: "ADMINISTRATOR", status: "ACTIVE" },
       select: { id: true },
     });
     await prisma.notification.createMany({

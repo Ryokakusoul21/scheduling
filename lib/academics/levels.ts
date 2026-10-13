@@ -56,7 +56,7 @@ export const LEVELS: Record<AcademicLevel, LevelInfo> = {
   SENIOR_HIGH: {
     value: "SENIOR_HIGH",
     label: "Senior High School",
-    short: "SHS",
+    short: "Senior High",
     description: "Grades 11–12 with academic and technical-vocational strands",
     grades: ["GRADE_11", "GRADE_12"],
     usesPrograms: true,
@@ -65,7 +65,7 @@ export const LEVELS: Record<AcademicLevel, LevelInfo> = {
   JUNIOR_HIGH: {
     value: "JUNIOR_HIGH",
     label: "Junior High School",
-    short: "JHS",
+    short: "Junior High",
     description: "Grades 7–10",
     grades: ["GRADE_7", "GRADE_8", "GRADE_9", "GRADE_10"],
     usesPrograms: false,
@@ -74,7 +74,7 @@ export const LEVELS: Record<AcademicLevel, LevelInfo> = {
   ELEMENTARY: {
     value: "ELEMENTARY",
     label: "Elementary",
-    short: "Elem",
+    short: "Elementary",
     description: "Kindergarten to Grade 6",
     grades: ["KINDER", "GRADE_1", "GRADE_2", "GRADE_3", "GRADE_4", "GRADE_5", "GRADE_6"],
     usesPrograms: false,
@@ -147,13 +147,13 @@ export function stageLabel(row: { level: string; yearLevel?: string | null; grad
 
 /** College programs and SHS strands offered by the school (used by the seed and as hints in forms). */
 export const DEFAULT_COLLEGE_PROGRAMS = [
-  { code: "BSIT", name: "BS Information Technology", department: "CCS" },
-  { code: "BSCS", name: "BS Computer Science", department: "CCS" },
-  { code: "BSCrim", name: "BS Criminology", department: "CCJE" },
-  { code: "BSISM", name: "BS Industrial Security Management", department: "CCJE" },
-  { code: "BSA", name: "BS Accountancy", department: "CBA" },
-  { code: "BSBA", name: "BS Business Administration", department: "CBA" },
-  { code: "BSTM", name: "BS Tourism Management", department: "CHTM" },
+  { code: "BSIT", name: "Bachelor of Science in Information Technology", department: "CCS" },
+  { code: "BSCS", name: "Bachelor of Science in Computer Science", department: "CCS" },
+  { code: "BSCrim", name: "Bachelor of Science in Criminology", department: "CCJE" },
+  { code: "BSISM", name: "Bachelor of Science in Industrial Security Management", department: "CCJE" },
+  { code: "BSA", name: "Bachelor of Science in Accountancy", department: "CBA" },
+  { code: "BSBA", name: "Bachelor of Science in Business Administration", department: "CBA" },
+  { code: "BSTM", name: "Bachelor of Science in Tourism Management", department: "CHTM" },
   { code: "BEED", name: "Bachelor of Elementary Education", department: "CTE" },
   { code: "BSED", name: "Bachelor of Secondary Education", department: "CTE" },
 ] as const;
@@ -164,6 +164,6 @@ export const DEFAULT_SHS_STRANDS = [
   { code: "GAS", name: "General Academic Strand" },
   { code: "STEM", name: "Science, Technology, Engineering and Mathematics" },
   { code: "ICT", name: "Information and Communications Technology" },
-  { code: "TVL", name: "Technical-Vocational-Livelihood (Tech-Voc)" },
+  { code: "TVL", name: "Technical-Vocational-Livelihood" },
   { code: "IA", name: "Industrial Arts" },
 ] as const;
