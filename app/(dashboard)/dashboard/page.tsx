@@ -294,7 +294,7 @@ export default async function DashboardPage() {
       tone: "text-orange-600 bg-orange-500/10",
       title: `${overloaded} faculty over their max hours`,
       detail: "Check teaching loads",
-      href: "/reports/faculty-workload",
+      href: "/workload",
     },
     {
       show: totalSections - scheduledSections.size > 0 && activeTerms.length > 0,
