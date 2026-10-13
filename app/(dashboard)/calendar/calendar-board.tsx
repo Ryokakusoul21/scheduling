@@ -20,12 +20,13 @@ import {
   EVENT_DOTS,
   EVENT_LABELS,
   EVENT_TYPES,
+  collapseLanes,
   formatLongDate,
   shiftDate,
   type CalendarView,
   type EventType,
 } from "@/lib/calendar";
-import { DEFAULT_GRID, formatRange, formatTime, layoutLanes, timeOptions } from "@/lib/scheduler/timetable";
+import { DEFAULT_GRID, formatRange, formatTime, timeOptions } from "@/lib/scheduler/timetable";
 import { cn } from "@/lib/utils";
 import { deleteActivityAction, saveActivityAction, type ActivityInput } from "./actions";
 
@@ -69,6 +70,7 @@ export function CalendarBoard(props: {
   const router = useRouter();
   const [hidden, setHidden] = useState<Set<EventType>>(new Set());
   const [selected, setSelected] = useState<CalendarEvent | null>(null);
+  const [group, setGroup] = useState<CalendarEvent[] | null>(null);
   const [editing, setEditing] = useState<{ id?: string; form: ActivityForm } | null>(null);
 
   const go = (next: Partial<{ view: CalendarView; date: string; scope: string }>) => {
@@ -123,9 +125,25 @@ export function CalendarBoard(props: {
         {view === "month" ? (
           <MonthGrid from={from} to={to} month={date.slice(0, 7)} today={today} events={visible} onDay={(d) => go({ view: "day", date: d })} onSelect={setSelected} />
         ) : (
-          <TimeGrid dates={view === "week" ? eachDate(from, to) : [date]} today={today} events={visible} onSelect={setSelected} onDay={(d) => go({ view: "day", date: d })} />
+          <TimeGrid dates={view === "week" ? eachDate(from, to) : [date]} today={today} events={visible} onSelect={setSelected} onDay={(d) => go({ view: "day", date: d })} onMore={setGroup} />
         )}
       </CardContent>
+
+      <Dialog open={!!group} onOpenChange={(o) => !o && setGroup(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{group?.length} items at this time</DialogTitle>
+            <DialogDescription>Choose one to see its details.</DialogDescription>
+          </DialogHeader>
+          <ul className="max-h-[60vh] space-y-1.5 overflow-y-auto">
+            {group?.map((e) => (
+              <li key={e.id}>
+                <Chip e={e} onSelect={(x) => { setGroup(null); setSelected(x); }} className="py-1.5 text-xs" />
+              </li>
+            ))}
+          </ul>
+        </DialogContent>
+      </Dialog>
 
       <EventDialog
         event={selected}
@@ -181,11 +199,13 @@ function MonthGrid({ from, to, month, today, events, onDay, onSelect }: { from: 
   );
 }
 
-function TimeGrid({ dates, today, events, onSelect, onDay }: { dates: string[]; today: string; events: CalendarEvent[]; onSelect: (e: CalendarEvent) => void; onDay: (d: string) => void }) {
+function TimeGrid({ dates, today, events, onSelect, onDay, onMore }: { dates: string[]; today: string; events: CalendarEvent[]; onSelect: (e: CalendarEvent) => void; onDay: (d: string) => void; onMore: (events: CalendarEvent[]) => void }) {
   const hours = Array.from({ length: (DAY_END - DAY_START) / 60 }, (_, i) => DAY_START + i * 60);
   const height = ((DAY_END - DAY_START) / 60) * HOUR_PX;
   const y = (min: number) => ((Math.min(Math.max(min, DAY_START), DAY_END) - DAY_START) / 60) * HOUR_PX;
   const single = dates.length === 1;
+  // At most this many items side by side; the rest fold into a "+N more" block.
+  const maxLanes = single ? 6 : 3;
 
   return (
     <div className="overflow-x-auto rounded-lg border">
@@ -207,12 +227,13 @@ function TimeGrid({ dates, today, events, onSelect, onDay }: { dates: string[]; 
         </div>
         {dates.map((d) => {
           const timed = events.filter((e) => onDate(e, d) && !isAllDay(e));
-          const lanes = layoutLanes(timed.map((e) => ({ id: e.id, startMin: e.startMin!, endMin: e.endMin! })));
+          const { shown, overflow } = collapseLanes(timed.map((e) => ({ id: e.id, startMin: e.startMin!, endMin: e.endMin! })), maxLanes);
           return (
             <div key={d} className={cn("relative border-l", d === today && "bg-primary/[0.03]")} style={{ height }}>
               {hours.map((h) => <div key={h} className="absolute inset-x-0 border-t border-dashed border-border/60" style={{ top: y(h) }} />)}
               {timed.map((e) => {
-                const l = lanes.get(e.id) ?? { lane: 0, lanes: 1 };
+                const l = shown.get(e.id);
+                if (!l) return null;
                 return (
                   <button
                     key={e.id}
@@ -227,6 +248,17 @@ function TimeGrid({ dates, today, events, onSelect, onDay }: { dates: string[]; 
                   </button>
                 );
               })}
+              {overflow.map((o) => (
+                <button
+                  key={o.ids.join()}
+                  onClick={() => (single ? onMore(timed.filter((e) => o.ids.includes(e.id))) : onDay(d))}
+                  className="absolute flex items-start justify-center overflow-hidden rounded border border-border bg-muted px-1 py-0.5 text-[11px] font-semibold text-foreground shadow-xs hover:bg-accent"
+                  style={{ top: y(o.startMin), height: Math.max(y(o.endMin) - y(o.startMin), 18), left: `${(o.lane / o.lanes) * 100}%`, width: `${100 / o.lanes}%` }}
+                  title={single ? "Show every item at this time" : "Open this day to see every item"}
+                >
+                  +{o.ids.length} more
+                </button>
+              ))}
             </div>
           );
         })}

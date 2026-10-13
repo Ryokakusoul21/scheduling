@@ -1,5 +1,6 @@
 /** Calendar of Activities: view ranges, navigation, and the color legend (browser-safe). */
 import { addDays, dayOfWeek } from "@/lib/occupancy/engine";
+import { layoutLanes } from "@/lib/scheduler/timetable";
 
 export type CalendarView = "month" | "week" | "day";
 
@@ -62,4 +63,50 @@ export function shiftDate(view: CalendarView, date: string, dir: 1 | -1) {
 
 export function formatLongDate(date: string, opts: Intl.DateTimeFormatOptions = { weekday: "long", month: "long", day: "numeric", year: "numeric" }) {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-PH", { ...opts, timeZone: "UTC" });
+}
+
+export interface TimedItem {
+  id: string;
+  startMin: number;
+  endMin: number;
+}
+
+/**
+ * Lays out overlapping items side by side, but never more than `maxLanes` across: when a group of
+ * overlapping items needs more, the last lane becomes a "+N more" block covering the rest of the group.
+ */
+export function collapseLanes(items: TimedItem[], maxLanes: number) {
+  const lanes = layoutLanes(items);
+  const shown = new Map<string, { lane: number; lanes: number }>();
+  const overflow: { startMin: number; endMin: number; lane: number; lanes: number; ids: string[] }[] = [];
+  const sorted = [...items].sort((a, b) => a.startMin - b.startMin || b.endMin - a.endMin);
+
+  // Groups are runs of items connected by overlap; layoutLanes gives every item in a group the same lane count.
+  let group: TimedItem[] = [];
+  let groupEnd = -Infinity;
+  const flush = () => {
+    if (!group.length) return;
+    const count = lanes.get(group[0].id)!.lanes;
+    if (count <= maxLanes) {
+      for (const g of group) shown.set(g.id, lanes.get(g.id)!);
+    } else {
+      const hidden = group.filter((g) => lanes.get(g.id)!.lane >= maxLanes - 1);
+      for (const g of group) if (!hidden.includes(g)) shown.set(g.id, { lane: lanes.get(g.id)!.lane, lanes: maxLanes });
+      overflow.push({
+        startMin: Math.min(...hidden.map((h) => h.startMin)),
+        endMin: Math.max(...hidden.map((h) => h.endMin)),
+        lane: maxLanes - 1,
+        lanes: maxLanes,
+        ids: hidden.map((h) => h.id),
+      });
+    }
+    group = [];
+  };
+  for (const item of sorted) {
+    if (item.startMin >= groupEnd) flush();
+    group.push(item);
+    groupEnd = Math.max(groupEnd, item.endMin);
+  }
+  flush();
+  return { shown, overflow };
 }
