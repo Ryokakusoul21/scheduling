@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { authConfig } from "./auth.config";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { AUTH } from "@/lib/auth/config";
 import { LoginError } from "@/lib/auth/errors";
@@ -33,6 +34,12 @@ async function registerFailure(userId: string, failedLoginAttempts: number) {
       : { failedLoginAttempts: attempts },
   });
   return lock;
+}
+
+/** Connection failures (as opposed to real answers such as "user not found"). */
+function isDatabaseUnreachable(error: unknown) {
+  if (error instanceof Prisma.PrismaClientInitializationError) return true;
+  return error instanceof Prisma.PrismaClientKnownRequestError && ["P1001", "P1002", "P1008", "P1017"].includes(error.code);
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -123,10 +130,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
       // Re-validate against the database so password resets, "sign out
       // everywhere", deactivation and role changes take effect immediately.
-      const current = await prisma.user.findUnique({
-        where: { id: token.id },
-        select: { status: true, role: true, sessionVersion: true },
-      });
+      let current;
+      try {
+        current = await prisma.user.findUnique({
+          where: { id: token.id },
+          select: { status: true, role: true, sessionVersion: true },
+        });
+      } catch (error) {
+        // A brief database outage should not sign everyone out; the next request checks again.
+        if (isDatabaseUnreachable(error)) {
+          console.warn("Session check skipped: the database could not be reached.");
+          return token;
+        }
+        throw error;
+      }
       if (!current || current.status !== "ACTIVE" || current.sessionVersion !== token.sessionVersion) {
         return null;
       }
