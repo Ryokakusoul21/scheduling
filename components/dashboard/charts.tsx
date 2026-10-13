@@ -137,21 +137,24 @@ export function UpcomingList({ items, title = "Upcoming examinations and activit
 /** Simple horizontal bars of hours, for "rooms used most" lists. */
 export function HoursBars({ title, rows, unit = "hours per week" }: { title: string; rows: { name: string; hours: number }[]; unit?: string }) {
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
-      <CardContent style={{ height: Math.max(140, rows.length * 30 + 40) }}>
+      {/* Grows to the row height; the minimum keeps every bar readable when the card stands alone. */}
+      <CardContent className="relative flex-1" style={{ minHeight: Math.max(140, rows.length * 30 + 40) }}>
         {rows.length === 0 ? <p className="text-sm text-muted-foreground">No classes yet.</p> : (
-          <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
-            <BarChart data={rows} layout="vertical" margin={{ left: 8, right: 32 }}>
-              <CartesianGrid horizontal={false} stroke="currentColor" opacity={0.08} />
-              <XAxis type="number" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
-              <YAxis type="category" dataKey="name" width={150} fontSize={11} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "currentColor", opacity: 0.05 }} formatter={(v) => [`${v} ${unit}`, "Scheduled"]} />
-              <Bar dataKey="hours" fill="var(--chart-1)" radius={[0, 4, 4, 0]} barSize={14}>
-                <LabelList dataKey="hours" position="right" fontSize={11} fill="currentColor" />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="absolute inset-0 px-(--card-spacing)">
+            <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
+              <BarChart data={rows} layout="vertical" margin={{ left: 8, right: 32 }}>
+                <CartesianGrid horizontal={false} stroke="currentColor" opacity={0.08} />
+                <XAxis type="number" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" width={150} fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "currentColor", opacity: 0.05 }} formatter={(v) => [`${v} ${unit}`, "Scheduled"]} />
+                <Bar dataKey="hours" fill="var(--chart-1)" radius={[0, 4, 4, 0]} maxBarSize={24}>
+                  <LabelList dataKey="hours" position="right" fontSize={11} fill="currentColor" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         )}
       </CardContent>
     </Card>

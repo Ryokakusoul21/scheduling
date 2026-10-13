@@ -22,27 +22,30 @@ export function RateChart({ title, rows, unit, limit = 10 }: { title: string; ro
   const shown = marked ? [...rows.slice(0, limit - 1).filter((r) => r.mark !== "LEAST"), ...rows.filter((r) => r.mark === "LEAST")] : rows.slice(0, limit);
   const data = shown.map((r) => ({ name: r.mark ? `${r.name} (${MARK_TEXT[r.mark]})` : r.name, rate: r.rate, used: r.usedHours, cap: r.capacityHours, mark: r.mark ?? null }));
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
-      <CardContent style={{ height: Math.max(160, data.length * 30 + 40) }}>
+      {/* Grows to the row height; the minimum keeps every bar readable when the card stands alone. */}
+      <CardContent className="relative flex-1" style={{ minHeight: Math.max(160, data.length * 30 + 40) }}>
         {data.length === 0 ? (
           <p className="text-sm text-muted-foreground">No data for these filters.</p>
         ) : (
-          <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
-            <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
-              <CartesianGrid horizontal={false} stroke="currentColor" opacity={0.08} />
-              <XAxis type="number" domain={[0, (max: number) => Math.max(100, Math.ceil(max / 10) * 10)]} unit="%" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis type="category" dataKey="name" width={170} fontSize={11} tickLine={false} axisLine={false} />
-              <Tooltip
-                cursor={{ fill: "currentColor", opacity: 0.05 }}
-                contentStyle={TOOLTIP_STYLE}
-                formatter={(_v, _n, p) => [`${p.payload.rate}% (${p.payload.used} of ${p.payload.cap} ${unit})`, "Utilization Rate"]}
-              />
-              <Bar dataKey="rate" fill="var(--chart-1)" radius={[0, 4, 4, 0]} barSize={14} minPointSize={2}>
-                {data.map((d) => <Cell key={d.name} fill="var(--chart-1)" fillOpacity={!marked || d.mark ? 1 : 0.35} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="absolute inset-0 px-(--card-spacing)">
+            <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
+              <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
+                <CartesianGrid horizontal={false} stroke="currentColor" opacity={0.08} />
+                <XAxis type="number" domain={[0, (max: number) => Math.max(100, Math.ceil(max / 10) * 10)]} unit="%" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="name" width={170} fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip
+                  cursor={{ fill: "currentColor", opacity: 0.05 }}
+                  contentStyle={TOOLTIP_STYLE}
+                  formatter={(_v, _n, p) => [`${p.payload.rate}% (${p.payload.used} of ${p.payload.cap} ${unit})`, "Utilization Rate"]}
+                />
+                <Bar dataKey="rate" fill="var(--chart-1)" radius={[0, 4, 4, 0]} maxBarSize={24} minPointSize={2}>
+                  {data.map((d) => <Cell key={d.name} fill="var(--chart-1)" fillOpacity={!marked || d.mark ? 1 : 0.35} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         )}
       </CardContent>
     </Card>
