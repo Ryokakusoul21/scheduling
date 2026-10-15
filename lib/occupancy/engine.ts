@@ -205,6 +205,8 @@ export interface RoomInfo {
   roomType: RoomType;
   status: string;
   buildingId: string | null;
+  /** Designated programs and strands; null or missing means General / Shared. */
+  programIds?: string[] | null;
 }
 
 export interface FacultyInfo {
@@ -232,6 +234,8 @@ export interface PlanContext {
   holidays: Set<string>;
   sectionSize: Map<string, number>;
   sectionLevel: Map<string, string>;
+  /** Program or strand of each section, for room designation. */
+  sectionProgram?: Map<string, string | null>;
   subjectRoomType: Map<string, RoomType>;
   dayStart?: number;
   dayEnd?: number;
@@ -248,10 +252,12 @@ export interface Relocation {
 
 const LAB_TYPES: RoomType[] = ["COMPUTER_LABORATORY", "SCIENCE_LABORATORY"];
 
-/** Room fits the session: open, large enough, and the right type (laboratory work needs the subject's laboratory type). */
+/** Room fits the session: open, large enough, designated for the section, and the right type (laboratory work needs the subject's laboratory type). */
 export function roomSuits(room: RoomInfo, s: Pick<Session, "sectionId" | "subjectId" | "component">, ctx: PlanContext) {
   if (room.status !== "AVAILABLE") return false;
   if (room.capacity < (ctx.sectionSize.get(s.sectionId) ?? 0)) return false;
+  const programId = ctx.sectionProgram?.get(s.sectionId);
+  if (room.programIds && !(programId && room.programIds.includes(programId))) return false;
   if (s.component === "LABORATORY") {
     const required = ctx.subjectRoomType.get(s.subjectId);
     return required && LAB_TYPES.includes(required) ? room.roomType === required : LAB_TYPES.includes(room.roomType);

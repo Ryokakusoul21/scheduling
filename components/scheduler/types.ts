@@ -92,6 +92,8 @@ export interface RoomOption {
   status: "AVAILABLE" | "UNDER_MAINTENANCE" | "UNAVAILABLE";
   location: string;
   availability: Availability[];
+  /** Designated programs and strands; null means General / Shared. */
+  programIds: string[] | null;
 }
 
 export interface SchedulerData {

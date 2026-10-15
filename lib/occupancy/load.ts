@@ -65,10 +65,10 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
       include: { subject: { select: { code: true } }, section: { select: { name: true } } },
     }),
     prisma.roomBooking.findMany({ where: { status: "CONFIRMED", date: { gte: rangeFrom, lte: rangeTo } } }),
-    prisma.room.findMany({ include: { floor: { select: { buildingId: true } } } }),
+    prisma.room.findMany({ include: { floor: { select: { buildingId: true } }, programs: { select: { id: true } } } }),
     prisma.faculty.findMany({ where: { status: "ACTIVE" }, include: { availability: true } }),
     prisma.unavailability.findMany({ where: { status: { not: "DISMISSED" }, startDate: { lte: wideTo }, endDate: { gte: wideFrom } } }),
-    prisma.section.findMany({ select: { id: true, studentCount: true, level: true } }),
+    prisma.section.findMany({ select: { id: true, studentCount: true, level: true, programId: true } }),
     prisma.subject.findMany({ select: { id: true, requiredRoomType: true } }),
   ]);
 
@@ -113,7 +113,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
   ];
 
   const ctx: PlanContext = {
-    rooms: rooms.map((r) => ({ id: r.id, name: r.roomName, capacity: r.capacity, roomType: r.roomType, status: r.status, buildingId: r.floor?.buildingId ?? null })),
+    rooms: rooms.map((r) => ({ id: r.id, name: r.roomName, capacity: r.capacity, roomType: r.roomType, status: r.status, buildingId: r.floor?.buildingId ?? null, programIds: r.isGeneralShared ? null : r.programs.map((p) => p.id) })),
     faculty: new Map(
       faculty.map((f) => [
         f.id,
@@ -125,6 +125,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
     holidays: holidaySet,
     sectionSize: new Map(sections.map((s) => [s.id, s.studentCount])),
     sectionLevel: new Map(sections.map((s) => [s.id, s.level])),
+    sectionProgram: new Map(sections.map((s) => [s.id, s.programId])),
     subjectRoomType: new Map(subjects.map((s) => [s.id, s.requiredRoomType as RoomType])),
   };
 

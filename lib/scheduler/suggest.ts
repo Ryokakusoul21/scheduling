@@ -61,10 +61,10 @@ export function rankFaculty(
 const LAB_TYPES: RoomType[] = ["COMPUTER_LABORATORY", "SCIENCE_LABORATORY"];
 
 export function rankRooms(
-  rooms: { id: string; capacity: number; roomType: RoomType; status: string }[],
+  rooms: { id: string; capacity: number; roomType: RoomType; status: string; programIds?: string[] | null }[],
   slot: Slot,
   bookings: Booking[],
-  opts: { studentCount?: number; component: "LECTURE" | "LABORATORY"; requiredRoomType?: RoomType }
+  opts: { studentCount?: number; component: "LECTURE" | "LABORATORY"; requiredRoomType?: RoomType; programId?: string | null }
 ): Ranked[] {
   return rooms
     .map((r) => {
@@ -76,10 +76,12 @@ export function rankRooms(
           ? !isLab && r.roomType !== opts.requiredRoomType
           : isLab || r.roomType === "CONFERENCE_ROOM";
       const closed = r.status !== "AVAILABLE";
+      // Designated rooms only serve their own programs or strands.
+      const otherProgram = !!r.programIds && !(opts.programId && r.programIds.includes(opts.programId));
       return {
         id: r.id,
-        rank: (busy ? 8 : 0) + (closed ? 4 : 0) + (tooSmall ? 2 : 0) + (typeMismatch ? 1 : 0),
-        notes: [busy && "busy", tooSmall && `seats ${r.capacity}`, typeMismatch && "type", closed && "closed"].filter(Boolean) as string[],
+        rank: (busy ? 8 : 0) + (closed || otherProgram ? 4 : 0) + (tooSmall ? 2 : 0) + (typeMismatch ? 1 : 0),
+        notes: [busy && "busy", tooSmall && `seats ${r.capacity}`, typeMismatch && "type", closed && "closed", otherProgram && "other program"].filter(Boolean) as string[],
       };
     })
     .sort((a, b) => a.rank - b.rank);

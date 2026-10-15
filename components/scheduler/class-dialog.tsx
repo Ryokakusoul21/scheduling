@@ -146,6 +146,7 @@ function ClassForm({
       studentCount: section?.studentCount,
       component: form.component,
       requiredRoomType: subject?.requiredRoomType,
+      programId: section?.programId,
     }).map((r) => {
       const room = byId.get(r.id)!;
       return {

@@ -37,6 +37,9 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { NativeSelect } from "@/components/ux/native-select";
 import { EmptyState, SelectCard } from "@/components/ux/states";
+import { BackButton } from "@/components/ux/back-button";
+import { ReportButtons } from "@/components/ux/export-buttons";
+import { timetableDoc } from "@/lib/export/report";
 import { useShortcut } from "@/components/ux/shortcuts";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { cn } from "@/lib/utils";
@@ -62,6 +65,7 @@ import { deleteClassAction, moveClassAction, publishClassesAction, saveClassActi
 import { Timetable, PALETTE, type BlockInfo, type DropPreview } from "./timetable";
 import { ClassDialog, type ClassDraft } from "./class-dialog";
 import { ConflictsPanel, UnscheduledPanel } from "./side-panels";
+import { ConstraintReportPanel, useOverridePrompt } from "./constraint-feedback";
 import { ScheduleList, type RowInfo } from "./schedule-list";
 import { ACTIVE_TERMS, useSchedulerFilters, type Filters } from "./use-scheduler-filters";
 import type { SchedulerData, SchedulerEntry, SchedulerPermissions } from "./types";
@@ -124,7 +128,10 @@ export function SchedulerWorkspace({
 
   const dndId = useId();
   const [view, setView] = useState<"timetable" | "table">("timetable");
-  const [panel, setPanel] = useState<"conflicts" | "todo">("conflicts");
+  const [panel, setPanel] = useState<"conflicts" | "todo" | "rules">("conflicts");
+  // Requests still being saved; together with an open class dialog these count as unsaved changes.
+  const [pending, setPending] = useState(0);
+  const { prompt: promptOverride, dialog: overrideDialog } = useOverridePrompt();
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [dialog, setDialog] = useState<ClassDraft | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -286,7 +293,11 @@ export function SchedulerWorkspace({
       if (moved.dayOfWeek === entry.dayOfWeek && moved.startMin === entry.startMin) return;
 
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? moved : e)));
-      const res = await moveClassAction({ id: entry.id, dayOfWeek: day, startMin, endMin: moved.endMin });
+      const input = { id: entry.id, dayOfWeek: day, startMin, endMin: moved.endMin };
+      setPending((n) => n + 1);
+      let res = await moveClassAction(input);
+      if (!res.ok && res.overridable && res.violations && (await promptOverride(res.violations))) res = await moveClassAction(input, true);
+      setPending((n) => n - 1);
       if (!res.ok) {
         setEntries((prev) => prev.map((e) => (e.id === entry.id ? entry : e)));
         toast.error(res.error);
@@ -313,7 +324,7 @@ export function SchedulerWorkspace({
       }
       if (res.data.status !== entry.status) toast.info(`Status changed to ${res.data.status.toLowerCase()} for review.`);
     },
-    [maps.subject, conflictsFor]
+    [maps.subject, conflictsFor, promptOverride]
   );
   useEffect(() => {
     moveRef.current = moveEntry;
@@ -321,9 +332,12 @@ export function SchedulerWorkspace({
 
   const saveClass = useCallback(
     async (input: ClassInput) => {
-      const res = await saveClassAction(input);
+      setPending((n) => n + 1);
+      let res = await saveClassAction(input);
+      if (!res.ok && res.overridable && res.violations && (await promptOverride(res.violations))) res = await saveClassAction(input, true);
+      setPending((n) => n - 1);
       if (!res.ok) {
-        toast.error(res.error);
+        if (!res.overridable) toast.error(res.error);
         return false;
       }
       setEntries((prev) => {
@@ -334,7 +348,7 @@ export function SchedulerWorkspace({
       flash(res.data.id);
       return true;
     },
-    [flash]
+    [flash, promptOverride]
   );
 
   const deleteClass = useCallback(async (id: string) => {
@@ -377,6 +391,7 @@ export function SchedulerWorkspace({
         studentCount: section?.studentCount,
         component: draft.component,
         requiredRoomType: subject?.requiredRoomType,
+        programId: section?.programId,
       })[0];
       return { ...draft, facultyId: draft.facultyId || faculty?.id || "", roomId: draft.roomId || room?.id || "" };
     },
@@ -550,9 +565,22 @@ export function SchedulerWorkspace({
         : maps.room.get(focus.id)?.roomName
     : null;
 
+  // Printable timetable of the focused section, teacher, or room.
+  const printDoc = useMemo(() => {
+    if (!focus || !focusTitle) return null;
+    const kind = { section: "Class", faculty: "Teacher", room: "Room" }[focus.kind];
+    const termLabels = [...new Set(visibleTimetable.map((e) => maps.term.get(e.semesterId)?.label).filter(Boolean))];
+    const term = filters.termId !== ACTIVE_TERMS ? maps.term.get(filters.termId)?.label : termLabels.join("; ");
+    const rows = visibleTimetable.map((e) => {
+      const r = rowInfo(e);
+      return { ...e, subject: `${r.subject} - ${r.subjectName}`, section: r.section, faculty: r.faculty, room: r.room };
+    });
+    return timetableDoc(`${kind} Timetable: ${focusTitle}`, term || "No term selected", rows, `${kind.toLowerCase()}-timetable-${focusTitle.replace(/\W+/g, "-").toLowerCase()}`);
+  }, [focus, focusTitle, visibleTimetable, maps.term, filters.termId, rowInfo]);
+
   const sidePanel = (
     <div ref={panelRef} className="space-y-3">
-      <div role="tablist" aria-label="Scheduler panels" className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+      <div role="tablist" aria-label="Scheduler panels" className={cn("grid gap-1 rounded-lg bg-muted p-1", permissions.canEdit ? "grid-cols-3" : "grid-cols-2")}>
         <PanelTab active={panel === "conflicts"} onClick={() => setPanel("conflicts")}>
           Conflicts
           <Badge variant={overlapCount ? "destructive" : "secondary"} className="ml-1">
@@ -565,8 +593,15 @@ export function SchedulerWorkspace({
             {focusedSection ? needs.length : "–"}
           </Badge>
         </PanelTab>
+        {permissions.canEdit && (
+          <PanelTab active={panel === "rules"} onClick={() => setPanel("rules")}>
+            Constraints
+          </PanelTab>
+        )}
       </div>
-      {panel === "conflicts" ? (
+      {panel === "rules" ? (
+        <ConstraintReportPanel termId={filters.termId === ACTIVE_TERMS ? "" : filters.termId} onJump={jumpTo} />
+      ) : panel === "conflicts" ? (
         <ConflictsPanel conflicts={scopedConflicts} describe={describe} onJump={jumpTo} />
       ) : focusedSection ? (
         <UnscheduledPanel
@@ -613,13 +648,16 @@ export function SchedulerWorkspace({
       <div className="space-y-4">
         {/* Header */}
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Scheduler</h1>
-            <p className="text-sm text-muted-foreground">
-              {permissions.canEdit
-                ? "Drag classes to reschedule. Conflicts are checked live and highlighted in red."
-                : "Weekly timetable. Use the filters to find a section, teacher, or room."}
-            </p>
+          <div className="flex items-end gap-3">
+            {permissions.canEdit && <BackButton fallback="/dashboard" dirty={!!dialog || pending > 0} />}
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">Scheduler</h1>
+              <p className="text-sm text-muted-foreground">
+                {permissions.canEdit
+                  ? "Drag classes to reschedule. Hard constraints block a save; soft ones ask before overriding."
+                  : "Weekly timetable. Use the filters to find a section, teacher, or room."}
+              </p>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -699,6 +737,11 @@ export function SchedulerWorkspace({
                 <span className="font-semibold">{focusTitle}</span>
                 {focusedSection && <span className="text-muted-foreground">· {stageLabel(focusedSection)} · {focusedSection.studentCount} learners</span>}
                 <span className="text-muted-foreground">· {visibleTimetable.length} classes</span>
+                {printDoc && (
+                  <span className="ml-auto">
+                    <ReportButtons doc={printDoc} />
+                  </span>
+                )}
               </div>
             )}
 
@@ -764,6 +807,8 @@ export function SchedulerWorkspace({
           </div>
         ) : null}
       </DragOverlay>
+
+      {overrideDialog}
 
       <ClassDialog
         open={!!dialog}

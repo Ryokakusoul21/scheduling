@@ -8,9 +8,14 @@ import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { DIRECT_EDIT_ROLES, PUBLISH_ROLES, STAFF_ROLES, type AppRole } from "@/lib/permissions/roles";
 import { canManageDepartment, requireScope, type Scope } from "@/lib/permissions/scope";
 import { weeklyDoubleBooking } from "@/lib/scheduler/term-conflicts";
+import { checkClassConstraints, termConstraintReport } from "@/lib/scheduler/constraints-server";
+import type { Violation } from "@/lib/scheduler/constraints";
 import type { SchedulerEntry } from "@/components/scheduler/types";
 
 type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
+
+/** Save result that may carry constraint violations; overridable means only soft rules were broken. */
+type SaveResult = { ok: true; data: SchedulerEntry } | { ok: false; error: string; violations?: Violation[]; overridable?: boolean };
 
 const DAY = z.enum(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]);
 const STATUS = z.enum(["DRAFT", "REVIEW", "PUBLISHED", "ARCHIVED"]);
@@ -86,12 +91,30 @@ async function sectionAllowed(scope: Scope, sectionId: string) {
 
 const OUTSIDE_DEPARTMENT = "You can only change classes of sections in your own department.";
 
+/** Hard violations always block; soft ones block until the user chooses to override. */
+async function enforceConstraints(
+  entry: Parameters<typeof checkClassConstraints>[0],
+  excludeId: string | undefined,
+  overrideSoft: boolean,
+  userId: string
+): Promise<Extract<SaveResult, { ok: false }> | null> {
+  const violations = await checkClassConstraints(entry, excludeId);
+  const hard = violations.filter((v) => v.hard);
+  if (hard.length) return { ok: false, error: `${hard[0].constraintName}: ${hard[0].message}`, violations: hard };
+  if (!violations.length) return null;
+  if (!overrideSoft) return { ok: false, error: "This change breaks soft constraints.", violations, overridable: true };
+  await prisma.auditLog.create({
+    data: { userId, action: "Overrode soft scheduling constraints", entity: "Schedule", entityId: excludeId, newValue: violations.map((v) => `${v.constraintName}: ${v.message}`) },
+  });
+  return null;
+}
+
 function revalidate() {
   revalidatePath("/scheduler");
   revalidatePath("/dashboard");
 }
 
-export async function saveClassAction(input: ClassInput): Promise<Result<SchedulerEntry>> {
+export async function saveClassAction(input: ClassInput, overrideSoft = false): Promise<SaveResult> {
   const scope = await requireScope(...STAFF_ROLES);
   const user = { id: scope.userId, role: scope.role };
   const parsed = classSchema.safeParse(input);
@@ -111,6 +134,8 @@ export async function saveClassAction(input: ClassInput): Promise<Result<Schedul
   if (!(await sectionAllowed(scope, data.sectionId))) return { ok: false, error: OUTSIDE_DEPARTMENT };
   const clash = await weeklyDoubleBooking(data, id);
   if (clash) return { ok: false, error: clash };
+  const blocked = await enforceConstraints(data, id, overrideSoft, user.id);
+  if (blocked) return blocked;
 
   const role = user.role as AppRole;
   if (id) {
@@ -149,7 +174,7 @@ const moveSchema = z
   .refine((d) => d.endMin > d.startMin);
 
 /** Drag-and-drop move: changes only the day and time. */
-export async function moveClassAction(input: z.infer<typeof moveSchema>): Promise<Result<SchedulerEntry>> {
+export async function moveClassAction(input: z.infer<typeof moveSchema>, overrideSoft = false): Promise<SaveResult> {
   const scope = await requireScope(...STAFF_ROLES);
   const user = { id: scope.userId, role: scope.role };
   const parsed = moveSchema.safeParse(input);
@@ -161,6 +186,8 @@ export async function moveClassAction(input: z.infer<typeof moveSchema>): Promis
   if (!(await sectionAllowed(scope, existing.sectionId))) return { ok: false, error: OUTSIDE_DEPARTMENT };
   const clash = await weeklyDoubleBooking({ ...existing, ...slot }, id);
   if (clash) return { ok: false, error: clash };
+  const blocked = await enforceConstraints({ ...existing, ...slot }, id, overrideSoft, user.id);
+  if (blocked) return blocked;
 
   const saved = await prisma.schedule.update({
     where: { id },
@@ -216,4 +243,11 @@ export async function publishClassesAction(ids: string[]): Promise<Result<{ coun
   });
   revalidate();
   return { ok: true, data: { count } };
+}
+
+/** Constraint report for a term; a Head of Department only sees findings involving their department. */
+export async function constraintReportAction(termId: string): Promise<Result<Violation[]>> {
+  const scope = await requireScope(...STAFF_ROLES);
+  if (!termId) return { ok: false, error: "Choose a term first." };
+  return { ok: true, data: await termConstraintReport(termId, scope.manageDepartmentId) };
 }

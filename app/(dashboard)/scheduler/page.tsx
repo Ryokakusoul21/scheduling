@@ -42,7 +42,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
     prisma.subject.findMany({ orderBy: [{ sortOrder: "asc" }, { code: "asc" }] }),
     prisma.faculty.findMany({ include: { availability: true }, orderBy: { fullName: "asc" } }),
     prisma.room.findMany({
-      include: { availability: true, floor: { select: { name: true, building: { select: { name: true } } } } },
+      include: { availability: true, programs: { select: { id: true } }, floor: { select: { name: true, building: { select: { name: true } } } } },
       orderBy: [{ sortOrder: "asc" }, { roomName: "asc" }],
     }),
     prisma.user.findUnique({ where: { id: user.id }, select: { facultyId: true } }),
@@ -108,6 +108,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
       status: r.status,
       location: location(r),
       availability: r.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })),
+      programIds: r.isGeneralShared ? null : r.programs.map((p) => p.id),
     })),
     entries: entries.map((e) => ({
       id: e.id,

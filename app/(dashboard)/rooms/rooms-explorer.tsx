@@ -20,6 +20,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ConfirmDialog, FormDialog, type ActionResult, type FormField } from "@/components/ux/form-dialog";
 import { DragHandle, SortableList } from "@/components/ux/sortable-list";
 import { EmptyState, PageHeader } from "@/components/ux/states";
+import { NativeSelect } from "@/components/ux/native-select";
+import { ReportButtons } from "@/components/ux/export-buttons";
+import type { ReportDoc } from "@/lib/export/report";
 import { useShortcut } from "@/components/ux/shortcuts";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { reorderAction } from "@/actions/reorder";
@@ -44,6 +47,8 @@ interface Room {
   equipment: string;
   utilization: number;
   departmentId: string;
+  /** Designated programs and strands; empty means General / Shared. */
+  programIds: string[];
 }
 interface Floor {
   id: string;
@@ -80,18 +85,36 @@ type Editor =
 
 type Deleting = { kind: "building" | "floor" | "room"; id: string; label: string };
 
+type Option = { value: string; label: string };
+
+/** Filter and checkbox value meaning "General / Shared". */
+const GENERAL = "GENERAL";
+
+/** Short program codes a room is designated for, or "General / Shared". */
+function designation(r: Room, programs: Option[]) {
+  if (!r.programIds.length) return "General / Shared";
+  return r.programIds.map((id) => programs.find((p) => p.value === id)?.label.split(" - ")[0] ?? "Unknown").join(", ");
+}
+
+type RoomListRow = Room & { location: string; designation: string };
+
 export function RoomsExplorer({
   buildings,
   initialQuery,
   isAdmin,
+  termLabel,
   departments,
+  programs,
 }: {
   buildings: Building[];
   initialQuery: string;
   isAdmin: boolean;
-  departments: { value: string; label: string }[];
+  termLabel: string;
+  departments: Option[];
+  programs: Option[];
 }) {
   const [query, setQuery] = useState(initialQuery);
+  const [programFilter, setProgramFilter] = useState("");
   const [open, setOpen] = useState<Set<string>>(() => new Set(buildings.slice(0, 1).flatMap((b) => [b.id, ...b.floors.map((f) => f.id)])));
   const [editor, setEditor] = useState<Editor | null>(null);
   const [deleting, setDeleting] = useState<Deleting | null>(null);
@@ -101,13 +124,43 @@ export function RoomsExplorer({
   useShortcut({ keys: "s", description: "Search rooms", group: "Rooms", handler: () => searchRef.current?.focus() });
 
   const q = query.trim().toLowerCase();
+  const filtering = !!q || !!programFilter;
   const filtered = useMemo(() => {
-    if (!q) return buildings;
-    const match = (r: Room) => [r.roomNumber, r.roomName, r.roomType.replace(/_/g, " "), r.equipment].some((v) => v.toLowerCase().includes(q));
+    if (!filtering) return buildings;
+    const designated = (r: Room) =>
+      !programFilter || (programFilter === GENERAL ? r.programIds.length === 0 : r.programIds.includes(programFilter));
+    const match = (r: Room) =>
+      designated(r) && (!q || [r.roomNumber, r.roomName, r.roomType.replace(/_/g, " "), r.equipment].some((v) => v.toLowerCase().includes(q)));
+    const named = (name: string) => !programFilter && !!q && name.toLowerCase().includes(q);
     return buildings
-      .map((b) => ({ ...b, floors: b.floors.map((f) => ({ ...f, rooms: f.rooms.filter(match) })).filter((f) => f.rooms.length || f.name.toLowerCase().includes(q)) }))
-      .filter((b) => b.floors.length || b.name.toLowerCase().includes(q));
-  }, [buildings, q]);
+      .map((b) => ({ ...b, floors: b.floors.map((f) => ({ ...f, rooms: f.rooms.filter(match) })).filter((f) => f.rooms.length || named(f.name)) }))
+      .filter((b) => b.floors.length || named(b.name));
+  }, [buildings, q, programFilter, filtering]);
+
+  // Room information list for printing and export, following the current search and filter.
+  const report = useMemo<ReportDoc<RoomListRow>>(() => {
+    const rows = filtered.flatMap((b) =>
+      b.floors.flatMap((f) => f.rooms.map((r) => ({ ...r, location: `${b.name}, ${f.name}`, designation: designation(r, programs) })))
+    );
+    const filterLabel = programFilter === GENERAL ? "General / Shared" : programs.find((p) => p.value === programFilter)?.label;
+    return {
+      title: filterLabel ? `Room Information List: ${filterLabel}` : "Room Information List",
+      term: termLabel,
+      filename: "room-information-list",
+      landscape: true,
+      rows,
+      columns: [
+        { header: "Room Number", value: (r) => r.roomNumber },
+        { header: "Room Name", value: (r) => r.roomName },
+        { header: "Building and Floor", value: (r) => r.location },
+        { header: "Capacity", value: (r) => r.capacity },
+        { header: "Type", value: (r) => ROOM_TYPES.find((t) => t.value === r.roomType)?.label ?? r.roomType },
+        { header: "Designated Program/Strand", value: (r) => r.designation },
+        { header: "Availability", value: (r) => STATUSES.find((t) => t.value === r.status)?.label ?? r.status },
+        { header: "Use This Term", value: (r) => `${r.utilization}%` },
+      ],
+    };
+  }, [filtered, programs, programFilter, termLabel]);
 
   const toggle = (id: string) =>
     setOpen((prev) => {
@@ -117,7 +170,7 @@ export function RoomsExplorer({
       return next;
     });
   // While searching, everything that matched is shown expanded.
-  const isOpen = (id: string) => !!q || open.has(id);
+  const isOpen = (id: string) => filtering || open.has(id);
 
   const totals = useMemo(() => {
     const rooms = buildings.flatMap((b) => b.floors.flatMap((f) => f.rooms));
@@ -162,6 +215,14 @@ export function RoomsExplorer({
         { name: "status", label: "Status", type: "select", required: true, options: STATUSES },
         { name: "equipment", label: "Equipment (comma-separated)", type: "text", placeholder: "Projector, Air conditioning, 40 computers", wide: true },
         {
+          name: "programIds",
+          label: "Designated Program/Strand",
+          type: "checkboxes",
+          options: [{ value: GENERAL, label: "General / Shared" }, ...programs.map((p) => ({ ...p, label: p.label.split(" - ")[0] }))],
+          wide: true,
+          help: "Sections are only placed here if the room is designated for their program or strand, or is General / Shared. Leave everything unticked for General / Shared.",
+        },
+        {
           name: "departmentId",
           label: "Owning department",
           type: "select",
@@ -170,7 +231,9 @@ export function RoomsExplorer({
           help: "The Head of Department of the owning department can manage and close this room.",
         },
       ],
-      values: editor.item ?? { floorId: editor.floorId, capacity: 40, roomType: "LECTURE_ROOM", status: "AVAILABLE", departmentId: isAdmin ? "" : departments[0]?.value },
+      values: editor.item
+        ? { ...editor.item, programIds: editor.item.programIds.length ? editor.item.programIds : [GENERAL] }
+        : { programIds: [GENERAL], floorId: editor.floorId, capacity: 40, roomType: "LECTURE_ROOM", status: "AVAILABLE", departmentId: isAdmin ? "" : departments[0]?.value },
       submit: (fd) => saveRoomAction(editor.item?.id ?? null, fd),
     };
   }
@@ -197,28 +260,41 @@ export function RoomsExplorer({
         }
       />
 
-      <div className="relative max-w-md">
-        <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          ref={searchRef}
-          type="search"
-          aria-label="Search rooms"
-          placeholder="Search room number, name, type, equipment…  (s)"
-          className="pl-8"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative w-full max-w-md">
+          <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={searchRef}
+            type="search"
+            aria-label="Search rooms"
+            placeholder="Search room number, name, type, equipment…  (s)"
+            className="pl-8"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {query && (
+            <button type="button" aria-label="Clear search" onClick={() => setQuery("")} className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground">
+              <X className="size-3.5" />
+            </button>
+          )}
+        </div>
+        <NativeSelect
+          aria-label="Filter by designated program or strand"
+          className="w-full sm:w-72"
+          value={programFilter}
+          onChange={(e) => setProgramFilter(e.target.value)}
+          placeholder="All programs and strands"
+          options={[{ value: GENERAL, label: "General / Shared" }, ...programs]}
         />
-        {query && (
-          <button type="button" aria-label="Clear search" onClick={() => setQuery("")} className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground">
-            <X className="size-3.5" />
-          </button>
-        )}
+        <div className="sm:ml-auto">
+          <ReportButtons doc={report} />
+        </div>
       </div>
 
       {filtered.length === 0 ? (
         <EmptyState
           icon={Buildings}
-          title={buildings.length ? "No rooms match your search" : "No buildings yet"}
+          title={buildings.length ? "No rooms match your search or filter" : "No buildings yet"}
           description={buildings.length ? undefined : "Add a building, then its floors and rooms."}
           action={buildings.length ? undefined : <Button onClick={() => setEditor({ kind: "building" })}>Add building</Button>}
         />
@@ -226,7 +302,7 @@ export function RoomsExplorer({
         <div className="space-y-3">
           <SortableList
             items={filtered}
-            disabled={!!q}
+            disabled={filtering}
             getLabel={(b) => b.name}
             onReorder={(ids) => reorderAction("building", ids)}
             renderItem={(b, { setNodeRef, style, isDragging, handleProps }) => {
@@ -240,7 +316,7 @@ export function RoomsExplorer({
                   className={cn("rounded-xl border bg-card shadow-xs", isDragging && "shadow-lg ring-2 ring-primary")}
                 >
                   <div className="flex items-center gap-2 p-3">
-                    {!q && <DragHandle {...handleProps} />}
+                    {!filtering && <DragHandle {...handleProps} />}
                     <button
                       type="button"
                       onClick={() => toggle(b.id)}
@@ -291,7 +367,8 @@ export function RoomsExplorer({
                           key={f.id}
                           floor={f}
                           expanded={isOpen(f.id)}
-                          searching={!!q}
+                          searching={filtering}
+                          programs={programs}
                           onToggle={() => toggle(f.id)}
                           onAddRoom={() => setEditor({ kind: "room", floorId: f.id })}
                           onEditFloor={() => setEditor({ kind: "floor", buildingId: b.id, item: f })}
@@ -347,8 +424,10 @@ function FloorPanel({
   onDeleteFloor,
   onEditRoom,
   onDeleteRoom,
+  programs,
 }: {
   floor: Floor;
+  programs: Option[];
   expanded: boolean;
   searching: boolean;
   onToggle: () => void;
@@ -399,6 +478,7 @@ function FloorPanel({
                   <TableHead>Room</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead className="text-right">Capacity</TableHead>
+                  <TableHead>Designated Program/Strand</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-40">Use this term</TableHead>
                   <TableHead>
@@ -438,6 +518,9 @@ function FloorPanel({
                       <Badge variant="outline">{ROOM_TYPES.find((t) => t.value === r.roomType)?.label ?? r.roomType}</Badge>
                     </TableCell>
                     <TableCell className="text-right">{r.capacity}</TableCell>
+                    <TableCell>
+                      <Badge variant={r.programIds.length ? "default" : "secondary"}>{designation(r, programs)}</Badge>
+                    </TableCell>
                     <TableCell>
                       <Badge variant={r.status === "AVAILABLE" ? "secondary" : "destructive"}>{STATUSES.find((s) => s.value === r.status)?.label}</Badge>
                     </TableCell>
