@@ -5,11 +5,18 @@ import { isoDate } from "@/lib/occupancy/engine";
 import { calendarRange, type CalendarView } from "@/lib/calendar";
 import { formatRange } from "@/lib/scheduler/timetable";
 import { PageHeader } from "@/components/ux/states";
+import { ActivitiesReportButtons } from "@/components/ux/export-buttons";
+import { activeTermLabel } from "@/lib/academics/term-label";
 import { CalendarBoard, type CalendarEvent } from "./calendar-board";
 
 export const metadata = { title: "Calendar of Activities · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 const VIEWS: CalendarView[] = ["month", "week", "day"];
+
+/** "October 12, 2026" for printed titles. */
+function longDate(iso: string) {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-PH", { dateStyle: "long", timeZone: "UTC" });
+}
 
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ view?: string; date?: string; scope?: string }> }) {
   const scope = await getScope();
@@ -25,7 +32,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
   const fromDate = new Date(`${from}T00:00:00Z`);
   const toDate = new Date(`${to}T00:00:00Z`);
-  const [plan, exams, bookings, activities] = await Promise.all([
+  const [plan, exams, bookings, activities, term] = await Promise.all([
     loadPlan(from, to),
     prisma.examination.findMany({
       where: { date: { gte: fromDate, lte: toDate } },
@@ -36,6 +43,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       include: { room: { select: { roomName: true } }, bookedBy: { select: { name: true } } },
     }),
     prisma.activity.findMany({ where: { startDate: { lte: toDate }, endDate: { gte: fromDate } }, orderBy: { startDate: "asc" } }),
+    activeTermLabel(),
   ]);
 
   const mine = (facultyIds: string[]) => !!scope.facultyId && facultyIds.includes(scope.facultyId);
@@ -89,7 +97,18 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Calendar of Activities" description="Classes, examinations, room bookings, school events, holidays, and class suspensions in one place." />
+      <PageHeader
+        title="Calendar of Activities"
+        description="Classes, examinations, room bookings, school events, holidays, and class suspensions in one place."
+        actions={
+          <ActivitiesReportButtons
+            title={`School Activities: ${longDate(from)} to ${longDate(to)}`}
+            term={term}
+            filename={`school-activities-${from}`}
+            rows={activities.map((a) => ({ type: a.type, title: a.title, description: a.description ?? "", startDate: isoDate(a.startDate), endDate: isoDate(a.endDate), startMin: a.startMin, endMin: a.endMin }))}
+          />
+        }
+      />
       <CalendarBoard
         view={view}
         date={date}

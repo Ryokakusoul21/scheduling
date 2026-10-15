@@ -5,7 +5,7 @@ export interface Column<T> {
   value: (row: T) => string | number | null | undefined;
 }
 
-function cell(v: string | number | null | undefined) {
+export function cell(v: string | number | null | undefined) {
   const s = v === null || v === undefined ? "" : String(v);
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
