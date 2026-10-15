@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   ACADEMIC_LEVELS,
@@ -81,17 +81,25 @@ export function useSchedulerFilters(data: SchedulerData, defaults: Partial<Filte
         if (patch[key] === prev[key]) continue;
         for (const dep of DEPENDENTS[key] ?? []) if (!(dep in patch)) reset[dep] = dep === "termId" ? ACTIVE_TERMS : "";
       }
-      const next = { ...prev, ...reset, ...patch } as Filters;
-      const url = new URL(window.location.href);
-      for (const k of KEYS) {
-        const v = next[k];
-        if (v && !(k === "termId" && v === ACTIVE_TERMS)) url.searchParams.set(k, v);
-        else url.searchParams.delete(k);
-      }
-      window.history.replaceState(null, "", url);
-      return next;
+      return { ...prev, ...reset, ...patch } as Filters;
     });
   }, []);
+
+  // Mirror filters to the address after the change commits; updaters run during render and must stay pure.
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    const url = new URL(window.location.href);
+    for (const k of KEYS) {
+      const v = filters[k];
+      if (v && !(k === "termId" && v === ACTIVE_TERMS)) url.searchParams.set(k, v);
+      else url.searchParams.delete(k);
+    }
+    if (url.href !== window.location.href) window.history.replaceState(null, "", url);
+  }, [filters]);
 
   const options = useMemo(() => {
     const { level, departmentId, programId, yearLevel, gradeLevel } = filters;
