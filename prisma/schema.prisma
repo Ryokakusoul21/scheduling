@@ -14,6 +14,7 @@ enum Role {
   ADMINISTRATOR
   HEAD_OF_DEPARTMENT
   FACULTY
+  STUDENT
 }
 
 enum UserStatus {
@@ -190,6 +191,19 @@ enum FixMode {
   APPROVED
 }
 
+/// Scheduling rules; the first four are hard (block saving), the rest are soft (warn, can be overridden).
+enum ConstraintKind {
+  NO_DOUBLE_BOOKING
+  ROOM_CAPACITY
+  ROOM_DESIGNATION
+  MAX_TEACHING_LOAD
+  PREFERRED_TIME
+  MAX_CONSECUTIVE
+  LUNCH_BREAK
+  SUBJECT_TIME_OF_DAY
+  MINIMUM_GAP
+}
+
 enum NotificationType {
   INFO
   SUCCESS
@@ -224,6 +238,8 @@ model User {
 
   facultyId String?  @unique
   faculty   Faculty? @relation(fields: [facultyId], references: [id])
+
+  student Student?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -299,6 +315,7 @@ model Program {
   sections   Section[]
   subjects   Subject[]
   semesters  Semester[]
+  rooms      Room[]     @relation("RoomPrograms")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -386,6 +403,7 @@ model Section {
 
   schedules    Schedule[]
   examinations Examination[]
+  students     Student[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -434,6 +452,23 @@ model FacultyAvailability {
 }
 
 
+/// Student profile linked to a STUDENT user; the section determines program and year level.
+model Student {
+  id            String  @id @default(cuid())
+  /// Learner Reference Number or college student number.
+  studentNumber String  @unique
+  userId        String  @unique
+  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Null after the section is deleted; the student picks a new one in the portal.
+  sectionId     String?
+  section       Section? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sectionId])
+}
+
 // ---------------------------------------------------------------------------
 // Facilities
 // ---------------------------------------------------------------------------
@@ -481,6 +516,9 @@ model Room {
   /// Owning department; null means a shared room managed by the Administrator.
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id])
+  /// Usable by every program and strand; otherwise only by the designated programs.
+  isGeneralShared Boolean   @default(true)
+  programs        Program[] @relation("RoomPrograms")
 
   availability   RoomAvailability[]
   schedules      Schedule[]
@@ -556,6 +594,23 @@ model Schedule {
   @@index([roomId])
   @@index([sectionId])
   @@index([dayOfWeek])
+}
+
+/// A scheduling rule checked on every save; departmentId null applies to every department.
+model SchedulingConstraint {
+  id           String         @id @default(cuid())
+  kind         ConstraintKind
+  name         String
+  /// Kind-specific settings validated in lib/scheduler/constraints.ts.
+  params       Json           @default("{}")
+  enabled      Boolean        @default(true)
+  departmentId String?
+  createdById  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled])
 }
 
 // ---------------------------------------------------------------------------

@@ -165,7 +165,7 @@ async function main() {
     { number: "1202", name: "Computer Laboratory 4", floor: "Information Technology Building/Second Floor", capacity: 30, type: "COMPUTER_LABORATORY", equipment: ["30 computers"], dept: "CCS" },
     { number: "1203", name: "Lecture Room 1203", floor: "Information Technology Building/Second Floor", capacity: 40, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Projector"], dept: "CCS" },
     { number: "2101", name: "Science Laboratory 1", floor: "Science Building/Ground Floor", capacity: 35, type: "SCIENCE_LABORATORY", equipment: ["Laboratory benches", "Fume hood"], dept: "CAS" },
-    { number: "2102", name: "Science Laboratory 2", floor: "Science Building/Ground Floor", capacity: 35, type: "SCIENCE_LABORATORY", equipment: ["Laboratory benches"], dept: "CAS" },
+    { number: "2102", name: "Science Laboratory 2", floor: "Science Building/Ground Floor", capacity: 40, type: "SCIENCE_LABORATORY", equipment: ["Laboratory benches"], dept: "CAS" },
     { number: "3101", name: "Classroom 3101", floor: "Basic Education Building/Ground Floor", capacity: 45, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Television"], dept: "BED" },
     { number: "3102", name: "Classroom 3102", floor: "Basic Education Building/Ground Floor", capacity: 45, type: "LECTURE_ROOM", equipment: ["Whiteboard", "Television"], dept: "BED" },
     { number: "3103", name: "Classroom 3103", floor: "Basic Education Building/Ground Floor", capacity: 35, type: "LECTURE_ROOM", equipment: ["Whiteboard"], dept: "BED" },
@@ -439,6 +439,20 @@ async function main() {
     ).id;
   }
 
+  // Demo students (view-only portal at /student); fictional names and numbers.
+  const studentDefs = [
+    { email: "student.stem@granby.edu.ph", name: "Paolo Reyes", studentNumber: "136512090001", section: "Grade 11 - Newton" },
+    { email: "student.college@granby.edu.ph", name: "Bea Villanueva", studentNumber: "2026-00142", section: "Information Technology 1-A" },
+  ];
+  for (const s of studentDefs) {
+    await prisma.user.create({
+      data: {
+        email: s.email, name: s.name, role: "STUDENT", status: "ACTIVE", emailVerified: new Date(), termsAcceptedAt: new Date(), passwordHash,
+        student: { create: { studentNumber: s.studentNumber, sectionId: section[s.section].id } },
+      },
+    });
+  }
+
   // -------------------------------------------------------------------
   // Examinations (Saturday, when no regular college classes meet)
   // -------------------------------------------------------------------
@@ -541,6 +555,21 @@ async function main() {
     data: [
       { key: "institution", value: { name: "GRANBY COLLEGES OF SCIENCE & TECHNOLOGY", location: "Naic, Cavite, Philippines" } },
       { key: "workload", value: { measure: "HOURS", minimum: 12, maximum: 24 } },
+    ],
+  });
+
+  // Scheduling constraints: hard rules block saving, soft rules warn and can be overridden.
+  await prisma.schedulingConstraint.createMany({
+    data: [
+      { kind: "NO_DOUBLE_BOOKING", name: "No double-booking of faculty, rooms, or sections", params: {} },
+      { kind: "ROOM_CAPACITY", name: "Room capacity must fit the section", params: {} },
+      { kind: "ROOM_DESIGNATION", name: "Room must match the program or strand", params: {} },
+      { kind: "MAX_TEACHING_LOAD", name: "Maximum teaching load", params: { maxDailyHours: 8, maxWeeklyHours: 40 } },
+      { kind: "LUNCH_BREAK", name: "Lunch break", params: { startMin: toMin("12:00"), endMin: toMin("13:00") } },
+      { kind: "MAX_CONSECUTIVE", name: "At most 4 back-to-back classes per section", params: { maxConsecutive: 4, appliesTo: "SECTION" } },
+      { kind: "SUBJECT_TIME_OF_DAY", name: "General Mathematics in the morning", params: { subjectId: subject["SHS-GENMATH"].id, period: "MORNING" } },
+      { kind: "PREFERRED_TIME", name: "Ana Santos prefers Saturdays off", params: { facultyId: faculty["F-001"].id, startMin: toMin("07:00"), endMin: toMin("17:00"), daysOff: ["SATURDAY"] } },
+      { kind: "MINIMUM_GAP", name: "Fifteen minutes between faculty classes", params: { minutes: 15, appliesTo: "FACULTY" }, enabled: false },
     ],
   });
 
