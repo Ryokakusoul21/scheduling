@@ -10,10 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldGroup, FieldLabel, FieldError } from "@/components/ui/field";
 import { Captcha, captchaEnabled } from "@/components/auth/captcha";
-import { forgotPasswordAction } from "@/actions/auth";
+import { forgotPasswordAction, type Audience } from "@/actions/auth";
 import { forgotPasswordSchema, type ForgotPasswordInput } from "@/lib/validation/auth";
 
-export function ForgotPasswordForm() {
+export function ForgotPasswordForm({ audience = "staff" }: { audience?: Audience }) {
+  const loginHref = audience === "student" ? "/student/login" : "/login";
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
@@ -34,7 +35,7 @@ export function ForgotPasswordForm() {
       setFormError("Please complete the CAPTCHA check.");
       return;
     }
-    const result = await forgotPasswordAction({ ...values, captchaToken: captchaToken ?? undefined });
+    const result = await forgotPasswordAction({ ...values, captchaToken: captchaToken ?? undefined, audience });
     setCaptchaReset((n) => n + 1);
     if (result.ok) setSentTo(values.email);
     else setFormError(result.error ?? result.fieldErrors?.email ?? "Something went wrong.");
@@ -51,7 +52,7 @@ export function ForgotPasswordForm() {
           </p>
         </div>
         <p className="text-center">
-          <Link href="/login" className="font-medium text-primary hover:underline">
+          <Link href={loginHref} className="font-medium text-primary hover:underline">
             Back to sign in
           </Link>
         </p>
@@ -86,7 +87,7 @@ export function ForgotPasswordForm() {
         </Button>
         <p className="text-center text-sm text-muted-foreground">
           Remembered it?{" "}
-          <Link href="/login" className="font-medium text-primary hover:underline">
+          <Link href={loginHref} className="font-medium text-primary hover:underline">
             Back to sign in
           </Link>
         </p>

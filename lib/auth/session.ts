@@ -7,10 +7,19 @@ export async function getSession() {
   return auth();
 }
 
-/** Route/API guard: signed-in users only. Renders the 401 page (app/unauthorized.tsx) otherwise. */
+/** Route/API guard: signed-in staff only (students use requireStudent). Renders the 401 or 403 page otherwise. */
 export async function requireUser() {
   const session = await auth();
   if (!session?.user) unauthorized();
+  if (session.user.role === "STUDENT") forbidden();
+  return session.user;
+}
+
+/** Guard for the student portal: signed-in students only. */
+export async function requireStudent() {
+  const session = await auth();
+  if (!session?.user) unauthorized();
+  if (session.user.role !== "STUDENT") forbidden();
   return session.user;
 }
 

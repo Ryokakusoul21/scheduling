@@ -14,7 +14,8 @@ export default async function ResetPasswordPage({
   const { token = "" } = await searchParams;
   const record = await findValidToken(token, "PASSWORD_RESET");
 
-  if (!record) {
+  // Student reset links only work on the student page.
+  if (!record || record.user.role === "STUDENT") {
     return (
       <AuthShell title="Link expired" description="This password reset link is invalid, already used, or has expired.">
         <Button className="w-full" nativeButton={false} render={<Link href="/forgot-password" />}>

@@ -6,9 +6,10 @@ import { prisma } from "@/lib/db/prisma";
 import { AUTH, SETTING_REQUIRE_APPROVAL } from "@/lib/auth/config";
 import { verifyCaptcha } from "@/lib/auth/captcha";
 import { clientIp } from "@/lib/auth/rate-limit";
-import { consumeToken, isOnCooldown, issueToken } from "@/lib/auth/tokens";
+import { consumeToken, findValidToken, isOnCooldown, issueToken } from "@/lib/auth/tokens";
+import { sendVerification } from "@/lib/auth/verification";
 import { appUrl, sendMail } from "@/lib/email/mailer";
-import { passwordChangedEmail, passwordResetEmail, verificationEmail } from "@/lib/email/templates";
+import { passwordChangedEmail, passwordResetEmail } from "@/lib/email/templates";
 import {
   forgotPasswordSchema,
   registerSchema,
@@ -17,6 +18,14 @@ import {
   type RegisterInput,
   type ResetPasswordInput,
 } from "@/lib/validation/auth";
+
+/** Which set of authentication pages a request came from. */
+export type Audience = "staff" | "student";
+
+/** Students only use the student pages and staff only the staff pages. */
+function matchesAudience(role: string, audience: Audience = "staff") {
+  return (role === "STUDENT") === (audience === "student");
+}
 
 export type ActionResult =
   | { ok: true }
@@ -37,12 +46,6 @@ async function ip() {
 
 function findUserByEmail(email: string) {
   return prisma.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
-}
-
-async function sendVerification(user: { id: string; email: string; name: string }) {
-  const token = await issueToken(user.id, "EMAIL_VERIFICATION", AUTH.emailVerificationTtlMinutes);
-  const link = appUrl(`/verify-email?token=${token}`);
-  await sendMail(verificationEmail(user.email, user.name, link, AUTH.emailVerificationTtlMinutes / 60));
 }
 
 export async function requiresAdminApproval() {
@@ -130,7 +133,7 @@ export async function verifyEmailToken(token: string) {
       })),
     });
   }
-  return { ok: true as const, pending: user.status === "PENDING" };
+  return { ok: true as const, pending: user.status === "PENDING", student: user.role === "STUDENT" };
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +142,7 @@ export async function verifyEmailToken(token: string) {
 
 /** Always reports success so it can't be used to discover registered emails. */
 export async function forgotPasswordAction(
-  input: ForgotPasswordInput & { captchaToken?: string },
+  input: ForgotPasswordInput & { captchaToken?: string; audience?: Audience },
 ): Promise<ActionResult> {
   const parsed = forgotPasswordSchema.safeParse(input);
   if (!parsed.success) return { ok: false, fieldErrors: fieldErrors(parsed.error.issues) };
@@ -151,11 +154,13 @@ export async function forgotPasswordAction(
   if (
     user &&
     user.status !== "SUSPENDED" &&
+    matchesAudience(user.role, input.audience) &&
     !(await isOnCooldown(user.id, "PASSWORD_RESET", AUTH.emailResendCooldownSeconds))
   ) {
     const token = await issueToken(user.id, "PASSWORD_RESET", AUTH.passwordResetTtlMinutes);
+    const page = input.audience === "student" ? "/student/reset-password" : "/reset-password";
     await sendMail(
-      passwordResetEmail(user.email, user.name, appUrl(`/reset-password?token=${token}`), AUTH.passwordResetTtlMinutes),
+      passwordResetEmail(user.email, user.name, appUrl(`${page}?token=${token}`), AUTH.passwordResetTtlMinutes),
     );
     await prisma.auditLog.create({
       data: { userId: user.id, action: "Requested password reset", entity: "Auth", entityId: user.id },
@@ -165,10 +170,14 @@ export async function forgotPasswordAction(
 }
 
 export async function resetPasswordAction(
-  input: ResetPasswordInput & { token: string },
+  input: ResetPasswordInput & { token: string; audience?: Audience },
 ): Promise<ActionResult> {
   const parsed = resetPasswordSchema.safeParse(input);
   if (!parsed.success) return { ok: false, fieldErrors: fieldErrors(parsed.error.issues) };
+  const pending = await findValidToken(input.token, "PASSWORD_RESET");
+  if (pending && !matchesAudience(pending.user.role, input.audience)) {
+    return { ok: false, error: "This reset link is invalid or has expired. Please request a new one." };
+  }
 
   const record = await consumeToken(input.token, "PASSWORD_RESET");
   if (!record) {

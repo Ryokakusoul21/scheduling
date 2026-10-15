@@ -11,10 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldGroup, FieldLabel, FieldError } from "@/components/ui/field";
 import { PasswordStrength } from "@/components/auth/password-strength";
-import { resetPasswordAction } from "@/actions/auth";
+import { resetPasswordAction, type Audience } from "@/actions/auth";
 import { resetPasswordSchema, type ResetPasswordInput } from "@/lib/validation/auth";
 
-export function ResetPasswordForm({ token }: { token: string }) {
+export function ResetPasswordForm({ token, audience = "staff" }: { token: string; audience?: Audience }) {
+  const base = audience === "student" ? "/student" : "";
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -33,9 +34,9 @@ export function ResetPasswordForm({ token }: { token: string }) {
 
   async function onSubmit(values: ResetPasswordInput) {
     setFormError(null);
-    const result = await resetPasswordAction({ ...values, token });
+    const result = await resetPasswordAction({ ...values, token, audience });
     if (result.ok) {
-      router.replace("/login?notice=reset");
+      router.replace(`${base}/login?notice=reset`);
       return;
     }
     for (const [field, message] of Object.entries(result.fieldErrors ?? {})) {
@@ -74,7 +75,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
         {formError && (
           <div role="alert" className="space-y-1 text-sm font-medium text-destructive">
             <p>{formError}</p>
-            <Link href="/forgot-password" className="text-primary hover:underline">
+            <Link href={`${base}/forgot-password`} className="text-primary hover:underline">
               Request a new link
             </Link>
           </div>

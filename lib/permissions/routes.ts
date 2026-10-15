@@ -18,6 +18,7 @@ export const ROUTE_ROLES: { prefix: string; roles: AppRole[] }[] = [
   { prefix: "/analytics", roles: STAFF_ROLES },
   { prefix: "/forecast", roles: STAFF_ROLES },
   { prefix: "/adjustments", roles: STAFF_ROLES },
+  { prefix: "/constraints", roles: STAFF_ROLES },
   { prefix: "/availability", roles: TEACHING_ROLES },
 ];
 
@@ -27,7 +28,13 @@ export function rolesForPath(pathname: string): AppRole[] | null {
   return rule?.roles ?? null;
 }
 
+/** The student portal; students may open nothing else, and staff may not open it. */
+export function isStudentArea(pathname: string) {
+  return pathname === "/student" || pathname.startsWith("/student/");
+}
+
 export function canAccessPath(pathname: string, role: AppRole | undefined) {
+  if (role === "STUDENT" || isStudentArea(pathname)) return role === "STUDENT" && isStudentArea(pathname);
   const roles = rolesForPath(pathname);
   return !roles || (!!role && roles.includes(role));
 }

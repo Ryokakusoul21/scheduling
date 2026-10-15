@@ -43,6 +43,34 @@ export const registerSchema = z
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 
+/** Registration choice for learners whose section has no program or strand. */
+export const NO_PROGRAM_OPTION = "NONE";
+
+export const studentRegisterSchema = z
+  .object({
+    studentNumber: z
+      .string()
+      .trim()
+      .min(4, "Enter your student number or Learner Reference Number")
+      .max(20)
+      .regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers, and dashes only"),
+    name: z.string().trim().min(2, "Enter your full name").max(100),
+    email: z.string().trim().toLowerCase().min(1, "Email is required").email("Enter a valid email address"),
+    /** NO_PROGRAM_OPTION for Elementary and Junior High sections. */
+    programId: z.string().min(1, "Choose your program or strand"),
+    yearLevel: z.string().min(1, "Choose your year or grade level"),
+    sectionId: z.string().min(1, "Choose your section"),
+    password: passwordSchema,
+    confirmPassword: z.string().min(1, "Confirm your password"),
+    acceptTerms: z.boolean().refine((v) => v, "You must accept the Terms and Privacy Policy"),
+  })
+  .refine((d) => d.password === d.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Passwords do not match",
+  });
+
+export type StudentRegisterInput = z.infer<typeof studentRegisterSchema>;
+
 export const forgotPasswordSchema = z.object({
   email: z.string().trim().toLowerCase().min(1, "Email is required").email("Enter a valid email address"),
 });

@@ -63,8 +63,11 @@ export async function updateUserAction(id: string, formData: FormData) {
   const admin = await requireRole(...ADMIN);
   const parsed = updateSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
+  // Student accounts keep their role; only the name and status can change here.
+  const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+  const data = target?.role === "STUDENT" ? { name: parsed.data.name, status: parsed.data.status } : { ...parsed.data, facultyId: parsed.data.facultyId || null };
   try {
-    await prisma.user.update({ where: { id }, data: { ...parsed.data, facultyId: parsed.data.facultyId || null } });
+    await prisma.user.update({ where: { id }, data });
   } catch {
     return { ok: false, error: LINK_TAKEN };
   }

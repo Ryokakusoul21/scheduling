@@ -46,7 +46,8 @@ function FacultyLinkField({ id, options, value }: { id: string; options: { value
   );
 }
 
-const ROLES = Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }));
+// Student accounts come only from the student registration page.
+const ROLES = Object.entries(ROLE_LABELS).filter(([value]) => value !== "STUDENT").map(([value, label]) => ({ value, label }));
 
 export function UsersManager({ users, faculty }: { users: Row[]; faculty: { value: string; label: string }[] }) {
   const [pending, startTransition] = useTransition();

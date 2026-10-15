@@ -24,6 +24,7 @@ import {
   ArrowsClockwise,
   Gauge,
   UploadSimple,
+  ShieldCheck,
 } from "@phosphor-icons/react/ssr";
 
 export interface NavItem {
@@ -59,6 +60,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Examinations", href: "/examinations", icon: Exam, shortcut: "g x" },
       { label: "Room Booking", href: "/bookings", icon: DoorOpen, shortcut: "g b" },
       { label: "Schedule Adjustments", href: "/adjustments", icon: ArrowsClockwise, roles: STAFF },
+      { label: "Scheduling Constraints", href: "/constraints", icon: ShieldCheck, roles: STAFF },
       { label: "Schedule Requests", href: "/requests", icon: ClipboardList },
       { label: "Scheduling Assistant", href: "/assistant", icon: Bot },
     ],
@@ -102,6 +104,8 @@ export const NAV_GROUPS: NavGroup[] = [
 ];
 
 export function filterNavForRole(role: AppRole): NavGroup[] {
+  // Students only use the separate student portal.
+  if (role === "STUDENT") return [];
   return NAV_GROUPS.map((group) => ({
     ...group,
     items: group.items.filter((item) => !item.roles || item.roles.includes(role)),

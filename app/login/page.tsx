@@ -3,7 +3,7 @@ import { CheckCircle } from "@phosphor-icons/react/ssr";
 import { LoginForm } from "@/components/auth/login-form";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { auth } from "@/auth";
-import { HOME_PATH } from "@/lib/permissions/roles";
+import { homePath } from "@/lib/permissions/roles";
 
 export const metadata = { title: "Sign In · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
@@ -21,7 +21,7 @@ export default async function LoginPage({
   searchParams: Promise<{ callbackUrl?: string; notice?: string }>;
 }) {
   const session = await auth();
-  if (session?.user) redirect(HOME_PATH);
+  if (session?.user) redirect(homePath(session.user.role));
 
   const { callbackUrl, notice } = await searchParams;
   const message = notice ? NOTICES[notice] : undefined;

@@ -1,4 +1,4 @@
-export const ROLES = ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT", "FACULTY"] as const;
+export const ROLES = ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT", "FACULTY", "STUDENT"] as const;
 
 export type AppRole = (typeof ROLES)[number];
 
@@ -24,6 +24,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   ADMINISTRATOR: "Administrator",
   HEAD_OF_DEPARTMENT: "Head of Department",
   FACULTY: "Faculty",
+  STUDENT: "Student",
 };
 
 export function isStaff(role: AppRole) {
@@ -44,3 +45,10 @@ export function roleLabel(role: AppRole) {
 
 /** Landing page after sign-in; the dashboard is tailored to each role. */
 export const HOME_PATH = "/dashboard";
+
+/** Students have their own view-only portal, separate from the staff dashboard. */
+export const STUDENT_HOME_PATH = "/student";
+
+export function homePath(role: string | undefined) {
+  return role === "STUDENT" ? STUDENT_HOME_PATH : HOME_PATH;
+}

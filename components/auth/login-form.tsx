@@ -13,16 +13,22 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel, FieldError } from "@/components/ui/field";
 import { Captcha, captchaEnabled } from "@/components/auth/captcha";
-import { resendVerificationAction } from "@/actions/auth";
+import { resendVerificationAction, type Audience } from "@/actions/auth";
 import { loginSchema, type LoginInput } from "@/lib/validation/auth";
 import type { LoginErrorCode } from "@/lib/auth/errors";
 
-const DEMO_ACCOUNTS = [
-  { label: "Administrator", email: "administrator@granby.edu.ph" },
-  { label: "Head of Department", email: "head.computing@granby.edu.ph" },
-  { label: "Faculty (overloaded)", email: "faculty@granby.edu.ph" },
-  { label: "Faculty (underloaded)", email: "alonzo@granby.edu.ph" },
-];
+const DEMO_ACCOUNTS: Record<Audience, { label: string; email: string }[]> = {
+  staff: [
+    { label: "Administrator", email: "administrator@granby.edu.ph" },
+    { label: "Head of Department", email: "head.computing@granby.edu.ph" },
+    { label: "Faculty (overloaded)", email: "faculty@granby.edu.ph" },
+    { label: "Faculty (underloaded)", email: "alonzo@granby.edu.ph" },
+  ],
+  student: [
+    { label: "Senior High School student", email: "student.stem@granby.edu.ph" },
+    { label: "College student", email: "student.college@granby.edu.ph" },
+  ],
+};
 
 const ERROR_MESSAGES: Record<LoginErrorCode, string> = {
   invalid: "Invalid email or password.",
@@ -37,19 +43,21 @@ const ERROR_MESSAGES: Record<LoginErrorCode, string> = {
 };
 
 /** Only allow same-origin relative redirects to avoid open-redirects. */
-function safeCallback(url: string | undefined) {
-  if (!url) return "/";
+function safeCallback(url: string | undefined, fallback = "/") {
+  if (!url) return fallback;
   try {
     const parsed = new URL(url, window.location.origin);
-    if (parsed.origin !== window.location.origin) return "/";
-    if (parsed.pathname.startsWith("/login")) return "/";
+    if (parsed.origin !== window.location.origin) return fallback;
+    if (parsed.pathname.startsWith("/login") || parsed.pathname.startsWith("/student/login")) return fallback;
     return parsed.pathname + parsed.search + parsed.hash;
   } catch {
-    return "/";
+    return fallback;
   }
 }
 
-export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
+export function LoginForm({ callbackUrl, audience = "staff" }: { callbackUrl?: string; audience?: Audience }) {
+  // Student pages live under /student; staff pages keep their original addresses.
+  const base = audience === "student" ? "/student" : "";
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<LoginErrorCode | null>(null);
@@ -84,6 +92,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
       code: needsCode ? values.code ?? "" : "",
       remember: remember ? "true" : "false",
       captchaToken: captchaToken ?? "",
+      portal: audience,
       redirect: false,
     });
     setCaptchaReset((n) => n + 1);
@@ -101,7 +110,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
     }
 
     // "/" resolves to the role-appropriate landing page on the server.
-    router.push(safeCallback(callbackUrl));
+    router.push(safeCallback(callbackUrl, audience === "student" ? "/student" : "/"));
     router.refresh();
   }
 
@@ -131,7 +140,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
             <Field data-invalid={!!errors.password}>
               <div className="flex items-center justify-between">
                 <FieldLabel htmlFor="password">Password</FieldLabel>
-                <Link href="/forgot-password" className="text-xs font-medium text-primary hover:underline">
+                <Link href={`${base}/forgot-password`} className="text-xs font-medium text-primary hover:underline">
                   Forgot password?
                 </Link>
               </div>
@@ -203,7 +212,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
           ) : (
             <p className="text-center text-sm text-muted-foreground">
               Don&apos;t have an account?{" "}
-              <Link href="/register" className="font-medium text-primary hover:underline">
+              <Link href={`${base}/register`} className="font-medium text-primary hover:underline">
                 Create one
               </Link>
             </p>
@@ -215,7 +224,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
         <div className="rounded-lg border bg-muted/40 p-3">
           <p className="mb-2 text-xs font-medium text-muted-foreground">Demo accounts (password: Passw0rd!)</p>
           <div className="flex flex-wrap gap-1.5">
-            {DEMO_ACCOUNTS.map((a) => (
+            {DEMO_ACCOUNTS[audience].map((a) => (
               <button
                 key={a.email}
                 type="button"

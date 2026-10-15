@@ -2,7 +2,7 @@ import type { NextAuthConfig } from "next-auth";
 import type { Role, UserStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { AUTH } from "@/lib/auth/config";
-import { canAccessPath } from "@/lib/permissions/routes";
+import { canAccessPath, isStudentArea } from "@/lib/permissions/routes";
 import type { AppRole } from "@/lib/permissions/roles";
 
 /** Routes reachable without a session. */
@@ -15,6 +15,10 @@ const PUBLIC_PATHS = [
   "/terms",
   "/privacy",
   "/403",
+  "/student/login",
+  "/student/register",
+  "/student/forgot-password",
+  "/student/reset-password",
 ];
 
 export function isPublicPath(pathname: string) {
@@ -46,6 +50,10 @@ export const authConfig = {
     authorized({ auth, request }) {
       const { pathname } = request.nextUrl;
       if (isPublicPath(pathname)) return true;
+      // Signed-out visitors to the student portal go to the student login, not the staff one.
+      if (!auth?.user && isStudentArea(pathname)) {
+        return NextResponse.redirect(new URL(`/student/login?callbackUrl=${encodeURIComponent(pathname)}`, request.nextUrl));
+      }
       if (!auth?.user) return false;
       // RBAC route guard: answer with a real 403 before the page streams.
       if (!canAccessPath(pathname, auth.user.role as AppRole)) {

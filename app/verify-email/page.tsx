@@ -41,7 +41,7 @@ export default async function VerifyEmailPage({
 
   return (
     <AuthShell title="Email verified" description="Your email address has been confirmed. You can now sign in.">
-      <Button className="w-full" nativeButton={false} render={<Link href="/login?notice=verified" />}>
+      <Button className="w-full" nativeButton={false} render={<Link href={result.student ? "/student/login?notice=verified" : "/login?notice=verified"} />}>
         Continue to sign in
       </Button>
     </AuthShell>

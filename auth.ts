@@ -18,6 +18,8 @@ const credentialsSchema = z.object({
   remember: z.string().optional(),
   code: z.string().optional(),
   captchaToken: z.string().optional(),
+  /** Which login page was used; students and staff cannot sign in through each other's page. */
+  portal: z.enum(["staff", "student"]).default("staff"),
 });
 
 // Compared against when the email doesn't exist so response timing doesn't
@@ -53,11 +55,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         remember: {},
         code: {},
         captchaToken: {},
+        portal: {},
       },
       async authorize(rawCredentials, request) {
         const parsed = credentialsSchema.safeParse(rawCredentials);
         if (!parsed.success) throw new LoginError("invalid");
-        const { email, password, remember, code, captchaToken } = parsed.data;
+        const { email, password, remember, code, captchaToken, portal } = parsed.data;
         const ip = clientIp(request.headers);
 
         if (!(await verifyCaptcha(captchaToken, ip))) throw new LoginError("captcha");
@@ -82,6 +85,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           const locked = await registerFailure(user.id, user.failedLoginAttempts);
           await recordLoginAttempt(email, ip, false);
           throw new LoginError(locked ? "locked" : "invalid");
+        }
+
+        // A wrong portal answers like a wrong password so it reveals nothing about the account.
+        if ((user.role === "STUDENT") !== (portal === "student")) {
+          await recordLoginAttempt(email, ip, false);
+          throw new LoginError("invalid");
         }
 
         // Password is correct from here on, so account-state errors don't leak anything.
