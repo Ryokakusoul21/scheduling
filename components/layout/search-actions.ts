@@ -40,6 +40,7 @@ export async function globalSearchAction(query: string): Promise<SearchResult[]>
           { roomNumber: { contains: q, mode: "insensitive" } },
         ],
       },
+      include: { floor: { select: { buildingId: true } } },
       take: 5,
     }),
     prisma.section.findMany({
@@ -71,7 +72,7 @@ export async function globalSearchAction(query: string): Promise<SearchResult[]>
       id: r.id,
       label: `${r.roomName} (${r.roomNumber})`,
       sublabel: r.roomType.replace(/_/g, " "),
-      href: `/rooms?q=${encodeURIComponent(r.roomNumber)}`,
+      href: r.floor ? `/rooms/${r.floor.buildingId}?q=${encodeURIComponent(r.roomNumber)}` : `/rooms?q=${encodeURIComponent(r.roomNumber)}`,
       group: "Rooms" as const,
     })),
     ...sections.map((s) => ({

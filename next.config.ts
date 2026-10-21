@@ -16,6 +16,8 @@ const nextConfig: NextConfig = {
   experimental: {
     // Enables forbidden()/unauthorized() and the app/forbidden.tsx + app/unauthorized.tsx pages.
     authInterrupts: true,
+    // Building photos (up to 1.5 MB after resizing in the browser) are uploaded through a server action.
+    serverActions: { bodySizeLimit: "2mb" },
   },
 };
 

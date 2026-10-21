@@ -6,6 +6,7 @@
 import {
   PrismaClient,
   type AcademicLevel,
+  type BuildingPurpose,
   type DayOfWeek,
   type GradeLevel,
   type RoomType,
@@ -13,6 +14,7 @@ import {
   type YearLevel,
 } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { readFileSync } from "node:fs";
 import bcrypt from "bcryptjs";
 import { DEFAULT_COLLEGE_PROGRAMS, DEFAULT_SHS_STRANDS } from "../lib/academics/levels";
 import { placeCollegeClasses } from "./sample-timetable";
@@ -134,16 +136,22 @@ async function main() {
   // -------------------------------------------------------------------
   // Buildings -> floors -> rooms (rooms owned by a department or shared)
   // -------------------------------------------------------------------
-  const buildingDefs = [
-    { name: "Main Building", floors: ["Ground Floor", "Second Floor", "Third Floor"] },
-    { name: "Information Technology Building", floors: ["Ground Floor", "Second Floor"] },
-    { name: "Science Building", floors: ["Ground Floor"] },
-    { name: "Basic Education Building", floors: ["Ground Floor", "Second Floor"] },
-    { name: "Administration Building", floors: ["Ground Floor"] },
+  // Hours are minutes from midnight; the Main Building uses the campus photo, the rest show illustrations.
+  const buildingDefs: { name: string; floors: string[]; code: string; location: string; purpose: BuildingPurpose; open: number; close: number; photo?: string }[] = [
+    { name: "Main Building", floors: ["Ground Floor", "Second Floor", "Third Floor"], code: "A", location: "Main campus, facing the quadrangle", purpose: "ACADEMIC", open: 7 * 60, close: 19 * 60, photo: "public/branding/school.jpg" },
+    { name: "Information Technology Building", floors: ["Ground Floor", "Second Floor"], code: "B", location: "Main campus, east wing", purpose: "SCIENCE_TECHNOLOGY", open: 7 * 60, close: 20 * 60 },
+    { name: "Science Building", floors: ["Ground Floor"], code: "C", location: "Main campus, beside the garden", purpose: "SCIENCE_TECHNOLOGY", open: 7 * 60, close: 18 * 60 },
+    { name: "Basic Education Building", floors: ["Ground Floor", "Second Floor"], code: "D", location: "West side, near the covered court", purpose: "ACADEMIC", open: 6 * 60 + 30, close: 17 * 60 },
+    { name: "Administration Building", floors: ["Ground Floor"], code: "E", location: "Main entrance", purpose: "ADMINISTRATION", open: 8 * 60, close: 17 * 60 },
   ];
   const floorId: Record<string, string> = {};
   for (const [i, b] of buildingDefs.entries()) {
-    const building = await prisma.building.create({ data: { name: b.name, sortOrder: i } });
+    const building = await prisma.building.create({
+      data: {
+        name: b.name, sortOrder: i, code: b.code, location: b.location, purpose: b.purpose, openingMin: b.open, closingMin: b.close,
+        ...(b.photo ? { photo: new Uint8Array(readFileSync(b.photo)), photoType: "image/jpeg", photoUpdatedAt: new Date() } : {}),
+      },
+    });
     for (const [n, name] of b.floors.entries()) {
       floorId[`${b.name}/${name}`] = (await prisma.floor.create({ data: { buildingId: building.id, name, number: n + 1 } })).id;
     }

@@ -3,13 +3,11 @@
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  Buildings,
   CaretDown,
   Door,
   MagnifyingGlass,
   Plus,
   Stack,
-  UploadSimple,
   X,
 } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
@@ -20,7 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ConfirmDialog, FormDialog, type ActionResult, type FormField } from "@/components/ux/form-dialog";
 import { ArchiveButton } from "@/components/ux/archive-button";
 import { DragHandle, SortableList } from "@/components/ux/sortable-list";
-import { EmptyState, PageHeader } from "@/components/ux/states";
+import { EmptyState } from "@/components/ux/states";
 import { NativeSelect } from "@/components/ux/native-select";
 import { ReportButtons } from "@/components/ux/export-buttons";
 import type { ReportDoc } from "@/lib/export/report";
@@ -28,85 +26,34 @@ import { useShortcut } from "@/components/ux/shortcuts";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { reorderAction } from "@/actions/reorder";
 import { cn } from "@/lib/utils";
+import { designation, GENERAL, ROOM_TYPES, STATUSES, type Building, type Floor, type Option, type Room } from "@/lib/rooms/rooms";
 import {
-  deleteBuildingAction,
   deleteFloorAction,
-  saveBuildingAction,
   saveFloorAction,
   saveRoomAction,
 } from "./actions";
 
-interface Room {
-  id: string;
-  floorId: string;
-  roomNumber: string;
-  roomName: string;
-  capacity: number;
-  roomType: string;
-  status: string;
-  equipment: string;
-  utilization: number;
-  departmentId: string;
-  /** Designated programs and strands; empty means General / Shared. */
-  programIds: string[];
-}
-interface Floor {
-  id: string;
-  buildingId: string;
-  name: string;
-  number: number;
-  rooms: Room[];
-}
-interface Building {
-  id: string;
-  name: string;
-  code: string;
-  description: string;
-  floors: Floor[];
-}
-
-const ROOM_TYPES = [
-  { value: "LECTURE_ROOM", label: "Lecture room / classroom" },
-  { value: "COMPUTER_LABORATORY", label: "Computer laboratory" },
-  { value: "SCIENCE_LABORATORY", label: "Science laboratory" },
-  { value: "CONFERENCE_ROOM", label: "Conference room" },
-  { value: "OTHER", label: "Other" },
-];
-const STATUSES = [
-  { value: "AVAILABLE", label: "Available" },
-  { value: "UNDER_MAINTENANCE", label: "Under maintenance" },
-  { value: "UNAVAILABLE", label: "Unavailable" },
-];
-
 type Editor =
-  | { kind: "building"; item?: Building }
   | { kind: "floor"; buildingId: string; item?: Floor }
   | { kind: "room"; floorId: string; item?: Room };
 
-type Deleting = { kind: "building" | "floor"; id: string; label: string };
-
-type Option = { value: string; label: string };
-
-/** Filter and checkbox value meaning "General / Shared". */
-const GENERAL = "GENERAL";
-
-/** Short program codes a room is designated for, or "General / Shared". */
-function designation(r: Room, programs: Option[]) {
-  if (!r.programIds.length) return "General / Shared";
-  return r.programIds.map((id) => programs.find((p) => p.value === id)?.label.split(" - ")[0] ?? "Unknown").join(", ");
-}
+type Deleting = { id: string; label: string };
 
 type RoomListRow = Room & { location: string; designation: string };
 
+/** Floors and rooms of one building: search, program filter, floor and room editing, and the room information list. */
 export function RoomsExplorer({
-  buildings,
+  building,
+  allFloors,
   initialQuery,
   isAdmin,
   termLabel,
   departments,
   programs,
 }: {
-  buildings: Building[];
+  building: Building;
+  /** Every floor of every building, so a room can be moved elsewhere. */
+  allFloors: Option[];
   initialQuery: string;
   isAdmin: boolean;
   termLabel: string;
@@ -115,36 +62,31 @@ export function RoomsExplorer({
 }) {
   const [query, setQuery] = useState(initialQuery);
   const [programFilter, setProgramFilter] = useState("");
-  const [open, setOpen] = useState<Set<string>>(() => new Set(buildings.slice(0, 1).flatMap((b) => [b.id, ...b.floors.map((f) => f.id)])));
+  const [closed, setClosed] = useState<Set<string>>(new Set());
   const [editor, setEditor] = useState<Editor | null>(null);
   const [deleting, setDeleting] = useState<Deleting | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  useShortcut({ keys: "n", description: "Add a building", group: "Rooms", handler: () => setEditor({ kind: "building" }) });
   useShortcut({ keys: "s", description: "Search rooms", group: "Rooms", handler: () => searchRef.current?.focus() });
 
   const q = query.trim().toLowerCase();
   const filtering = !!q || !!programFilter;
-  const filtered = useMemo(() => {
-    if (!filtering) return buildings;
+  const floors = useMemo(() => {
+    if (!filtering) return building.floors;
     const designated = (r: Room) =>
       !programFilter || (programFilter === GENERAL ? r.programIds.length === 0 : r.programIds.includes(programFilter));
     const match = (r: Room) =>
       designated(r) && (!q || [r.roomNumber, r.roomName, r.roomType.replace(/_/g, " "), r.equipment].some((v) => v.toLowerCase().includes(q)));
     const named = (name: string) => !programFilter && !!q && name.toLowerCase().includes(q);
-    return buildings
-      .map((b) => ({ ...b, floors: b.floors.map((f) => ({ ...f, rooms: f.rooms.filter(match) })).filter((f) => f.rooms.length || named(f.name)) }))
-      .filter((b) => b.floors.length || named(b.name));
-  }, [buildings, q, programFilter, filtering]);
+    return building.floors.map((f) => ({ ...f, rooms: f.rooms.filter(match) })).filter((f) => f.rooms.length || named(f.name));
+  }, [building.floors, q, programFilter, filtering]);
 
   // Room information list for printing and export, following the current search and filter.
   const report = useMemo<ReportDoc<RoomListRow>>(() => {
-    const rows = filtered.flatMap((b) =>
-      b.floors.flatMap((f) => f.rooms.map((r) => ({ ...r, location: `${b.name}, ${f.name}`, designation: designation(r, programs) })))
-    );
+    const rows = floors.flatMap((f) => f.rooms.map((r) => ({ ...r, location: `${building.name}, ${f.name}`, designation: designation(r, programs) })));
     const filterLabel = programFilter === GENERAL ? "General / Shared" : programs.find((p) => p.value === programFilter)?.label;
     return {
-      title: filterLabel ? `Room Information List: ${filterLabel}` : "Room Information List",
+      title: `Room Information List: ${building.name}${filterLabel ? `, ${filterLabel}` : ""}`,
       term: termLabel,
       filename: "room-information-list",
       landscape: true,
@@ -160,47 +102,29 @@ export function RoomsExplorer({
         { header: "Use This Term", value: (r) => `${r.utilization}%` },
       ],
     };
-  }, [filtered, programs, programFilter, termLabel]);
+  }, [floors, building.name, programs, programFilter, termLabel]);
 
+  // Floors start open; while searching, everything that matched is shown expanded.
+  const isOpen = (id: string) => filtering || !closed.has(id);
   const toggle = (id: string) =>
-    setOpen((prev) => {
+    setClosed((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  // While searching, everything that matched is shown expanded.
-  const isOpen = (id: string) => filtering || open.has(id);
-
-  const totals = useMemo(() => {
-    const rooms = buildings.flatMap((b) => b.floors.flatMap((f) => f.rooms));
-    return { rooms: rooms.length, seats: rooms.reduce((s, r) => s + r.capacity, 0), floors: buildings.reduce((s, b) => s + b.floors.length, 0) };
-  }, [buildings]);
 
   // ---- dialogs -------------------------------------------------------------
-  const allFloors = buildings.flatMap((b) => b.floors.map((f) => ({ value: f.id, label: `${b.name} — ${f.name}` })));
   let dialog: { title: string; fields: FormField[]; values: object; submit: (fd: FormData) => Promise<ActionResult> } | null = null;
-  if (editor?.kind === "building") {
+  if (editor?.kind === "floor") {
     dialog = {
-      title: editor.item ? `Edit ${editor.item.name}` : "Add building",
-      fields: [
-        { name: "name", label: "Building name", type: "text", required: true, placeholder: "Main Building" },
-        { name: "code", label: "Short code", type: "text", placeholder: "MB" },
-        { name: "description", label: "Description", type: "textarea" },
-      ],
-      values: editor.item ?? {},
-      submit: (fd) => saveBuildingAction(editor.item?.id ?? null, fd),
-    };
-  } else if (editor?.kind === "floor") {
-    const building = buildings.find((b) => b.id === editor.buildingId);
-    dialog = {
-      title: editor.item ? `Edit ${editor.item.name}` : `Add floor to ${building?.name ?? "building"}`,
+      title: editor.item ? `Edit ${editor.item.name}` : `Add floor to ${building.name}`,
       fields: [
         { name: "buildingId", label: "", type: "hidden" },
         { name: "name", label: "Floor name", type: "text", required: true, placeholder: "Second Floor" },
         { name: "number", label: "Floor number (for ordering)", type: "number", min: -5, max: 100, required: true, help: "1 = ground floor" },
       ],
-      values: editor.item ?? { buildingId: editor.buildingId, number: (building?.floors.at(-1)?.number ?? 0) + 1 },
+      values: editor.item ?? { buildingId: building.id, number: (building.floors.at(-1)?.number ?? 0) + 1 },
       submit: (fd) => saveFloorAction(editor.item?.id ?? null, fd),
     };
   } else if (editor?.kind === "room") {
@@ -238,27 +162,8 @@ export function RoomsExplorer({
     };
   }
 
-  const deleteAction = (d: Deleting) => (d.kind === "building" ? deleteBuildingAction(d.id) : deleteFloorAction(d.id));
-
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Rooms"
-        description={`${buildings.length} buildings · ${totals.floors} floors · ${totals.rooms} rooms · ${totals.seats.toLocaleString()} seats`}
-        actions={
-          <>
-            <Button variant="outline" nativeButton={false} render={<Link href="/import?kind=rooms" />}>
-              <UploadSimple className="size-4" /> Import rooms
-            </Button>
-            {isAdmin && (
-              <Button onClick={() => setEditor({ kind: "building" })} aria-keyshortcuts="n">
-                <Plus className="size-4" /> Add building
-              </Button>
-            )}
-          </>
-        }
-      />
-
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative w-full max-w-md">
           <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -285,102 +190,39 @@ export function RoomsExplorer({
           placeholder="All programs and strands"
           options={[{ value: GENERAL, label: "General / Shared" }, ...programs]}
         />
-        <div className="sm:ml-auto">
+        <div className="flex flex-wrap gap-2 sm:ml-auto">
+          {isAdmin && (
+            <Button variant="outline" onClick={() => setEditor({ kind: "floor", buildingId: building.id })}>
+              <Plus className="size-4" /> Add floor
+            </Button>
+          )}
           <ReportButtons doc={report} />
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {floors.length === 0 ? (
         <EmptyState
-          icon={Buildings}
-          title={buildings.length ? "No rooms match your search or filter" : "No buildings yet"}
-          description={buildings.length ? undefined : "Add a building, then its floors and rooms."}
-          action={buildings.length ? undefined : <Button onClick={() => setEditor({ kind: "building" })}>Add building</Button>}
+          icon={Stack}
+          title={building.floors.length ? "No rooms match your search or filter" : "No floors yet"}
+          description={building.floors.length ? undefined : "Add a floor, then its rooms."}
+          action={building.floors.length || !isAdmin ? undefined : <Button onClick={() => setEditor({ kind: "floor", buildingId: building.id })}>Add floor</Button>}
         />
       ) : (
         <div className="space-y-3">
-          <SortableList
-            items={filtered}
-            disabled={filtering}
-            getLabel={(b) => b.name}
-            onReorder={(ids) => reorderAction("building", ids)}
-            renderItem={(b, { setNodeRef, style, isDragging, handleProps }) => {
-              const rooms = b.floors.flatMap((f) => f.rooms);
-              const expanded = isOpen(b.id);
-              return (
-                <section
-                  ref={setNodeRef}
-                  style={style}
-                  aria-label={b.name}
-                  className={cn("rounded-xl border bg-card shadow-xs", isDragging && "shadow-lg ring-2 ring-primary")}
-                >
-                  <div className="flex items-center gap-2 p-3">
-                    {!filtering && <DragHandle {...handleProps} />}
-                    <button
-                      type="button"
-                      onClick={() => toggle(b.id)}
-                      aria-expanded={expanded}
-                      aria-controls={`bld-${b.id}`}
-                      className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left outline-none"
-                    >
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <Buildings className="size-5" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2 font-semibold">
-                          {b.name} {b.code && <Badge variant="outline">{b.code}</Badge>}
-                        </span>
-                        <span className="block text-xs text-muted-foreground">
-                          {b.floors.length} floors · {rooms.length} rooms · {rooms.reduce((s, r) => s + r.capacity, 0)} seats
-                        </span>
-                      </span>
-                      <CaretDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} />
-                    </button>
-                    {isAdmin && (
-                      <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
-                        <ActionButton kind="add" onClick={() => setEditor({ kind: "floor", buildingId: b.id })}>
-                          Add floor
-                        </ActionButton>
-                        <ActionButton kind="edit" onClick={() => setEditor({ kind: "building", item: buildings.find((x) => x.id === b.id) })}>
-                          Edit
-                        </ActionButton>
-                        <ActionButton kind="delete" onClick={() => setDeleting({ kind: "building", id: b.id, label: b.name })}>
-                          Delete
-                        </ActionButton>
-                      </div>
-                    )}
-                  </div>
-
-                  {expanded && (
-                    <div id={`bld-${b.id}`} className="space-y-2 border-t p-3">
-                      {b.floors.length === 0 && (
-                        <p className="text-sm text-muted-foreground">
-                          No floors yet.{" "}
-                          <button type="button" className="font-medium text-primary hover:underline" onClick={() => setEditor({ kind: "floor", buildingId: b.id })}>
-                            Add a floor
-                          </button>
-                        </p>
-                      )}
-                      {b.floors.map((f) => (
-                        <FloorPanel
-                          key={f.id}
-                          floor={f}
-                          expanded={isOpen(f.id)}
-                          searching={filtering}
-                          programs={programs}
-                          onToggle={() => toggle(f.id)}
-                          onAddRoom={() => setEditor({ kind: "room", floorId: f.id })}
-                          onEditFloor={() => setEditor({ kind: "floor", buildingId: b.id, item: f })}
-                          onDeleteFloor={() => setDeleting({ kind: "floor", id: f.id, label: `${b.name} ${f.name}` })}
-                          onEditRoom={(r) => setEditor({ kind: "room", floorId: f.id, item: r })}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </section>
-              );
-            }}
-          />
+          {floors.map((f) => (
+            <FloorPanel
+              key={f.id}
+              floor={f}
+              expanded={isOpen(f.id)}
+              searching={filtering}
+              programs={programs}
+              onToggle={() => toggle(f.id)}
+              onAddRoom={() => setEditor({ kind: "room", floorId: f.id })}
+              onEditFloor={() => setEditor({ kind: "floor", buildingId: building.id, item: f })}
+              onDeleteFloor={() => setDeleting({ id: f.id, label: `${building.name} ${f.name}` })}
+              onEditRoom={(r) => setEditor({ kind: "room", floorId: f.id, item: r })}
+            />
+          ))}
         </div>
       )}
 
@@ -400,9 +242,9 @@ export function RoomsExplorer({
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
         title={`Delete ${deleting?.label ?? ""}?`}
-        description="Only empty buildings and floors (with no rooms, including archived ones) can be deleted."
+        description="Only empty floors (with no rooms, including archived ones) can be deleted."
         successMessage="Deleted"
-        onConfirm={() => deleteAction(deleting!)}
+        onConfirm={() => deleteFloorAction(deleting!.id)}
       />
     </div>
   );

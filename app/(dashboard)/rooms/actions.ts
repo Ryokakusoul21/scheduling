@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { ADMIN_ROLES, STAFF_ROLES } from "@/lib/permissions/roles";
 import { canManageDepartment, requireScope } from "@/lib/permissions/scope";
+import { BUILDING_PURPOSES } from "@/lib/rooms/buildings";
 
 type Result = { ok: boolean; error?: string };
 
@@ -19,17 +20,26 @@ function done(): Result {
 // Buildings
 // ---------------------------------------------------------------------------
 
-const buildingSchema = z.object({
-  name: z.string().trim().min(1, "Building name is required").max(80),
-  code: z.string().trim().max(10).optional(),
-  description: z.string().max(300).optional(),
-});
+const minutes = z.preprocess((v) => (v === "" || v === undefined ? null : Number(v)), z.number().int().min(0).max(24 * 60).nullable());
+
+const buildingSchema = z
+  .object({
+    name: z.string().trim().min(1, "Building name is required").max(80),
+    code: z.string().trim().max(10).optional(),
+    description: z.string().max(300).optional(),
+    location: z.string().trim().max(120).optional(),
+    purpose: z.enum(BUILDING_PURPOSES),
+    openingMin: minutes,
+    closingMin: minutes,
+  })
+  .refine((d) => d.openingMin === null || d.closingMin === null || d.closingMin > d.openingMin, { message: "Closing time must be after opening time." });
 
 export async function saveBuildingAction(id: string | null, formData: FormData): Promise<Result> {
   await requireRole(...ADMIN_ROLES);
   const parsed = buildingSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
-  const data = { name: parsed.data.name, code: parsed.data.code || null, description: parsed.data.description || null };
+  const d = parsed.data;
+  const data = { ...d, code: d.code || null, description: d.description || null, location: d.location || null };
   try {
     if (id) await prisma.building.update({ where: { id }, data });
     else {
@@ -42,6 +52,30 @@ export async function saveBuildingAction(id: string | null, formData: FormData):
   } catch {
     return { ok: false, error: `A building named "${data.name}" already exists.` };
   }
+  return done();
+}
+
+const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+/** The browser resizes photos first, so anything larger than this is not one of ours. */
+const MAX_PHOTO_BYTES = 1_500_000;
+
+/** Stores a building photo (JPEG, PNG, or WebP up to 1.5 MB) shown on its card. */
+export async function uploadBuildingPhotoAction(id: string, formData: FormData): Promise<Result> {
+  await requireRole(...ADMIN_ROLES);
+  const file = formData.get("photo");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose a photo." };
+  if (!PHOTO_TYPES.includes(file.type)) return { ok: false, error: "Use a JPEG, PNG, or WebP photo." };
+  if (file.size > MAX_PHOTO_BYTES) return { ok: false, error: "The photo is too large; choose one under 1.5 MB." };
+  await prisma.building.update({
+    where: { id },
+    data: { photo: new Uint8Array(await file.arrayBuffer()), photoType: file.type, photoUpdatedAt: new Date() },
+  });
+  return done();
+}
+
+export async function removeBuildingPhotoAction(id: string): Promise<Result> {
+  await requireRole(...ADMIN_ROLES);
+  await prisma.building.update({ where: { id }, data: { photo: null, photoType: null, photoUpdatedAt: null } });
   return done();
 }
 

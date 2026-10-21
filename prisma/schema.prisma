@@ -155,6 +155,17 @@ enum ActivityStatus {
   CHANGES_REQUESTED
 }
 
+/// Main use of a building, shown as a tag on its card.
+enum BuildingPurpose {
+  ACADEMIC
+  SCIENCE_TECHNOLOGY
+  LIBRARY
+  ARTS
+  SPORTS
+  ADMINISTRATION
+  MIXED_USE
+}
+
 enum BookingStatus {
   CONFIRMED
   CANCELLED
@@ -505,6 +516,16 @@ model Building {
   code        String?
   description String?
   sortOrder   Int     @default(0)
+  /// Where on campus, for example "Main campus, north wing".
+  location    String?
+  purpose     BuildingPurpose @default(ACADEMIC)
+  /// Daily opening and closing time in minutes from midnight; null when not set.
+  openingMin  Int?
+  closingMin  Int?
+  /// Optional photo shown on the building card (resized in the browser before upload).
+  photo          Bytes?
+  photoType      String?
+  photoUpdatedAt DateTime?
 
   floors Floor[]
 
