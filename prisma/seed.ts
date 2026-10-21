@@ -17,6 +17,7 @@ import bcrypt from "bcryptjs";
 import { DEFAULT_COLLEGE_PROGRAMS, DEFAULT_SHS_STRANDS } from "../lib/academics/levels";
 import { placeCollegeClasses } from "./sample-timetable";
 import { addSampleHistory } from "./sample-history";
+import { addArchiveAndApprovalSamples } from "./sample-archive-activities";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -575,6 +576,9 @@ async function main() {
 
   // Previous semester, past bookings, and automatically resolved conflicts for trend comparisons.
   await addSampleHistory(prisma);
+
+  // Archived records and department activity submissions for the Archive and Activity Approvals pages.
+  await addArchiveAndApprovalSamples(prisma, passwordHash);
 
   console.log(`Seed complete: ${placed} college class meetings placed in ${collegeTerm.name} ${ay.name}.`);
   console.log(`Demo login password for every demo account: ${DEV_PASSWORD}`);
