@@ -42,15 +42,15 @@ async function termFigures(term: Semester, f: DashboardFilters) {
       select: { id: true, roomId: true, facultyId: true, sectionId: true, subjectId: true, dayOfWeek: true, startMin: true, endMin: true },
     }),
     prisma.room.findMany({
-      where: f.buildingId ? { floor: { buildingId: f.buildingId } } : {},
+      where: { archivedAt: null, ...(f.buildingId ? { floor: { buildingId: f.buildingId } } : {}) },
       include: { availability: true, floor: { select: { building: { select: { name: true } } } } },
     }),
-    prisma.faculty.findMany({ where: f.departmentId ? { departmentId: f.departmentId } : {}, include: { department: { select: { name: true } } } }),
+    prisma.faculty.findMany({ where: { archivedAt: null, ...(f.departmentId ? { departmentId: f.departmentId } : {}) }, include: { department: { select: { name: true } } } }),
     prisma.enrollmentRecord.findMany({
       where: { level: term.level, academicYear: academicYear?.name ?? "", termType: term.type.startsWith("QUARTER") ? "FIRST" : term.type },
     }),
     prisma.program.findMany({ select: { id: true, departmentId: true } }),
-    prisma.section.findMany({ where: { semesterId: term.id, ...(f.departmentId ? { program: { departmentId: f.departmentId } } : {}) }, select: { id: true } }),
+    prisma.section.findMany({ where: { semesterId: term.id, archivedAt: null, ...(f.departmentId ? { program: { departmentId: f.departmentId } } : {}) }, select: { id: true } }),
     detectConflictsForTerms([term.id]),
     loadWorkload([term.id], f.departmentId),
   ]);
@@ -266,7 +266,7 @@ async function upcoming(f: DashboardFilters) {
       orderBy: [{ date: "asc" }, { startMin: "asc" }],
       take: 12,
     }),
-    prisma.activity.findMany({ where: { endDate: { gte: today }, startDate: { lte: until } }, orderBy: { startDate: "asc" }, take: 12 }),
+    prisma.activity.findMany({ where: { status: "APPROVED", endDate: { gte: today }, startDate: { lte: until } }, orderBy: { startDate: "asc" }, take: 12 }),
   ]);
   return [
     ...exams.map((e) => ({

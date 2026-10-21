@@ -14,8 +14,8 @@ export default async function ConstraintsPage() {
       orderBy: [{ kind: "asc" }, { createdAt: "asc" }],
     }),
     prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.faculty.findMany({ where: scope.isAdmin ? {} : { departmentId: scope.departmentId }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true } }),
-    prisma.subject.findMany({ orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),
+    prisma.faculty.findMany({ where: { archivedAt: null, ...(scope.isAdmin ? {} : { departmentId: scope.departmentId }) }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true } }),
+    prisma.subject.findMany({ where: { archivedAt: null }, orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),
   ]);
   const departmentName = new Map(departments.map((d) => [d.id, d.name]));
 

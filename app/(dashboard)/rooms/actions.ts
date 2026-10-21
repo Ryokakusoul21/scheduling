@@ -154,15 +154,3 @@ export async function saveRoomAction(id: string | null, formData: FormData): Pro
   }
   return done();
 }
-
-export async function deleteRoomAction(id: string): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
-  const room = await prisma.room.findUnique({ where: { id }, select: { departmentId: true } });
-  if (!canManageDepartment(scope, room?.departmentId)) return { ok: false, error: OWN_ROOMS };
-  const classes = await prisma.schedule.count({ where: { roomId: id } });
-  if (classes > 0) return { ok: false, error: `This room has ${classes} scheduled class(es). Move them in the Scheduler first.` };
-  const held = (await prisma.examination.count({ where: { roomId: id } })) + (await prisma.roomBooking.count({ where: { roomId: id, status: "CONFIRMED" } }));
-  if (held > 0) return { ok: false, error: `This room has ${held} examination(s) or booking(s). Move or cancel them first.` };
-  await prisma.room.delete({ where: { id } });
-  return done();
-}

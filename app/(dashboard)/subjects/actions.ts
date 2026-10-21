@@ -75,15 +75,3 @@ export async function saveSubjectAction(id: string | null, formData: FormData): 
   queueWorkloadCheck("A subject was changed");
   return { ok: true };
 }
-
-export async function deleteSubjectAction(id: string): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
-  const subject = await prisma.subject.findUnique({ where: { id }, select: { programId: true } });
-  if (!canManageDepartment(scope, await programDepartment(subject?.programId))) return { ok: false, error: OUTSIDE_DEPARTMENT };
-  const classes = await prisma.schedule.count({ where: { subjectId: id } });
-  if (classes > 0) return { ok: false, error: `This subject has ${classes} scheduled class(es). Remove them in the Scheduler first.` };
-  await prisma.subject.delete({ where: { id } });
-  revalidatePath("/subjects");
-  queueWorkloadCheck("A subject was removed");
-  return { ok: true };
-}

@@ -102,6 +102,7 @@ async function buildContext(userId: string, role: AppRole): Promise<string> {
       },
     }),
     prisma.room.findMany({
+      where: { archivedAt: null },
       orderBy: { roomNumber: "asc" },
       select: { roomName: true, roomNumber: true, floor: floorSelect, roomType: true, status: true },
     }),
@@ -167,10 +168,10 @@ async function buildStaffOverview(termIds: string[]): Promise<string[]> {
   const activeOnly = { semesterId: { in: termIds }, status: { not: "ARCHIVED" as const } };
   const [counts, schedules, conflicts, pendingRequests, faculty, roomLoad] = await Promise.all([
     Promise.all([
-      prisma.section.count(),
-      prisma.faculty.count({ where: { status: "ACTIVE" } }),
-      prisma.subject.count(),
-      prisma.room.count(),
+      prisma.section.count({ where: { archivedAt: null } }),
+      prisma.faculty.count({ where: { status: "ACTIVE", archivedAt: null } }),
+      prisma.subject.count({ where: { archivedAt: null } }),
+      prisma.room.count({ where: { archivedAt: null } }),
     ]),
     prisma.schedule.findMany({ where: activeOnly, include: scheduleInclude, take: 600 }),
     activeOverlapConflicts(),
@@ -181,11 +182,12 @@ async function buildStaffOverview(termIds: string[]): Promise<string[]> {
       select: { type: true, reason: true, createdAt: true, requestedBy: { select: { name: true, role: true } } },
     }),
     prisma.faculty.findMany({
-      where: { status: "ACTIVE" },
+      where: { status: "ACTIVE", archivedAt: null },
       orderBy: { fullName: "asc" },
       select: { fullName: true, maxHours: true, schedules: { where: activeOnly, select: { startMin: true, endMin: true } } },
     }),
     prisma.room.findMany({
+      where: { archivedAt: null },
       orderBy: { roomNumber: "asc" },
       select: { roomName: true, capacity: true, schedules: { where: activeOnly, select: { startMin: true, endMin: true } } },
     }),

@@ -34,10 +34,10 @@ export default async function ExaminationsPage() {
       orderBy: [{ date: "asc" }, { startMin: "asc" }],
     }),
     canEdit ? prisma.semester.findMany({ where: { academicYear: { isActive: true } }, orderBy: [{ level: "asc" }, { startDate: "asc" }] }) : [],
-    canEdit ? prisma.section.findMany({ where: departmentSections, orderBy: [{ level: "asc" }, { sortOrder: "asc" }] }) : [],
-    canEdit ? prisma.subject.findMany({ orderBy: [{ level: "asc" }, { code: "asc" }] }) : [],
-    canEdit ? prisma.room.findMany({ where: { status: "AVAILABLE" }, orderBy: { roomName: "asc" } }) : [],
-    canEdit ? prisma.faculty.findMany({ where: { status: "ACTIVE" }, orderBy: { fullName: "asc" } }) : [],
+    canEdit ? prisma.section.findMany({ where: { ...departmentSections, archivedAt: null }, orderBy: [{ level: "asc" }, { sortOrder: "asc" }] }) : [],
+    canEdit ? prisma.subject.findMany({ where: { archivedAt: null }, orderBy: [{ level: "asc" }, { code: "asc" }] }) : [],
+    canEdit ? prisma.room.findMany({ where: { status: "AVAILABLE", archivedAt: null }, orderBy: { roomName: "asc" } }) : [],
+    canEdit ? prisma.faculty.findMany({ where: { status: "ACTIVE", archivedAt: null }, orderBy: { fullName: "asc" } }) : [],
   ]);
 
   const rows: ExamRow[] = exams.map((e) => ({

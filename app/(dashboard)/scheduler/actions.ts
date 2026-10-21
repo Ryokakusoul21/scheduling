@@ -122,15 +122,24 @@ export async function saveClassAction(input: ClassInput, overrideSoft = false): 
   const { id, status, notes, ...data } = parsed.data;
 
   const [section, subject, faculty, room, term] = await Promise.all([
-    prisma.section.findUnique({ where: { id: data.sectionId }, select: { id: true } }),
-    prisma.subject.findUnique({ where: { id: data.subjectId }, select: { id: true } }),
-    prisma.faculty.findUnique({ where: { id: data.facultyId }, select: { id: true } }),
-    prisma.room.findUnique({ where: { id: data.roomId }, select: { id: true } }),
+    prisma.section.findUnique({ where: { id: data.sectionId }, select: { id: true, archivedAt: true } }),
+    prisma.subject.findUnique({ where: { id: data.subjectId }, select: { id: true, archivedAt: true } }),
+    prisma.faculty.findUnique({ where: { id: data.facultyId }, select: { id: true, archivedAt: true } }),
+    prisma.room.findUnique({ where: { id: data.roomId }, select: { id: true, archivedAt: true } }),
     prisma.semester.findUnique({ where: { id: data.semesterId }, select: { id: true } }),
   ]);
   if (!section || !subject || !faculty || !room || !term) {
     return { ok: false, error: "The section, subject, faculty, room, or term no longer exists. Refresh and try again." };
   }
+  // Archived records may stay on an existing class but can never be newly assigned.
+  const before = id ? await prisma.schedule.findUnique({ where: { id }, select: { sectionId: true, subjectId: true, facultyId: true, roomId: true } }) : null;
+  const archived = [
+    { label: "section", row: section, prev: before?.sectionId },
+    { label: "subject", row: subject, prev: before?.subjectId },
+    { label: "faculty member", row: faculty, prev: before?.facultyId },
+    { label: "room", row: room, prev: before?.roomId },
+  ].find((p) => p.row.archivedAt && p.row.id !== p.prev);
+  if (archived) return { ok: false, error: `That ${archived.label} is archived. Restore it in User Management or choose another.` };
   if (!(await sectionAllowed(scope, data.sectionId))) return { ok: false, error: OUTSIDE_DEPARTMENT };
   const clash = await weeklyDoubleBooking(data, id);
   if (clash) return { ok: false, error: clash };

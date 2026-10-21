@@ -120,7 +120,7 @@ export async function verifyEmailToken(token: string) {
 
   if (user.status === "PENDING") {
     const admins = await prisma.user.findMany({
-      where: { role: "ADMINISTRATOR", status: "ACTIVE" },
+      where: { role: "ADMINISTRATOR", status: "ACTIVE", archivedAt: null },
       select: { id: true },
     });
     await prisma.notification.createMany({

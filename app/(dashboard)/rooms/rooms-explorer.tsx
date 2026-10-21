@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ConfirmDialog, FormDialog, type ActionResult, type FormField } from "@/components/ux/form-dialog";
+import { ArchiveButton } from "@/components/ux/archive-button";
 import { DragHandle, SortableList } from "@/components/ux/sortable-list";
 import { EmptyState, PageHeader } from "@/components/ux/states";
 import { NativeSelect } from "@/components/ux/native-select";
@@ -30,7 +31,6 @@ import { cn } from "@/lib/utils";
 import {
   deleteBuildingAction,
   deleteFloorAction,
-  deleteRoomAction,
   saveBuildingAction,
   saveFloorAction,
   saveRoomAction,
@@ -83,7 +83,7 @@ type Editor =
   | { kind: "floor"; buildingId: string; item?: Floor }
   | { kind: "room"; floorId: string; item?: Room };
 
-type Deleting = { kind: "building" | "floor" | "room"; id: string; label: string };
+type Deleting = { kind: "building" | "floor"; id: string; label: string };
 
 type Option = { value: string; label: string };
 
@@ -238,8 +238,7 @@ export function RoomsExplorer({
     };
   }
 
-  const deleteAction = (d: Deleting) =>
-    d.kind === "building" ? deleteBuildingAction(d.id) : d.kind === "floor" ? deleteFloorAction(d.id) : deleteRoomAction(d.id);
+  const deleteAction = (d: Deleting) => (d.kind === "building" ? deleteBuildingAction(d.id) : deleteFloorAction(d.id));
 
   return (
     <div className="space-y-4">
@@ -374,7 +373,6 @@ export function RoomsExplorer({
                           onEditFloor={() => setEditor({ kind: "floor", buildingId: b.id, item: f })}
                           onDeleteFloor={() => setDeleting({ kind: "floor", id: f.id, label: `${b.name} ${f.name}` })}
                           onEditRoom={(r) => setEditor({ kind: "room", floorId: f.id, item: r })}
-                          onDeleteRoom={(r) => setDeleting({ kind: "room", id: r.id, label: r.roomName })}
                         />
                       ))}
                     </div>
@@ -402,11 +400,7 @@ export function RoomsExplorer({
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
         title={`Delete ${deleting?.label ?? ""}?`}
-        description={
-          deleting?.kind === "room"
-            ? "Rooms with scheduled classes can't be deleted."
-            : "Only empty buildings and floors (with no rooms) can be deleted."
-        }
+        description="Only empty buildings and floors (with no rooms, including archived ones) can be deleted."
         successMessage="Deleted"
         onConfirm={() => deleteAction(deleting!)}
       />
@@ -423,7 +417,6 @@ function FloorPanel({
   onEditFloor,
   onDeleteFloor,
   onEditRoom,
-  onDeleteRoom,
   programs,
 }: {
   floor: Floor;
@@ -435,7 +428,6 @@ function FloorPanel({
   onEditFloor: () => void;
   onDeleteFloor: () => void;
   onEditRoom: (r: Room) => void;
-  onDeleteRoom: (r: Room) => void;
 }) {
   const { ref, onKeyDown, onFocus } = useRovingFocus<HTMLTableSectionElement>();
   return (
@@ -540,9 +532,7 @@ function FloorPanel({
                         <ActionButton kind="view" nativeButton={false} render={<Link href={`/scheduler?roomId=${r.id}`} />}>
                           Timetable
                         </ActionButton>
-                        <ActionButton kind="delete" onClick={() => onDeleteRoom(r)}>
-                          Delete
-                        </ActionButton>
+                        <ArchiveButton kind="ROOM" id={r.id} name={r.roomName} />
                       </div>
                     </TableCell>
                   </TableRow>

@@ -79,18 +79,3 @@ export async function updateFacultyAction(id: string, formData: FormData) {
   queueWorkloadCheck("A faculty member was updated");
   return { ok: true };
 }
-
-export async function deleteFacultyAction(id: string) {
-  const scope = await requireScope(...STAFF);
-  if (!(await ownsFaculty(scope, id))) return { ok: false, error: OUTSIDE_DEPARTMENT };
-  const [scheduleCount, linkedUser] = await Promise.all([
-    prisma.schedule.count({ where: { facultyId: id } }),
-    prisma.user.findUnique({ where: { facultyId: id } }),
-  ]);
-  if (scheduleCount > 0) return { ok: false, error: "This faculty member has existing schedule assignments." };
-  if (linkedUser) return { ok: false, error: "This faculty member has a linked user login; remove that account first." };
-  await prisma.faculty.delete({ where: { id } });
-  revalidatePath("/faculty");
-  queueWorkloadCheck("A faculty member was removed");
-  return { ok: true };
-}

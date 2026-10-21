@@ -31,7 +31,7 @@ export async function createRequestAction(formData: FormData) {
 
   await prisma.notification.createMany({
     data: (
-      await prisma.user.findMany({ where: { role: { in: ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT"] } }, select: { id: true } })
+      await prisma.user.findMany({ where: { role: { in: ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT"] }, archivedAt: null }, select: { id: true } })
     ).map((u) => ({
       userId: u.id,
       type: "INFO",

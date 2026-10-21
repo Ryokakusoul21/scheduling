@@ -10,14 +10,15 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ConfirmDialog, FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
+import { FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
+import { ArchiveButton } from "@/components/ux/archive-button";
 import { NativeSelect } from "@/components/ux/native-select";
 import { EmptyState, PageHeader } from "@/components/ux/states";
 import { useShortcut } from "@/components/ux/shortcuts";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { ACADEMIC_LEVELS, LEVELS, levelLabel } from "@/lib/academics/levels";
 import { cn } from "@/lib/utils";
-import { createFacultyAction, deleteFacultyAction, updateFacultyAction } from "./actions";
+import { createFacultyAction, updateFacultyAction } from "./actions";
 
 export interface FacultyRow {
   id: string;
@@ -66,9 +67,7 @@ export function FacultyBrowser({
   const [status, setStatus] = useState("");
   const [view, setView] = useState<"cards" | "table">("cards");
   const searchRef = useRef<HTMLInputElement>(null);
-  const dialog = useDialogState<FacultyRow>();
-  const del = useDialogState<FacultyRow>();
-  const { ref: gridRef, onKeyDown: onGridKeyDown, onFocus: onGridFocus } = useRovingFocus({ orientation: "grid" });
+  const dialog = useDialogState<FacultyRow>();  const { ref: gridRef, onKeyDown: onGridKeyDown, onFocus: onGridFocus } = useRovingFocus({ orientation: "grid" });
   const { ref: rowsRef, onKeyDown: onRowsKeyDown, onFocus: onRowsFocus } = useRovingFocus<HTMLTableSectionElement>();
 
   useShortcut({ keys: "n", description: "Add faculty member", group: "Faculty", handler: dialog.openCreate });
@@ -86,9 +85,7 @@ export function FacultyBrowser({
     );
   }, [faculty, query, level, department, status]);
 
-  const editing = dialog.state?.mode === "edit" ? dialog.state.item : null;
-  const deleting = del.state?.mode === "edit" ? del.state.item : null;
-  const filtersOn = !!(query || level || department || status);
+  const editing = dialog.state?.mode === "edit" ? dialog.state.item : null;  const filtersOn = !!(query || level || department || status);
 
   const fields: FormField[] = [
     { name: "employeeId", label: "Employee ID", type: "text", required: true, placeholder: "F-019" },
@@ -117,9 +114,7 @@ export function FacultyBrowser({
       <ActionButton kind="view" nativeButton={false} render={<Link href={`/scheduler?facultyId=${f.id}`} />}>
         Timetable
       </ActionButton>
-      <ActionButton kind="delete" onClick={() => del.openEdit(f)}>
-        Delete
-      </ActionButton>
+      <ArchiveButton kind="FACULTY" id={f.id} name={f.fullName} />
     </div>
   );
 
@@ -305,14 +300,6 @@ export function FacultyBrowser({
         submitLabel={editing ? "Save changes" : "Add faculty"}
         successMessage={editing ? "Faculty updated" : "Faculty added"}
         onSubmit={(fd) => (editing ? updateFacultyAction(editing.id, fd) : createFacultyAction(fd))}
-      />
-      <ConfirmDialog
-        open={!!deleting}
-        onOpenChange={(o) => !o && del.close()}
-        title={`Delete ${deleting?.fullName ?? "faculty member"}?`}
-        description="Faculty with scheduled classes or a linked login can't be deleted."
-        successMessage="Faculty deleted"
-        onConfirm={async () => (await deleteFacultyAction(deleting!.id)) as { ok: boolean; error?: string }}
       />
     </div>
   );

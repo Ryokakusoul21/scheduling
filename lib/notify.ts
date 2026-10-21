@@ -15,7 +15,7 @@ type Client = Prisma.TransactionClient | typeof prisma;
 export async function notifyFaculty(facultyIds: string[], msg: Message, db: Client = prisma) {
   const ids = [...new Set(facultyIds)];
   if (ids.length === 0) return;
-  const users = await db.user.findMany({ where: { facultyId: { in: ids }, status: "ACTIVE" }, select: { id: true } });
+  const users = await db.user.findMany({ where: { facultyId: { in: ids }, status: "ACTIVE", archivedAt: null }, select: { id: true } });
   await notifyUsers(users.map((u) => u.id), msg, db);
 }
 
@@ -24,6 +24,7 @@ export async function notifyManagers(departmentId: string | null, msg: Message, 
   const users = await db.user.findMany({
     where: {
       status: "ACTIVE",
+      archivedAt: null,
       OR: [
         { role: "ADMINISTRATOR" },
         ...(departmentId ? [{ role: "HEAD_OF_DEPARTMENT" as const, faculty: { departmentId } }] : []),

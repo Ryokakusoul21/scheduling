@@ -6,7 +6,8 @@ import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ConfirmDialog, FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
+import { FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
+import { ArchiveButton } from "@/components/ux/archive-button";
 import { DragHandle, SortableList } from "@/components/ux/sortable-list";
 import { EmptyState } from "@/components/ux/states";
 import { useShortcut } from "@/components/ux/shortcuts";
@@ -14,7 +15,7 @@ import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { reorderAction } from "@/actions/reorder";
 import { LEVELS, YEAR_LEVELS, gradeLabel, yearLabel, type AcademicLevel } from "@/lib/academics/levels";
 import { cn } from "@/lib/utils";
-import { deleteSubjectAction, saveSubjectAction } from "./actions";
+import { saveSubjectAction } from "./actions";
 
 export interface SubjectRow {
   id: string;
@@ -55,7 +56,6 @@ export function SubjectsList({
   strands: { value: string; label: string }[];
 }) {
   const dialog = useDialogState<SubjectRow>();
-  const del = useDialogState<SubjectRow>();
   const { ref, onKeyDown, onFocus } = useRovingFocus<HTMLTableSectionElement>();
   const level = context.level as AcademicLevel;
   const isCollege = level === "COLLEGE";
@@ -63,7 +63,6 @@ export function SubjectsList({
   useShortcut({ keys: "n", description: "Add a subject", group: "Subjects", handler: dialog.openCreate });
 
   const editing = dialog.state?.mode === "edit" ? dialog.state.item : null;
-  const deleting = del.state?.mode === "edit" ? del.state.item : null;
 
   const fields: FormField[] = [
     { name: "level", label: "", type: "hidden" },
@@ -176,9 +175,7 @@ export function SubjectsList({
                       <ActionButton kind="edit" onClick={() => dialog.openEdit(s)}>
                         Edit
                       </ActionButton>
-                      <ActionButton kind="delete" onClick={() => del.openEdit(s)}>
-                        Delete
-                      </ActionButton>
+                      <ArchiveButton kind="SUBJECT" id={s.id} name={s.code} />
                     </div>
                   </TableCell>
                 </TableRow>
@@ -204,14 +201,6 @@ export function SubjectsList({
         submitLabel={editing ? "Save changes" : "Add subject"}
         successMessage={editing ? "Subject updated" : "Subject added"}
         onSubmit={(fd) => saveSubjectAction(editing?.id ?? null, fd)}
-      />
-      <ConfirmDialog
-        open={!!deleting}
-        onOpenChange={(o) => !o && del.close()}
-        title={`Delete ${deleting?.code ?? "subject"}?`}
-        description="Subjects that are used by scheduled classes can't be deleted."
-        successMessage="Subject deleted"
-        onConfirm={() => deleteSubjectAction(deleting!.id)}
       />
     </Card>
   );

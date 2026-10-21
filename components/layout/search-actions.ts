@@ -19,11 +19,12 @@ export async function globalSearchAction(query: string): Promise<SearchResult[]>
 
   const [subjects, faculty, rooms, sections] = await Promise.all([
     prisma.subject.findMany({
-      where: { OR: [{ code: { contains: q, mode: "insensitive" } }, { name: { contains: q, mode: "insensitive" } }] },
+      where: { archivedAt: null, OR: [{ code: { contains: q, mode: "insensitive" } }, { name: { contains: q, mode: "insensitive" } }] },
       take: 5,
     }),
     prisma.faculty.findMany({
       where: {
+        archivedAt: null,
         OR: [
           { fullName: { contains: q, mode: "insensitive" } },
           { employeeId: { contains: q, mode: "insensitive" } },
@@ -33,6 +34,7 @@ export async function globalSearchAction(query: string): Promise<SearchResult[]>
     }),
     prisma.room.findMany({
       where: {
+        archivedAt: null,
         OR: [
           { roomName: { contains: q, mode: "insensitive" } },
           { roomNumber: { contains: q, mode: "insensitive" } },
@@ -41,7 +43,7 @@ export async function globalSearchAction(query: string): Promise<SearchResult[]>
       take: 5,
     }),
     prisma.section.findMany({
-      where: { name: { contains: q, mode: "insensitive" } },
+      where: { archivedAt: null, name: { contains: q, mode: "insensitive" } },
       take: 5,
     }),
   ]);

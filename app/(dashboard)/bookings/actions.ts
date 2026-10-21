@@ -52,7 +52,7 @@ export async function findRoomsAction(input: z.infer<typeof searchSchema>): Prom
   const [loaded, rooms] = await Promise.all([
     loadPlan(d.date, d.date),
     prisma.room.findMany({
-      where: { capacity: { gte: d.attendees }, status: "AVAILABLE", ...(d.roomType ? { roomType: d.roomType } : {}) },
+      where: { capacity: { gte: d.attendees }, status: "AVAILABLE", archivedAt: null, ...(d.roomType ? { roomType: d.roomType } : {}) },
       include: { floor: { select: { name: true, building: { select: { name: true } } } } },
       orderBy: [{ capacity: "asc" }, { roomName: "asc" }],
     }),

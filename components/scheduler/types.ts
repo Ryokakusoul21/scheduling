@@ -52,6 +52,8 @@ export interface SectionOption {
   gradeLevel: string | null;
   semesterId: string | null;
   studentCount: number;
+  /** Archived records stay for showing existing classes but are never offered for new ones. */
+  archived: boolean;
 }
 
 export interface SubjectOption {
@@ -65,6 +67,7 @@ export interface SubjectOption {
   lectureHours: number;
   labHours: number;
   requiredRoomType: RoomType;
+  archived: boolean;
 }
 
 export interface Availability {
@@ -94,6 +97,7 @@ export interface RoomOption {
   availability: Availability[];
   /** Designated programs and strands; null means General / Shared. */
   programIds: string[] | null;
+  archived: boolean;
 }
 
 export interface SchedulerData {

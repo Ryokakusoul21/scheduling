@@ -95,17 +95,6 @@ export async function resetPasswordAction(id: string, newPassword: string) {
   return { ok: true };
 }
 
-export async function deleteUserAction(id: string) {
-  const admin = await requireRole(...ADMIN);
-  if (admin.id === id) return { ok: false, error: "You cannot delete your own account." };
-  await prisma.user.delete({ where: { id } });
-  await prisma.auditLog.create({
-    data: { userId: admin.id, action: "Deleted user account", entity: "User", entityId: id },
-  });
-  revalidatePath("/admin/users");
-  return { ok: true };
-}
-
 export async function approveUserAction(id: string) {
   const admin = await requireRole(...ADMIN);
   const user = await prisma.user.findUnique({ where: { id } });

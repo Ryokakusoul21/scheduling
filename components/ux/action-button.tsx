@@ -1,5 +1,5 @@
 import type { Icon } from "@phosphor-icons/react";
-import { ArrowCounterClockwise, Bell, Check, CheckCircle, Eye, Key, PencilSimple, Plus, Prohibit, Star, Trash, X } from "@phosphor-icons/react/ssr";
+import { Archive, ArrowCounterClockwise, Bell, Check, CheckCircle, Eye, Key, PencilSimple, Plus, Prohibit, Star, Trash, X } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 
 /** Row and dialog actions share one look everywhere: an outlined button with an icon, red for destructive ones. */
@@ -8,6 +8,8 @@ const KINDS = {
   view: { label: "View", icon: Eye, destructive: false },
   read: { label: "Mark as read", icon: Check, destructive: false },
   delete: { label: "Delete", icon: Trash, destructive: true },
+  archive: { label: "Archive", icon: Archive, destructive: true },
+  restore: { label: "Restore", icon: ArrowCounterClockwise, destructive: false },
   cancel: { label: "Cancel", icon: Prohibit, destructive: true },
   reject: { label: "Reject", icon: X, destructive: true },
   dismiss: { label: "Dismiss", icon: X, destructive: false },

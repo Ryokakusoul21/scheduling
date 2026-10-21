@@ -118,7 +118,7 @@ function ClassForm({
     .map((t) => ({ value: t.id, label: t.label }));
 
   const subjectOptions = data.subjects
-    .filter((s) => !section || subjectAppliesToSection(s, section))
+    .filter((s) => (!s.archived || s.id === form.subjectId) && (!section || subjectAppliesToSection(s, section)))
     .map((s) => ({ value: s.id, label: `${s.code} — ${s.name}` }));
 
   // Entries in terms that run at the same time as this one (for busy/conflict checks).
@@ -141,8 +141,9 @@ function ClassForm({
   }, [data.faculty, section?.level, form.facultyId, concurrent, slot.dayOfWeek, slot.startMin, slot.endMin]);
 
   const roomOptions = useMemo(() => {
-    const byId = new Map(data.rooms.map((r) => [r.id, r]));
-    return rankRooms(data.rooms, slot, concurrent, {
+    const pool = data.rooms.filter((r) => !r.archived || r.id === form.roomId);
+    const byId = new Map(pool.map((r) => [r.id, r]));
+    return rankRooms(pool, slot, concurrent, {
       studentCount: section?.studentCount,
       component: form.component,
       requiredRoomType: subject?.requiredRoomType,
@@ -155,7 +156,7 @@ function ClassForm({
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- slot fields listed individually
-  }, [data.rooms, section?.studentCount, subject?.requiredRoomType, form.component, concurrent, slot.dayOfWeek, slot.startMin, slot.endMin]);
+  }, [data.rooms, form.roomId, section?.studentCount, subject?.requiredRoomType, form.component, concurrent, slot.dayOfWeek, slot.startMin, slot.endMin]);
 
   // Live conflict preview for the candidate placement.
   const preview: DetectedConflict[] = useMemo(() => {
@@ -202,7 +203,7 @@ function ClassForm({
             value={form.sectionId}
             onChange={(e) => set("sectionId", e.target.value)}
             placeholder="Select section"
-            options={data.sections.map((s) => ({ value: s.id, label: s.name }))}
+            options={data.sections.filter((s) => !s.archived || s.id === form.sectionId).map((s) => ({ value: s.id, label: s.name }))}
             required
           />
         </Field>

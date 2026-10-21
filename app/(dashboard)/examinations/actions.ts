@@ -32,8 +32,8 @@ export type ExamInput = z.infer<typeof examSchema>;
 async function examProblems(d: ExamInput, excludeId?: string) {
   const [p, section, room] = await Promise.all([
     loadPlan(d.date, d.date),
-    prisma.section.findUnique({ where: { id: d.sectionId }, select: { studentCount: true, name: true } }),
-    prisma.room.findUnique({ where: { id: d.roomId }, select: { capacity: true, roomName: true, status: true } }),
+    prisma.section.findUnique({ where: { id: d.sectionId }, select: { studentCount: true, name: true, archivedAt: true } }),
+    prisma.room.findUnique({ where: { id: d.roomId }, select: { capacity: true, roomName: true, status: true, archivedAt: true } }),
   ]);
   const conflicts = findClashes(
     p.ctx.occupants,
@@ -43,6 +43,9 @@ async function examProblems(d: ExamInput, excludeId?: string) {
   const warnings: string[] = [];
   if (room && section && room.capacity < section.studentCount) conflicts.push(`${room.roomName} seats ${room.capacity} but ${section.name} has ${section.studentCount} students.`);
   if (room && room.status !== "AVAILABLE") conflicts.push(`${room.roomName} is not open for use.`);
+  if (room?.archivedAt) conflicts.push(`${room.roomName} is archived.`);
+  if (section?.archivedAt) conflicts.push(`${section.name} is archived.`);
+  if (!p.ctx.faculty.has(d.proctorId)) conflicts.push("The proctor is archived or inactive.");
   if (p.ctx.holidays.has(d.date)) warnings.push("This date is a holiday on the Calendar of Activities.");
   if (p.ctx.unavailable.some((u) => u.facultyId === d.proctorId && d.date >= u.start && d.date <= u.end)) conflicts.push("The proctor reported being unavailable on this date.");
   return { conflicts, warnings };

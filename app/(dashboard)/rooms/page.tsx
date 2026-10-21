@@ -24,6 +24,7 @@ export default async function RoomsPage({ searchParams }: { searchParams: Promis
         orderBy: { number: "asc" },
         include: {
           rooms: {
+            where: { archivedAt: null },
             orderBy: [{ sortOrder: "asc" }, { roomNumber: "asc" }],
             include: {
               programs: { select: { id: true } },

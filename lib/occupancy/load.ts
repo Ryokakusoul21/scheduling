@@ -57,7 +57,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
       where: { batch: activeBatch, OR: [{ date: { gte: wideFrom, lte: wideTo } }, { newDate: { gte: wideFrom, lte: wideTo } }] },
     }),
     prisma.activity.findMany({
-      where: { type: "HOLIDAY", startDate: { lte: wideTo }, endDate: { gte: wideFrom } },
+      where: { type: "HOLIDAY", status: "APPROVED", startDate: { lte: wideTo }, endDate: { gte: wideFrom } },
       select: { startDate: true, endDate: true },
     }),
     prisma.examination.findMany({
@@ -66,7 +66,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
     }),
     prisma.roomBooking.findMany({ where: { status: "CONFIRMED", date: { gte: rangeFrom, lte: rangeTo } } }),
     prisma.room.findMany({ include: { floor: { select: { buildingId: true } }, programs: { select: { id: true } } } }),
-    prisma.faculty.findMany({ where: { status: "ACTIVE" }, include: { availability: true } }),
+    prisma.faculty.findMany({ where: { status: "ACTIVE", archivedAt: null }, include: { availability: true } }),
     prisma.unavailability.findMany({ where: { status: { not: "DISMISSED" }, startDate: { lte: wideTo }, endDate: { gte: wideFrom } } }),
     prisma.section.findMany({ select: { id: true, studentCount: true, level: true, programId: true } }),
     prisma.subject.findMany({ select: { id: true, requiredRoomType: true } }),
@@ -113,7 +113,8 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
   ];
 
   const ctx: PlanContext = {
-    rooms: rooms.map((r) => ({ id: r.id, name: r.roomName, capacity: r.capacity, roomType: r.roomType, status: r.status, buildingId: r.floor?.buildingId ?? null, programIds: r.isGeneralShared ? null : r.programs.map((p) => p.id) })),
+    // Archived rooms keep their names for past classes but are never offered as new rooms.
+    rooms: rooms.filter((r) => !r.archivedAt).map((r) => ({ id: r.id, name: r.roomName, capacity: r.capacity, roomType: r.roomType, status: r.status, buildingId: r.floor?.buildingId ?? null, programIds: r.isGeneralShared ? null : r.programs.map((p) => p.id) })),
     faculty: new Map(
       faculty.map((f) => [
         f.id,

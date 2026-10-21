@@ -147,6 +147,14 @@ enum ActivityType {
   CLASS_SUSPENSION
 }
 
+/// Approval state of a submitted activity; only APPROVED ones reach the official calendar.
+enum ActivityStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+}
+
 enum BookingStatus {
   CONFIRMED
   CANCELLED
@@ -241,6 +249,11 @@ model User {
 
   student Student?
 
+  /// Archived accounts cannot sign in; the record and its history are kept for restore.
+  archivedAt    DateTime?
+  archivedById  String?
+  archiveReason String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -294,9 +307,10 @@ model Department {
   code String @unique
   name String
 
-  programs Program[]
-  faculty  Faculty[]
-  rooms    Room[]
+  programs   Program[]
+  faculty    Faculty[]
+  rooms      Room[]
+  activities Activity[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -380,6 +394,10 @@ model Subject {
   schedules    Schedule[]
   examinations Examination[]
 
+  archivedAt    DateTime?
+  archivedById  String?
+  archiveReason String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -404,6 +422,10 @@ model Section {
   schedules    Schedule[]
   examinations Examination[]
   students     Student[]
+
+  archivedAt    DateTime?
+  archivedById  String?
+  archiveReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -435,6 +457,10 @@ model Faculty {
   schedules      Schedule[]
   proctoring     Examination[]
   unavailability Unavailability[]
+
+  archivedAt    DateTime?
+  archivedById  String?
+  archiveReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -525,6 +551,11 @@ model Room {
   examinations   Examination[]
   bookings       RoomBooking[]
   unavailability Unavailability[]
+  activities     Activity[]
+
+  archivedAt    DateTime?
+  archivedById  String?
+  archiveReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -657,6 +688,23 @@ model Activity {
   /// Suspensions only: affected sections; empty means every section.
   sectionIds  String[]
 
+  /// Submitting department; null means institution-wide.
+  departmentId String?
+  department   Department?    @relation(fields: [departmentId], references: [id])
+  /// School level the activity is for; null means every level.
+  level        AcademicLevel?
+  /// Room used, if any; location holds free text such as "Gymnasium" or "Online".
+  roomId       String?
+  room         Room?          @relation(fields: [roomId], references: [id])
+  location     String?
+  participants String?
+
+  status       ActivityStatus @default(APPROVED)
+  /// Reason for a rejection or the changes requested.
+  reviewNote   String?
+  reviewedById String?
+  reviewedAt   DateTime?
+
   batchId String?          @unique
   batch   AdjustmentBatch? @relation(fields: [batchId], references: [id])
 
@@ -665,6 +713,7 @@ model Activity {
   updatedAt   DateTime @updatedAt
 
   @@index([startDate, endDate])
+  @@index([status, departmentId])
 }
 
 model RoomBooking {

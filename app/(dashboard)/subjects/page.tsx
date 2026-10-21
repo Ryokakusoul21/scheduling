@@ -16,7 +16,7 @@ export default async function SubjectsPage({ searchParams }: { searchParams: Pro
   const flow = parseFlow(await searchParams);
 
   const [all, programs] = await Promise.all([
-    prisma.subject.findMany({ select: { level: true, programId: true, yearLevel: true, gradeLevel: true } }),
+    prisma.subject.findMany({ where: { archivedAt: null }, select: { level: true, programId: true, yearLevel: true, gradeLevel: true } }),
     prisma.program.findMany({ orderBy: [{ sortOrder: "asc" }, { code: "asc" }], select: { id: true, code: true, name: true, level: true } }),
   ]);
 
@@ -35,7 +35,7 @@ export default async function SubjectsPage({ searchParams }: { searchParams: Pro
             ...(flow.strand ? { programId: flow.strand === "core" ? null : flow.strand } : {}),
           };
     const subjects = await prisma.subject.findMany({
-      where,
+      where: { ...where, archivedAt: null },
       orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
       include: { program: { select: { code: true } }, _count: { select: { schedules: true } } },
     });

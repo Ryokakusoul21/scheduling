@@ -63,15 +63,3 @@ export async function saveSectionAction(id: string | null, formData: FormData): 
   queueWorkloadCheck("A section was opened or changed");
   return { ok: true };
 }
-
-export async function deleteSectionAction(id: string): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
-  const section = await prisma.section.findUnique({ where: { id }, select: { programId: true } });
-  if (!canManageDepartment(scope, await programDepartment(section?.programId))) return { ok: false, error: OUTSIDE_DEPARTMENT };
-  const classes = await prisma.schedule.count({ where: { sectionId: id } });
-  if (classes > 0) return { ok: false, error: `This section has ${classes} scheduled class(es). Remove them in the Scheduler first.` };
-  await prisma.section.delete({ where: { id } });
-  revalidatePath("/sections");
-  queueWorkloadCheck("A section was closed");
-  return { ok: true };
-}

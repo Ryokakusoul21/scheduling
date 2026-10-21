@@ -30,7 +30,7 @@ export const EXAM_TITLES = {
 
 async function usersOf(facultyIds: string[]) {
   if (!facultyIds.length) return [];
-  return (await prisma.user.findMany({ where: { facultyId: { in: facultyIds }, status: "ACTIVE" }, select: { id: true } })).map((u) => u.id);
+  return (await prisma.user.findMany({ where: { facultyId: { in: facultyIds }, status: "ACTIVE", archivedAt: null }, select: { id: true } })).map((u) => u.id);
 }
 
 /**
@@ -71,7 +71,7 @@ export async function notifyExamParticipants(exam: ExamDetails, notice: ExamNoti
   await send(await usersOf(instructors), EXAM_TITLES.instructor[notice], `The ${what} ${verb} ${when}. Proctor: ${proctor?.fullName ?? "to be assigned"}.`);
   const departmentId = section?.program?.departmentId;
   if (departmentId) {
-    const heads = await prisma.user.findMany({ where: { role: "HEAD_OF_DEPARTMENT", status: "ACTIVE", faculty: { departmentId } }, select: { id: true } });
+    const heads = await prisma.user.findMany({ where: { role: "HEAD_OF_DEPARTMENT", status: "ACTIVE", archivedAt: null, faculty: { departmentId } }, select: { id: true } });
     await send(heads.map((h) => h.id), EXAM_TITLES.head[notice], `The ${what} ${verb} ${when}. Proctor: ${proctor?.fullName ?? "to be assigned"}.`);
   }
   return sent.size - before;

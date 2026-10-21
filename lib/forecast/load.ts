@@ -43,13 +43,13 @@ export async function loadForecast(target: { year: number; termType: string }, d
     prisma.enrollmentRecord.findMany(),
     prisma.program.findMany({ include: { department: { select: { name: true } } } }),
     prisma.department.findMany({ select: { id: true, name: true } }),
-    prisma.section.findMany({ where: { OR: [{ semester: { isActive: true } }, { semesterId: null }] }, select: { id: true, level: true, programId: true, studentCount: true } }),
+    prisma.section.findMany({ where: { archivedAt: null, OR: [{ semester: { isActive: true } }, { semesterId: null }] }, select: { id: true, level: true, programId: true, studentCount: true } }),
     prisma.schedule.findMany({
       where: { semester: { isActive: true }, status: { not: "ARCHIVED" } },
       select: { sectionId: true, component: true, startMin: true, endMin: true, room: { select: { roomType: true } } },
     }),
-    prisma.faculty.findMany({ where: { status: "ACTIVE" }, select: { departmentId: true } }),
-    prisma.room.findMany({ where: { status: "AVAILABLE" }, select: { roomType: true, departmentId: true } }),
+    prisma.faculty.findMany({ where: { status: "ACTIVE", archivedAt: null }, select: { departmentId: true } }),
+    prisma.room.findMany({ where: { status: "AVAILABLE", archivedAt: null }, select: { roomType: true, departmentId: true } }),
     getWorkloadSettings(),
   ]);
 

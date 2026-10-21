@@ -256,7 +256,7 @@ export function SchedulerWorkspace({
   const needs = useMemo(() => {
     if (!focusedSection) return [];
     const termId = termForSection(focusedSection.id);
-    const subjects = data.subjects.filter((s) => subjectAppliesToSection(s, focusedSection));
+    const subjects = data.subjects.filter((s) => !s.archived && subjectAppliesToSection(s, focusedSection));
     return remainingNeeds(
       focusedSection,
       subjects,
@@ -387,7 +387,7 @@ export function SchedulerWorkspace({
           })
         : entries;
       const faculty = rankFaculty(data.faculty.filter((f) => f.status === "ACTIVE"), draft, concurrent, section?.level)[0];
-      const room = rankRooms(data.rooms, draft, concurrent, {
+      const room = rankRooms(data.rooms.filter((r) => !r.archived), draft, concurrent, {
         studentCount: section?.studentCount,
         component: draft.component,
         requiredRoomType: subject?.requiredRoomType,

@@ -5,7 +5,8 @@ import { CalendarDots, Plus, UsersThree } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
-import { ConfirmDialog, FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
+import { FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
+import { ArchiveButton } from "@/components/ux/archive-button";
 import { DragHandle, SortableList } from "@/components/ux/sortable-list";
 import { EmptyState } from "@/components/ux/states";
 import { useShortcut } from "@/components/ux/shortcuts";
@@ -13,7 +14,7 @@ import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { reorderAction } from "@/actions/reorder";
 import { LEVELS, gradeLabel, type AcademicLevel } from "@/lib/academics/levels";
 import { cn } from "@/lib/utils";
-import { deleteSectionAction, saveSectionAction } from "./actions";
+import { saveSectionAction } from "./actions";
 
 export interface SectionRow {
   id: string;
@@ -42,17 +43,13 @@ export function SectionsGrid({
   strands: { value: string; label: string }[];
   terms: { value: string; label: string }[];
 }) {
-  const dialog = useDialogState<SectionRow>();
-  const del = useDialogState<SectionRow>();
-  const { ref, onKeyDown, onFocus } = useRovingFocus({ orientation: "grid" });
+  const dialog = useDialogState<SectionRow>();  const { ref, onKeyDown, onFocus } = useRovingFocus({ orientation: "grid" });
   const level = context.level as AcademicLevel;
   const isCollege = level === "COLLEGE";
 
   useShortcut({ keys: "n", description: "Add a section", group: "Sections", handler: dialog.openCreate });
 
   const editing = dialog.state?.mode === "edit" ? dialog.state.item : null;
-  const deleting = del.state?.mode === "edit" ? del.state.item : null;
-
   const fields: FormField[] = [
     { name: "level", label: "", type: "hidden" },
     ...(isCollege
@@ -133,9 +130,7 @@ export function SectionsGrid({
                     <ActionButton kind="edit" onClick={() => dialog.openEdit(s)}>
                       Edit
                     </ActionButton>
-                    <ActionButton kind="delete" onClick={() => del.openEdit(s)}>
-                      Delete
-                    </ActionButton>
+                    <ArchiveButton kind="SECTION" id={s.id} name={s.name} />
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -165,14 +160,6 @@ export function SectionsGrid({
         submitLabel={editing ? "Save changes" : "Add section"}
         successMessage={editing ? "Section updated" : "Section added"}
         onSubmit={(fd) => saveSectionAction(editing?.id ?? null, fd)}
-      />
-      <ConfirmDialog
-        open={!!deleting}
-        onOpenChange={(o) => !o && del.close()}
-        title={`Delete ${deleting?.name ?? "section"}?`}
-        description="Sections with scheduled classes can't be deleted."
-        successMessage="Section deleted"
-        onConfirm={() => deleteSectionAction(deleting!.id)}
       />
     </section>
   );

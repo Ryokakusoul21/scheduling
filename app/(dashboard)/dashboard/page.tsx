@@ -169,9 +169,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     activeOverlapConflicts(),
     prisma.schedule.count({ where: { ...inActiveTerms, status: { in: ["DRAFT", "REVIEW"] } } }),
     prisma.scheduleRequest.count({ where: { status: "PENDING" } }),
-    prisma.user.count({ where: { status: "PENDING", emailVerified: { not: null } } }),
+    prisma.user.count({ where: { status: "PENDING", archivedAt: null, emailVerified: { not: null } } }),
     prisma.faculty.findMany({
-      where: { status: "ACTIVE" },
+      where: { status: "ACTIVE", archivedAt: null },
       select: { maxHours: true, schedules: { where: inActiveTerms, select: { startMin: true, endMin: true } } },
     }),
     prisma.schedule.findMany({ where: inActiveTerms, select: { sectionId: true, section: { select: { level: true } } } }),

@@ -16,7 +16,7 @@ export interface StudentSectionOption {
 /** College sections of active terms plus basic-education sections (which follow the quarters of their level); names and levels only. */
 export async function registrableSections(): Promise<StudentSectionOption[]> {
   const rows = await prisma.section.findMany({
-    where: { OR: [{ semester: { isActive: true } }, { semesterId: null }] },
+    where: { archivedAt: null, OR: [{ semester: { isActive: true } }, { semesterId: null }] },
     orderBy: [{ level: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
     select: { id: true, name: true, level: true, programId: true, yearLevel: true, gradeLevel: true },
   });

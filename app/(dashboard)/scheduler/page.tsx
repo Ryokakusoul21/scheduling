@@ -77,6 +77,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
       gradeLevel: s.gradeLevel,
       semesterId: s.semesterId,
       studentCount: s.studentCount,
+      archived: !!s.archivedAt,
     })),
     subjects: subjects.map((s) => ({
       id: s.id,
@@ -89,6 +90,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
       lectureHours: s.lectureHours,
       labHours: s.labHours,
       requiredRoomType: s.requiredRoomType,
+      archived: !!s.archivedAt,
     })),
     faculty: faculty.map((f) => ({
       id: f.id,
@@ -96,7 +98,8 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
       maxHours: f.maxHours,
       departmentId: f.departmentId,
       teachingLevels: f.teachingLevels,
-      status: f.status,
+      // Archived faculty count as inactive: kept on existing classes, never suggested.
+      status: f.archivedAt ? "ARCHIVED" : f.status,
       availability: f.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })),
     })),
     rooms: rooms.map((r) => ({
@@ -109,6 +112,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
       location: location(r),
       availability: r.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })),
       programIds: r.isGeneralShared ? null : r.programs.map((p) => p.id),
+      archived: !!r.archivedAt,
     })),
     entries: entries.map((e) => ({
       id: e.id,

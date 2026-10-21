@@ -3,25 +3,15 @@
 import { ROLE_LABELS } from "@/lib/permissions/roles";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Plus, Trash as Trash2, CircleNotch as Loader2 } from "@phosphor-icons/react/ssr";
+import { Plus, CircleNotch as Loader2 } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { ActionButton } from "@/components/ux/action-button";
+import { ArchiveButton } from "@/components/ux/archive-button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel, FieldError } from "@/components/ui/field";
-import { createUserAction, updateUserAction, resetPasswordAction, deleteUserAction, approveUserAction } from "./actions";
+import { createUserAction, updateUserAction, resetPasswordAction, approveUserAction } from "./actions";
 
 interface Row {
   id: string;
@@ -100,14 +90,6 @@ export function UsersManager({ users, faculty }: { users: Row[]; faculty: { valu
     });
   }
 
-  function handleDelete(id: string) {
-    startTransition(async () => {
-      const res = await deleteUserAction(id);
-      if (res.ok) toast.success("User deleted.");
-      else toast.error(res.error ?? "Could not delete.");
-    });
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
@@ -181,23 +163,7 @@ export function UsersManager({ users, faculty }: { users: Row[]; faculty: { valu
                     <ActionButton kind="reset" onClick={() => setResetRow(u)}>
                       Reset Password
                     </ActionButton>
-                    <AlertDialog>
-                      <AlertDialogTrigger render={<Button size="sm" variant="destructive" />}>
-                        <Trash2 className="size-3.5" /> Delete
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete this user?</AlertDialogTitle>
-                          <AlertDialogDescription>This removes the login for {u.email}.</AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction className="bg-destructive text-white hover:bg-destructive/90" onClick={() => handleDelete(u.id)}>
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                    <ArchiveButton kind="USER" id={u.id} name={u.name} />
                   </div>
                 </TableCell>
               </TableRow>

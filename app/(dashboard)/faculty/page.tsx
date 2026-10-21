@@ -12,7 +12,7 @@ export default async function FacultyPage({ searchParams }: { searchParams: Prom
   const own = scope.isAdmin ? {} : { departmentId: scope.manageDepartmentId };
   const [faculty, departments] = await Promise.all([
     prisma.faculty.findMany({
-      where: own,
+      where: { ...own, archivedAt: null },
       include: {
         department: { select: { code: true, name: true } },
         // Teaching load counts classes in currently active terms only.

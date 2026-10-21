@@ -29,8 +29,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       where: { semesterId: { in: termIds }, status: { not: "ARCHIVED" }, ...(departmentId ? { section: { program: { departmentId } } } : {}) },
       select: { roomId: true, facultyId: true, dayOfWeek: true, startMin: true, endMin: true },
     }),
-    prisma.room.findMany({ include: { availability: true, floor: { select: { building: { select: { name: true } } } } } }),
-    prisma.faculty.findMany({ where: { status: "ACTIVE", ...(departmentId ? { departmentId } : {}) }, include: { department: { select: { name: true } } } }),
+    prisma.room.findMany({ where: { archivedAt: null }, include: { availability: true, floor: { select: { building: { select: { name: true } } } } } }),
+    prisma.faculty.findMany({ where: { status: "ACTIVE", archivedAt: null, ...(departmentId ? { departmentId } : {}) }, include: { department: { select: { name: true } } } }),
   ]);
 
   // With a department filter, only rooms that department owns or uses are listed.

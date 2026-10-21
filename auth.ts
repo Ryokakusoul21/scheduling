@@ -105,7 +105,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         if (!user.emailVerified) throw new LoginError("unverified");
         if (user.status === "PENDING") throw new LoginError("pending");
-        if (user.status !== "ACTIVE") throw new LoginError("inactive");
+        if (user.status !== "ACTIVE" || user.archivedAt) throw new LoginError("inactive");
 
         // Transparently upgrade hashes created with a lower bcrypt cost.
         const rehash =
@@ -143,7 +143,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       try {
         current = await prisma.user.findUnique({
           where: { id: token.id },
-          select: { status: true, role: true, sessionVersion: true },
+          select: { status: true, role: true, sessionVersion: true, archivedAt: true },
         });
       } catch (error) {
         // A brief database outage should not sign everyone out; the next request checks again.
@@ -153,7 +153,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
         throw error;
       }
-      if (!current || current.status !== "ACTIVE" || current.sessionVersion !== token.sessionVersion) {
+      if (!current || current.status !== "ACTIVE" || current.archivedAt || current.sessionVersion !== token.sessionVersion) {
         return null;
       }
       token.role = current.role;

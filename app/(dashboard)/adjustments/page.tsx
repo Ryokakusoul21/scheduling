@@ -23,10 +23,10 @@ export default async function AdjustmentsPage({ searchParams }: { searchParams: 
   since.setDate(since.getDate() - 60);
 
   const [faculty, rooms, sections, reports, batches] = await Promise.all([
-    prisma.faculty.findMany({ where: { status: "ACTIVE", ...dept }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true } }),
-    prisma.room.findMany({ where: dept, orderBy: { roomName: "asc" }, select: { id: true, roomName: true } }),
+    prisma.faculty.findMany({ where: { status: "ACTIVE", archivedAt: null, ...dept }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true } }),
+    prisma.room.findMany({ where: { ...dept, archivedAt: null }, orderBy: { roomName: "asc" }, select: { id: true, roomName: true } }),
     prisma.section.findMany({
-      where: scope.isAdmin ? {} : { program: { departmentId: scope.manageDepartmentId } },
+      where: { archivedAt: null, ...(scope.isAdmin ? {} : { program: { departmentId: scope.manageDepartmentId } }) },
       orderBy: [{ level: "asc" }, { sortOrder: "asc" }],
       select: { id: true, name: true, level: true },
     }),

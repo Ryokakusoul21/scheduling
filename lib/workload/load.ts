@@ -30,7 +30,9 @@ export async function loadWorkload(termIds: string[], departmentId: string | nul
   // Classes whose fix was undone, or whose automatic proposal was rejected, stay where a person left them.
   const declined = [...undone.map((u) => u.assignmentKey), ...rejected.flatMap((p) => (p.items as unknown as { key: string }[]).map((m) => m.key))];
 
-  const active = facultyRows.filter((f) => f.status === "ACTIVE" && (!departmentId || f.departmentId === departmentId));
+  // Archived faculty count as inactive, so their remaining classes are proposed for reassignment.
+  const teaching = (f: (typeof facultyRows)[number]) => f.status === "ACTIVE" && !f.archivedAt;
+  const active = facultyRows.filter((f) => teaching(f) && (!departmentId || f.departmentId === departmentId));
   const faculty: (WFaculty & { departmentName: string })[] = active.map((f) => ({
     id: f.id,
     name: f.fullName,
@@ -41,7 +43,7 @@ export async function loadWorkload(termIds: string[], departmentId: string | nul
     maxHours: f.maxHours,
     availability: f.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })),
   }));
-  const inactive = new Map(facultyRows.filter((f) => f.status !== "ACTIVE").map((f) => [f.id, f.fullName]));
+  const inactive = new Map(facultyRows.filter((f) => !teaching(f)).map((f) => [f.id, f.fullName]));
 
   const busy = new Map<string, WMeeting[]>();
   for (const s of schedules) busy.set(s.facultyId, [...(busy.get(s.facultyId) ?? []), { scheduleId: s.id, dayOfWeek: s.dayOfWeek, startMin: s.startMin, endMin: s.endMin }]);

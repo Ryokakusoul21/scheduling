@@ -16,7 +16,7 @@ export default async function SectionsPage({ searchParams }: { searchParams: Pro
   const flow = parseFlow(await searchParams);
 
   const [all, programs] = await Promise.all([
-    prisma.section.findMany({ select: { level: true, programId: true, yearLevel: true, gradeLevel: true } }),
+    prisma.section.findMany({ where: { archivedAt: null }, select: { level: true, programId: true, yearLevel: true, gradeLevel: true } }),
     prisma.program.findMany({ orderBy: [{ sortOrder: "asc" }, { code: "asc" }], select: { id: true, code: true, name: true, level: true } }),
   ]);
 
@@ -28,7 +28,7 @@ export default async function SectionsPage({ searchParams }: { searchParams: Pro
         : { level: flow.level, gradeLevel: flow.grade, ...(flow.strand ? { programId: flow.strand } : {}) };
     const [sections, terms] = await Promise.all([
       prisma.section.findMany({
-        where,
+        where: { ...where, archivedAt: null },
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         include: {
           program: { select: { code: true } },
