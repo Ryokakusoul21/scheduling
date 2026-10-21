@@ -63,7 +63,7 @@ export async function facultyAnalytics({ facultyId, userId, termId }: { facultyI
       include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomName: true } } },
       orderBy: [{ date: "asc" }, { startMin: "asc" }],
     }),
-    prisma.activity.findMany({ where: { endDate: { gte: new Date(`${today}T00:00:00Z`) }, startDate: { lte: new Date(`${addDays(today, 21)}T00:00:00Z`) } }, orderBy: { startDate: "asc" }, take: 8 }),
+    prisma.activity.findMany({ where: { status: "APPROVED", endDate: { gte: new Date(`${today}T00:00:00Z`) }, startDate: { lte: new Date(`${addDays(today, 21)}T00:00:00Z`) } }, orderBy: { startDate: "asc" }, take: 8 }),
     loadWorkload([term.id], me.departmentId),
   ]);
 

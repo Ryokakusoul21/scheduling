@@ -81,6 +81,7 @@ export default async function StudentPortalPage() {
     }),
     levelTerms.length === 0 ? [] : prisma.activity.findMany({
       where: {
+        status: "APPROVED",
         startDate: { lte: to },
         endDate: { gte: from },
         // Suspensions for other sections are not shown.

@@ -1,28 +1,86 @@
+import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { getScope } from "@/lib/permissions/scope";
 import { loadPlan } from "@/lib/occupancy/load";
 import { isoDate } from "@/lib/occupancy/engine";
 import { calendarRange, type CalendarView } from "@/lib/calendar";
 import { formatRange } from "@/lib/scheduler/timetable";
+import { levelLabel } from "@/lib/academics/levels";
+import { listActivities, visibleActivities } from "@/lib/activities/activities";
+import { ACTIVITY_STATUS_LABELS } from "@/lib/activities/status";
 import { PageHeader } from "@/components/ux/states";
 import { ActivitiesReportButtons } from "@/components/ux/export-buttons";
 import { activeTermLabel } from "@/lib/academics/term-label";
+import { cn } from "@/lib/utils";
 import { CalendarBoard, type CalendarEvent } from "./calendar-board";
+import { ActivitiesTable } from "./activities-table";
+import { ApprovalsBoard } from "./approvals-board";
 
 export const metadata = { title: "Calendar of Activities · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 const VIEWS: CalendarView[] = ["month", "week", "day"];
+type Tab = "calendar" | "table" | "approvals";
 
 /** "October 12, 2026" for printed titles. */
 function longDate(iso: string) {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-PH", { dateStyle: "long", timeZone: "UTC" });
 }
 
-export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ view?: string; date?: string; scope?: string }> }) {
+export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ view?: string; date?: string; scope?: string; tab?: string }> }) {
   const scope = await getScope();
   const params = await searchParams;
-  const view = VIEWS.includes(params.view as CalendarView) ? (params.view as CalendarView) : "week";
+  const tabs: Tab[] = scope.isAdmin ? ["calendar", "table", "approvals"] : ["calendar", "table"];
+  const tab = tabs.includes(params.tab as Tab) ? (params.tab as Tab) : "calendar";
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+
+  const [departments, rooms, term, pendingCount] = await Promise.all([
+    prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.room.findMany({ where: { archivedAt: null }, orderBy: { roomName: "asc" }, select: { id: true, roomName: true } }),
+    activeTermLabel(),
+    scope.isAdmin ? prisma.activity.count({ where: { status: "PENDING" } }) : 0,
+  ]);
+  const formOptions = {
+    departments: departments.map((d) => ({ value: d.id, label: d.name })),
+    rooms: rooms.map((r) => ({ value: r.id, label: r.roomName })),
+    ownDepartmentId: scope.departmentId,
+  };
+  const canSubmit = scope.isAdmin || scope.role === "HEAD_OF_DEPARTMENT";
+
+  const nav = (
+    <nav aria-label="Calendar of Activities sections" className="flex gap-1 border-b">
+      {tabs.map((t) => (
+        <Link
+          key={t}
+          href={`/calendar?tab=${t}`}
+          aria-current={tab === t ? "page" : undefined}
+          className={cn("-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium", tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}
+        >
+          {t === "calendar" ? "Calendar" : t === "table" ? "Table" : "Activity Approvals"}
+          {t === "approvals" && pendingCount > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[11px] font-semibold text-white">{pendingCount}</span>}
+        </Link>
+      ))}
+    </nav>
+  );
+
+  if (tab !== "calendar") {
+    const items =
+      tab === "table"
+        ? await listActivities(visibleActivities(scope))
+        : await listActivities({ type: { not: "CLASS_SUSPENSION" }, departmentId: { not: null }, endDate: { gte: new Date(`${today}T00:00:00Z`) } }, { conflicts: true });
+    return (
+      <div className="space-y-4">
+        <PageHeader title="Calendar of Activities" description="School events, holidays, and class suspensions, with approval of department submissions." />
+        {nav}
+        {tab === "table" ? (
+          <ActivitiesTable items={items} today={today} term={term} departments={formOptions.departments} formOptions={formOptions} canEdit={canSubmit} isAdmin={scope.isAdmin} ownDepartmentId={scope.departmentId} />
+        ) : (
+          <ApprovalsBoard items={items} departments={formOptions.departments} />
+        )}
+      </div>
+    );
+  }
+
+  const view = VIEWS.includes(params.view as CalendarView) ? (params.view as CalendarView) : "week";
   const date = /^\d{4}-\d{2}-\d{2}$/.test(params.date ?? "") ? params.date! : today;
   const { from, to } = calendarRange(view, date);
 
@@ -32,7 +90,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
   const fromDate = new Date(`${from}T00:00:00Z`);
   const toDate = new Date(`${to}T00:00:00Z`);
-  const [plan, exams, bookings, activities, term] = await Promise.all([
+  const [plan, exams, bookings, activities] = await Promise.all([
     loadPlan(from, to),
     prisma.examination.findMany({
       where: { date: { gte: fromDate, lte: toDate } },
@@ -42,8 +100,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       where: { status: "CONFIRMED", date: { gte: fromDate, lte: toDate } },
       include: { room: { select: { roomName: true } }, bookedBy: { select: { name: true } } },
     }),
-    prisma.activity.findMany({ where: { startDate: { lte: toDate }, endDate: { gte: fromDate } }, orderBy: { startDate: "asc" } }),
-    activeTermLabel(),
+    // Rejected submissions never reach the calendar; pending ones show only to the Administrator and their department.
+    listActivities({ AND: [visibleActivities(scope), { status: { not: "REJECTED" } }, { startDate: { lte: toDate } }, { endDate: { gte: fromDate } }] }),
   ]);
 
   const mine = (facultyIds: string[]) => !!scope.facultyId && facultyIds.includes(scope.facultyId);
@@ -87,13 +145,18 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     });
   }
   for (const a of activities) {
+    const pending = a.status !== "APPROVED";
     events.push({
-      id: `activity-${a.id}`, type: a.type, title: a.title, date: isoDate(a.startDate), endDate: isoDate(a.endDate),
-      startMin: a.startMin, endMin: a.endMin, detail: a.description ?? "",
-      activity: { id: a.id, type: a.type, title: a.title, description: a.description ?? "", startDate: isoDate(a.startDate), endDate: isoDate(a.endDate), startMin: a.startMin, endMin: a.endMin },
+      id: `activity-${a.id}`, type: a.type as CalendarEvent["type"], title: pending ? `Pending: ${a.title}` : a.title, date: a.startDate, endDate: a.endDate,
+      startMin: a.startMin, endMin: a.endMin,
+      detail: [a.description, a.location && `Location: ${a.location}`, `${a.department} · ${a.level ? levelLabel(a.level) : "All levels"}`, a.participants && `Participants: ${a.participants}`, a.reviewNote && `Review note: ${a.reviewNote}`].filter(Boolean).join("\n"),
+      badge: pending ? ACTIVITY_STATUS_LABELS[a.status] : undefined,
+      pending,
+      activity: a,
       href: a.type === "CLASS_SUSPENSION" ? "/adjustments" : undefined,
     });
   }
+  const official = activities.filter((a) => a.status === "APPROVED");
 
   return (
     <div className="space-y-4">
@@ -105,10 +168,11 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             title={`School Activities: ${longDate(from)} to ${longDate(to)}`}
             term={term}
             filename={`school-activities-${from}`}
-            rows={activities.map((a) => ({ type: a.type, title: a.title, description: a.description ?? "", startDate: isoDate(a.startDate), endDate: isoDate(a.endDate), startMin: a.startMin, endMin: a.endMin }))}
+            rows={official.map((a) => ({ ...a, level: a.level ? levelLabel(a.level) : "", status: ACTIVITY_STATUS_LABELS[a.status] }))}
           />
         }
       />
+      {nav}
       <CalendarBoard
         view={view}
         date={date}
@@ -118,8 +182,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         events={events}
         classScope={classScope}
         scopeOptions={options}
-        canEditEvents={scope.role !== "FACULTY"}
-        canEditHolidays={scope.isAdmin}
+        canEditEvents={canSubmit}
+        isAdmin={scope.isAdmin}
+        ownDepartmentId={scope.departmentId}
+        formOptions={formOptions}
       />
     </div>
   );

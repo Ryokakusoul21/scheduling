@@ -27,6 +27,8 @@ import {
   type EventType,
 } from "@/lib/calendar";
 import { DEFAULT_GRID, formatRange, formatTime, timeOptions } from "@/lib/scheduler/timetable";
+import { ACADEMIC_LEVELS, levelLabel } from "@/lib/academics/levels";
+import type { ActivityListItem } from "@/lib/activities/status";
 import { cn } from "@/lib/utils";
 import { deleteActivityAction, saveActivityAction, type ActivityInput } from "./actions";
 
@@ -41,7 +43,31 @@ export interface CalendarEvent {
   detail: string;
   badge?: string;
   href?: string;
-  activity?: { id: string; type: EventType; title: string; description: string; startDate: string; endDate: string; startMin: number | null; endMin: number | null };
+  /** Not yet approved; shown only to the Administrator and the submitting department. */
+  pending?: boolean;
+  activity?: ActivityListItem;
+}
+
+/** Choices for the activity form. */
+export interface ActivityFormOptions {
+  departments: { value: string; label: string }[];
+  rooms: { value: string; label: string }[];
+  ownDepartmentId: string | null;
+}
+
+/** Whether the person may edit or remove this activity: Administrator any, Head of Department their department's events. */
+export function canManageActivity(a: Pick<ActivityListItem, "type" | "departmentId">, isAdmin: boolean, ownDepartmentId: string | null) {
+  if (a.type === "CLASS_SUSPENSION") return false;
+  return isAdmin || (a.type === "SCHOOL_EVENT" && !!ownDepartmentId && a.departmentId === ownDepartmentId);
+}
+
+/** Form values for editing an existing activity. */
+export function activityForm(a: ActivityListItem): ActivityForm {
+  return {
+    type: a.type, title: a.title, description: a.description, startDate: a.startDate, endDate: a.endDate,
+    startMin: a.startMin?.toString() ?? "", endMin: a.endMin?.toString() ?? "",
+    departmentId: a.departmentId ?? "", level: a.level ?? "", roomId: a.roomId ?? "", location: a.locationText, participants: a.participants,
+  };
 }
 
 const DAY_START = 7 * 60;
@@ -50,6 +76,8 @@ const HOUR_PX = 48;
 const TIMES = timeOptions({ ...DEFAULT_GRID, dayEnd: DAY_END }).map((t) => ({ value: String(t.value), label: t.label }));
 const SCOPE_LABELS: Record<string, string> = { all: "All classes", department: "My department's classes", mine: "My classes only" };
 const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+const PENDING_STYLE = "border-2 border-dashed italic opacity-70";
 
 const isAllDay = (e: CalendarEvent) => e.startMin === null || e.endMin === null;
 const onDate = (e: CalendarEvent, d: string) => e.date <= d && e.endDate >= d;
@@ -64,7 +92,9 @@ export function CalendarBoard(props: {
   classScope: string;
   scopeOptions: string[];
   canEditEvents: boolean;
-  canEditHolidays: boolean;
+  isAdmin: boolean;
+  ownDepartmentId: string | null;
+  formOptions: ActivityFormOptions;
 }) {
   const { view, date, today, from, to, events, classScope, scopeOptions } = props;
   const router = useRouter();
@@ -108,7 +138,7 @@ export function CalendarBoard(props: {
             </div>
             {props.canEditEvents && (
               <Button size="sm" onClick={() => setEditing({ form: { ...BLANK, startDate: date, endDate: date } })}>
-                <Plus className="size-4" /> Add activity
+                <Plus className="size-4" /> {props.isAdmin ? "Add activity" : "Submit activity"}
               </Button>
             )}
           </div>
@@ -121,6 +151,12 @@ export function CalendarBoard(props: {
             </button>
           ))}
         </div>
+        {events.some((e) => e.pending) && (
+          <p className="text-xs text-muted-foreground">
+            <span className="mr-1 inline-block rounded border border-dashed border-amber-500 px-1.5 italic">Pending</span>
+            Dashed, faded items await approval and are visible only to the Administrator and the submitting department.
+          </p>
+        )}
 
         {view === "month" ? (
           <MonthGrid from={from} to={to} month={date.slice(0, 7)} today={today} events={visible} onDay={(d) => go({ view: "day", date: d })} onSelect={setSelected} />
@@ -148,22 +184,21 @@ export function CalendarBoard(props: {
       <EventDialog
         event={selected}
         onClose={() => setSelected(null)}
-        canEdit={(e) => !!e.activity && e.type !== "CLASS_SUSPENSION" && (e.type === "HOLIDAY" ? props.canEditHolidays : props.canEditEvents)}
+        canEdit={(e) => !!e.activity && canManageActivity(e.activity, props.isAdmin, props.ownDepartmentId)}
         onEdit={(e) => {
-          const a = e.activity!;
           setSelected(null);
-          setEditing({ id: a.id, form: { type: a.type, title: a.title, description: a.description, startDate: a.startDate, endDate: a.endDate, startMin: a.startMin?.toString() ?? "", endMin: a.endMin?.toString() ?? "" } });
+          setEditing({ id: e.activity!.id, form: activityForm(e.activity!) });
         }}
         onDeleted={() => { setSelected(null); router.refresh(); }}
       />
-      <ActivityDialog state={editing} canHoliday={props.canEditHolidays} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); router.refresh(); }} />
+      <ActivityDialog state={editing} isAdmin={props.isAdmin} options={props.formOptions} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); router.refresh(); }} />
     </Card>
   );
 }
 
 function Chip({ e, onSelect, className }: { e: CalendarEvent; onSelect: (e: CalendarEvent) => void; className?: string }) {
   return (
-    <button onClick={() => onSelect(e)} className={cn("block w-full truncate rounded border px-1.5 py-0.5 text-left text-[11px] leading-tight", EVENT_COLORS[e.type], e.badge && "border-dashed", className)} title={e.title}>
+    <button onClick={() => onSelect(e)} className={cn("block w-full truncate rounded border px-1.5 py-0.5 text-left text-[11px] leading-tight", EVENT_COLORS[e.type], e.badge && "border-dashed", e.pending && PENDING_STYLE, className)} title={e.title}>
       {!isAllDay(e) && <span className="mr-1 font-medium">{formatTime(e.startMin!)}</span>}
       {e.title}
     </button>
@@ -238,7 +273,7 @@ function TimeGrid({ dates, today, events, onSelect, onDay, onMore }: { dates: st
                   <button
                     key={e.id}
                     onClick={() => onSelect(e)}
-                    className={cn("absolute overflow-hidden rounded border px-1 py-0.5 text-left text-[11px] leading-tight shadow-xs", EVENT_COLORS[e.type], e.badge && "border-dashed")}
+                    className={cn("absolute overflow-hidden rounded border px-1 py-0.5 text-left text-[11px] leading-tight shadow-xs", EVENT_COLORS[e.type], e.badge && "border-dashed", e.pending && PENDING_STYLE)}
                     style={{ top: y(e.startMin!), height: Math.max(y(e.endMin!) - y(e.startMin!), 18), left: `${(l.lane / l.lanes) * 100}%`, width: `${100 / l.lanes}%` }}
                     title={`${e.title}\n${formatRange(e.startMin!, e.endMin!)}`}
                   >
@@ -308,7 +343,7 @@ function EventDialog({ event, onClose, canEdit, onEdit, onDeleted }: { event: Ca
   );
 }
 
-interface ActivityForm {
+export interface ActivityForm {
   type: string;
   title: string;
   description: string;
@@ -316,10 +351,20 @@ interface ActivityForm {
   endDate: string;
   startMin: string;
   endMin: string;
+  departmentId: string;
+  level: string;
+  roomId: string;
+  location: string;
+  participants: string;
 }
-const BLANK: ActivityForm = { type: "SCHOOL_EVENT", title: "", description: "", startDate: "", endDate: "", startMin: "", endMin: "" };
+const BLANK: ActivityForm = {
+  type: "SCHOOL_EVENT", title: "", description: "", startDate: "", endDate: "", startMin: "", endMin: "",
+  departmentId: "", level: "", roomId: "", location: "", participants: "",
+};
+const LEVEL_OPTIONS = ACADEMIC_LEVELS.map((l) => ({ value: l, label: levelLabel(l) }));
 
-function ActivityDialog({ state, canHoliday, onClose, onSaved }: { state: { id?: string; form: ActivityForm } | null; canHoliday: boolean; onClose: () => void; onSaved: () => void }) {
+/** Add or edit form; a Head of Department's save is a submission that waits for the Administrator's approval. */
+export function ActivityDialog({ state, isAdmin, options, onClose, onSaved }: { state: { id?: string; form: ActivityForm } | null; isAdmin: boolean; options: ActivityFormOptions; onClose: () => void; onSaved: () => void }) {
   const [pending, startTransition] = useTransition();
   const [form, setForm] = useState<ActivityForm | null>(null);
   const [key, setKey] = useState<object | null>(null);
@@ -331,16 +376,20 @@ function ActivityDialog({ state, canHoliday, onClose, onSaved }: { state: { id?:
   if (!state || !form) return null;
   const set = (k: keyof ActivityForm) => (e: { target: { value: string } }) => setForm((f) => (f ? { ...f, [k]: e.target.value } : f));
   const holiday = form.type === "HOLIDAY";
+  const ownDepartment = options.departments.find((d) => d.value === options.ownDepartmentId)?.label ?? "Your department";
 
   function save() {
+    const f = form!;
     const input: ActivityInput = {
-      type: form!.type as ActivityInput["type"], title: form!.title, description: form!.description, startDate: form!.startDate, endDate: form!.endDate,
-      startMin: holiday || !form!.startMin ? null : Number(form!.startMin), endMin: holiday || !form!.endMin ? null : Number(form!.endMin),
+      type: f.type as ActivityInput["type"], title: f.title, description: f.description, startDate: f.startDate, endDate: f.endDate,
+      startMin: holiday || !f.startMin ? null : Number(f.startMin), endMin: holiday || !f.endMin ? null : Number(f.endMin),
+      departmentId: f.departmentId || null, level: (f.level || null) as ActivityInput["level"], roomId: f.roomId || null,
+      location: f.location, participants: f.participants,
     };
     startTransition(async () => {
       const res = await saveActivityAction(input, state!.id);
       if (!res.ok) return void toast.error(res.error);
-      toast.success("Activity saved.");
+      toast.success(isAdmin ? "Activity saved." : "Activity submitted for approval.");
       onSaved();
     });
   }
@@ -349,13 +398,17 @@ function ActivityDialog({ state, canHoliday, onClose, onSaved }: { state: { id?:
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{state.id ? "Edit activity" : "Add activity"}</DialogTitle>
-          <DialogDescription>Class suspensions are created in Schedule Adjustments so affected classes are cancelled and offered make-up options.</DialogDescription>
+          <DialogTitle>{state.id ? "Edit activity" : isAdmin ? "Add activity" : "Submit activity"}</DialogTitle>
+          <DialogDescription>
+            {isAdmin
+              ? "Class suspensions are created in Schedule Adjustments so affected classes are cancelled and offered make-up options."
+              : "Submitted and edited activities reach the official calendar after the Administrator approves them."}
+          </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid max-h-[65vh] gap-3 overflow-y-auto sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor="a-type">Type</FieldLabel>
-            <NativeSelect id="a-type" value={form.type} onChange={set("type")} options={[{ value: "SCHOOL_EVENT", label: "School event" }, ...(canHoliday ? [{ value: "HOLIDAY", label: "Holiday (no classes)" }] : [])]} />
+            <NativeSelect id="a-type" value={form.type} onChange={set("type")} options={[{ value: "SCHOOL_EVENT", label: "School event" }, ...(isAdmin ? [{ value: "HOLIDAY", label: "Holiday (no classes)" }] : [])]} />
           </Field>
           <Field>
             <FieldLabel htmlFor="a-title">Title</FieldLabel>
@@ -381,6 +434,34 @@ function ActivityDialog({ state, canHoliday, onClose, onSaved }: { state: { id?:
               </Field>
             </>
           )}
+          <Field>
+            <FieldLabel htmlFor="a-dept">Department</FieldLabel>
+            {isAdmin ? (
+              <NativeSelect id="a-dept" value={form.departmentId} onChange={set("departmentId")} options={options.departments} placeholder="All departments" />
+            ) : (
+              <Input id="a-dept" value={ownDepartment} disabled />
+            )}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="a-level">School level</FieldLabel>
+            <NativeSelect id="a-level" value={form.level} onChange={set("level")} options={LEVEL_OPTIONS} placeholder="All levels" />
+          </Field>
+          {!holiday && (
+            <>
+              <Field>
+                <FieldLabel htmlFor="a-room">Room (optional)</FieldLabel>
+                <NativeSelect id="a-room" value={form.roomId} onChange={set("roomId")} options={options.rooms} placeholder="No room" />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="a-loc">Location</FieldLabel>
+                <Input id="a-loc" value={form.location} onChange={set("location")} placeholder="For example: Gymnasium" />
+              </Field>
+              <Field className="sm:col-span-2">
+                <FieldLabel htmlFor="a-who">Participants</FieldLabel>
+                <Input id="a-who" value={form.participants} onChange={set("participants")} placeholder="For example: All Grade 11 students and advisers" />
+              </Field>
+            </>
+          )}
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="a-desc">Description</FieldLabel>
             <Textarea id="a-desc" rows={3} value={form.description} onChange={set("description")} />
@@ -390,11 +471,10 @@ function ActivityDialog({ state, canHoliday, onClose, onSaved }: { state: { id?:
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={save} disabled={pending || !form.title || !form.startDate || !form.endDate}>
-            {pending && <CircleNotch className="size-4 animate-spin" />} Save activity
+            {pending && <CircleNotch className="size-4 animate-spin" />} {isAdmin ? "Save activity" : "Submit for approval"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-

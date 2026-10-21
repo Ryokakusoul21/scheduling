@@ -11,6 +11,19 @@ export interface ReportDoc<T> {
   rows: T[];
   filename: string;
   landscape?: boolean;
+  /** Further tables printed below the main one, each under its own heading. */
+  extra?: ReportSection[];
+}
+
+export interface ReportSection {
+  heading: string;
+  columns: Column<never>[];
+  rows: unknown[];
+}
+
+/** Typed helper so callers keep column and row types together. */
+export function reportSection<T>(heading: string, columns: Column<T>[], rows: T[]): ReportSection {
+  return { heading, columns: columns as Column<never>[], rows };
 }
 
 function escape(v: unknown) {
@@ -61,11 +74,16 @@ export function timetableDoc(title: string, term: string, rows: TimetableRow[], 
 }
 
 /** Full HTML document: header, bordered table, and a print stylesheet. */
+function tableHtml<T>(columns: Column<T>[], rows: T[]) {
+  const head = columns.map((c) => `<th>${escape(c.header)}</th>`).join("");
+  const body = rows.length
+    ? rows.map((r) => `<tr>${columns.map((c) => `<td>${escape(c.value(r))}</td>`).join("")}</tr>`).join("")
+    : `<tr><td colspan="${columns.length}" class="empty">No records.</td></tr>`;
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
 export function reportHtml<T>(doc: ReportDoc<T>) {
-  const head = doc.columns.map((c) => `<th>${escape(c.header)}</th>`).join("");
-  const body = doc.rows.length
-    ? doc.rows.map((r) => `<tr>${doc.columns.map((c) => `<td>${escape(c.value(r))}</td>`).join("")}</tr>`).join("")
-    : `<tr><td colspan="${doc.columns.length}" class="empty">No records.</td></tr>`;
+  const extra = (doc.extra ?? []).map((s) => `<h2>${escape(s.heading)}</h2>${tableHtml(s.columns, s.rows as never[])}`).join("");
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escape(doc.title)}</title><style>
 @page { size: ${doc.landscape ? "A4 landscape" : "A4 portrait"}; margin: 12mm; }
 * { box-sizing: border-box; }
@@ -78,6 +96,7 @@ table { width: 100%; border-collapse: collapse; }
 th, td { border: 1px solid #000; padding: 4px 6px; text-align: left; vertical-align: top; }
 th { background: #e5e5e5; font-weight: bold; }
 td.empty { text-align: center; font-style: italic; }
+h2 { font-size: 11pt; margin: 16px 0 6px; }
 @media print {
   thead { display: table-header-group; }
   tr, td, th { break-inside: avoid; page-break-inside: avoid; }
@@ -88,7 +107,7 @@ td.empty { text-align: center; font-style: italic; }
 <div class="title">${escape(doc.title)}</div>
 <div class="meta">School Year and Term: ${escape(doc.term)}</div>
 <div class="meta">Date Generated: ${escape(generatedOn())}</div>
-</header><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></body></html>`;
+</header>${tableHtml(doc.columns, doc.rows)}${extra}</body></html>`;
 }
 
 /** Prints the report from a hidden frame so no page navigation or buttons appear; "Save as PDF" makes the PDF. */
@@ -112,7 +131,8 @@ export function downloadReportCsv<T>(doc: ReportDoc<T>) {
   const header = [SCHOOL_NAME, doc.title, `School Year and Term: ${doc.term}`, `Date Generated: ${generatedOn()}`, ""]
     .map(cell)
     .join("\r\n");
-  downloadText(`${doc.filename}.csv`, `${header}\r\n${toCsv(doc.rows, doc.columns)}`);
+  const extra = (doc.extra ?? []).map((s) => `\r\n\r\n${cell(s.heading)}\r\n${toCsv(s.rows as never[], s.columns)}`).join("");
+  downloadText(`${doc.filename}.csv`, `${header}\r\n${toCsv(doc.rows, doc.columns)}${extra}`);
 }
 
 /** One school event, holiday, or class suspension in a printed activities schedule. */
@@ -124,6 +144,11 @@ export interface ActivityRow {
   endDate: string;
   startMin: number | null;
   endMin: number | null;
+  department?: string;
+  /** School level label, for example "Senior High School"; blank means every level. */
+  level?: string;
+  location?: string;
+  status?: string;
 }
 
 const ACTIVITY_TYPES: Record<string, string> = { SCHOOL_EVENT: "School event", HOLIDAY: "Holiday", CLASS_SUSPENSION: "Class suspension" };
@@ -132,19 +157,27 @@ function longDate(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString("en-PH", { dateStyle: "long" });
 }
 
+/** Activity columns shared by the activities report and the Class Schedule Report. */
+export const ACTIVITY_COLUMNS: Column<ActivityRow>[] = [
+  { header: "Date", value: (r) => (r.startDate === r.endDate ? longDate(r.startDate) : `${longDate(r.startDate)} to ${longDate(r.endDate)}`) },
+  { header: "Activity", value: (r) => r.title },
+  { header: "Time", value: (r) => (r.startMin === null || r.endMin === null ? "Whole day" : `${clock(r.startMin)} to ${clock(r.endMin)}`) },
+  { header: "Department", value: (r) => r.department || "All departments" },
+  { header: "School Level", value: (r) => r.level || "All levels" },
+  { header: "Location", value: (r) => r.location || "" },
+  { header: "Status", value: (r) => r.status || "Approved" },
+  { header: "Type", value: (r) => ACTIVITY_TYPES[r.type] ?? r.type },
+  { header: "Description", value: (r) => r.description },
+];
+
 /** Columns for the school activities schedule, sorted by start date. */
 export function activitiesDoc(title: string, term: string, rows: ActivityRow[], filename: string): ReportDoc<ActivityRow> {
   return {
     title,
     term,
     filename,
-    rows: [...rows].sort((a, b) => a.startDate.localeCompare(b.startDate)),
-    columns: [
-      { header: "Date", value: (r) => (r.startDate === r.endDate ? longDate(r.startDate) : `${longDate(r.startDate)} to ${longDate(r.endDate)}`) },
-      { header: "Time", value: (r) => (r.startMin === null || r.endMin === null ? "Whole day" : `${clock(r.startMin)} to ${clock(r.endMin)}`) },
-      { header: "Activity", value: (r) => r.title },
-      { header: "Type", value: (r) => ACTIVITY_TYPES[r.type] ?? r.type },
-      { header: "Description", value: (r) => r.description },
-    ],
+    landscape: true,
+    rows: [...rows].sort((a, b) => a.startDate.localeCompare(b.startDate) || (a.startMin ?? -1) - (b.startMin ?? -1)),
+    columns: ACTIVITY_COLUMNS,
   };
 }
