@@ -1,5 +1,6 @@
 /** Normalises a KeyboardEvent to the shortcut string format ("n", "?", "mod+k", "shift+arrowdown"). */
-export function eventToKey(e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">) {
+export function eventToKey(e: Partial<Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">>) {
+  if (typeof e.key !== "string" || e.key.length === 0) return "";
   const key = e.key.toLowerCase();
   const parts: string[] = [];
   if (e.ctrlKey || e.metaKey) parts.push("mod");

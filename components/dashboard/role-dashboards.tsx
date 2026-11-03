@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import type { Scope } from "@/lib/permissions/scope";
@@ -5,12 +6,12 @@ import { levelLabel, termLabel } from "@/lib/academics/levels";
 import { dashboardAnalytics } from "@/lib/analytics/dashboard";
 import { departmentExtras } from "@/lib/analytics/department";
 import { defaultTermFor, facultyAnalytics } from "@/lib/analytics/faculty";
-import { workloadView } from "@/lib/workload/view";
 import { EmptyState } from "@/components/ux/states";
 import { cn } from "@/lib/utils";
 import { DepartmentAnalyticsView } from "./department-analytics";
 import { FacultyAnalyticsView } from "./faculty-analytics";
-import { WorkloadBalance } from "./workload-balance";
+import { SectionSkeleton } from "./overview/kit";
+import { LatestFixesSection, PendingFixesSection, WorkloadSection } from "./overview/sections";
 
 async function termOptions() {
   const terms = await prisma.semester.findMany({ include: { academicYear: { select: { name: true } } }, orderBy: [{ startDate: "desc" }, { level: "asc" }] });
@@ -38,12 +39,11 @@ export async function FacultyDashboard({ scope, params }: { scope: Scope; params
 /** Head of Department dashboard: department analytics, or their own teaching, switched by a toggle. */
 export async function HeadDashboard({ scope, params }: { scope: Scope; params: { term?: string; view?: string } }) {
   const view = params.view === "mine" ? "mine" : "department";
-  const termId = await resolveTerm(params.term, scope.facultyId);
+  const [termId, terms] = await Promise.all([resolveTerm(params.term, scope.facultyId), termOptions()]);
   if (!termId) return <EmptyState title="No terms yet" description="The Administrator has not created any terms." />;
-  const terms = await termOptions();
 
   const toggle = (
-    <div className="flex rounded-md border p-0.5" role="tablist" aria-label="Dashboard view">
+    <div key="view-toggle" className="flex rounded-md border p-0.5" role="tablist" aria-label="Dashboard view">
       {(["department", "mine"] as const).map((v) => (
         <Link
           key={v}
@@ -66,11 +66,10 @@ export async function HeadDashboard({ scope, params }: { scope: Scope; params: {
   }
 
   if (!scope.departmentId) return NOT_LINKED;
-  const [data, extras, workload, department] = await Promise.all([
+  const [data, extras, department] = await Promise.all([
     // The department filter is always the Head of Department's own; there is no way to pick another.
     dashboardAnalytics({ termId, departmentId: scope.departmentId, buildingId: null }),
     departmentExtras(scope.departmentId),
-    workloadView(scope, { history: 6 }),
     prisma.department.findUnique({ where: { id: scope.departmentId }, select: { name: true } }),
   ]);
   return (
@@ -81,16 +80,19 @@ export async function HeadDashboard({ scope, params }: { scope: Scope; params: {
       terms={terms}
       toggle={toggle}
       workloadPanel={
-        <WorkloadBalance
-          title="Department Workload Balance"
-          rows={workload.rows}
-          measure={workload.limits.measure}
-          mode={workload.limits.mode}
-          checkedAt={workload.status?.checkedAt ?? null}
-          flags={workload.flags}
-          fixes={workload.fixes}
-          proposals={workload.proposals.filter((p) => p.status === "PENDING")}
-        />
+        <div className="space-y-6">
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Suspense fallback={<SectionSkeleton rows={2} />}>
+              <PendingFixesSection scope={scope} />
+            </Suspense>
+            <Suspense fallback={<SectionSkeleton rows={5} />}>
+              <LatestFixesSection scope={scope} />
+            </Suspense>
+          </div>
+          <Suspense fallback={<SectionSkeleton rows={6} />}>
+            <WorkloadSection scope={scope} title="Department workload" />
+          </Suspense>
+        </div>
       }
     />
   );

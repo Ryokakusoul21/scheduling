@@ -75,6 +75,8 @@ export interface SchedFaculty {
   fullName: string;
   maxHours: number;
   specialization?: string | null;
+  /** Part-time faculty do not teach on this day. */
+  dayOff?: DayOfWeek | null;
   availability: SchedFacultyAvailability[];
   /** hours already assigned in the semester being scheduled, for workload balancing */
   assignedHours: number;
@@ -117,7 +119,11 @@ export type ConflictType =
   | "SECTION_CONFLICT"
   | "CAPACITY_CONFLICT"
   | "AVAILABILITY_CONFLICT"
-  | "SUBJECT_REQUIREMENT_CONFLICT";
+  | "DAY_OFF_CONFLICT"
+  | "DAILY_HOURS_CONFLICT"
+  | "SUBJECT_REQUIREMENT_CONFLICT"
+  | "FACULTY_NOT_ASSIGNED"
+  | "DURATION_MISMATCH";
 
 export type ConflictSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 

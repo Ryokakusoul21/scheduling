@@ -12,7 +12,7 @@ export const SCHEDULING_ROLES: AppRole[] = ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT
 export const DIRECT_EDIT_ROLES: AppRole[] = ["ADMINISTRATOR"];
 
 /** Roles that approve and publish schedules and workload reassignments. */
-export const PUBLISH_ROLES: AppRole[] = ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT"];
+export const PUBLISH_ROLES: AppRole[] = ["ADMINISTRATOR"];
 
 /** Roles that manage users, every department, and system settings. */
 export const ADMIN_ROLES: AppRole[] = ["ADMINISTRATOR"];

@@ -33,7 +33,7 @@ const pctText = (n: number) => `${n}%`;
 
 /** Figures for one term under the filters; also used for the previous semester comparison. */
 async function termFigures(term: Semester, f: DashboardFilters) {
-  const inDept = f.departmentId ? { section: { program: { departmentId: f.departmentId } } } : {};
+  const inDept = f.departmentId ? { section: { departmentId: f.departmentId } } : {};
   const inBuilding = f.buildingId ? { room: { floor: { buildingId: f.buildingId } } } : {};
   const academicYear = await prisma.academicYear.findUnique({ where: { id: term.academicYearId }, select: { name: true } });
   const [schedules, rooms, facultyRows, records, programs, termSections, conflicts, workload] = await Promise.all([
@@ -50,7 +50,7 @@ async function termFigures(term: Semester, f: DashboardFilters) {
       where: { level: term.level, academicYear: academicYear?.name ?? "", termType: term.type.startsWith("QUARTER") ? "FIRST" : term.type },
     }),
     prisma.program.findMany({ select: { id: true, departmentId: true } }),
-    prisma.section.findMany({ where: { semesterId: term.id, archivedAt: null, ...(f.departmentId ? { program: { departmentId: f.departmentId } } : {}) }, select: { id: true } }),
+    prisma.section.findMany({ where: { semesterId: term.id, archivedAt: null, ...(f.departmentId ? { departmentId: f.departmentId } : {}) }, select: { id: true } }),
     detectConflictsForTerms([term.id]),
     loadWorkload([term.id], f.departmentId),
   ]);
@@ -64,7 +64,7 @@ async function termFigures(term: Semester, f: DashboardFilters) {
   const roomRows = roomUtilization(
     schedules,
     rooms
-      .filter((r) => !f.departmentId || r.departmentId === f.departmentId || usedRooms.has(r.id))
+      .filter((r) => !f.departmentId || r.departmentId === f.departmentId || (!r.departmentId && usedRooms.has(r.id)))
       .map((r) => ({
         id: r.id,
         name: r.roomName,
@@ -259,14 +259,15 @@ async function upcoming(f: DashboardFilters) {
     prisma.examination.findMany({
       where: {
         date: { gte: today, lte: until },
-        ...(f.departmentId ? { section: { program: { departmentId: f.departmentId } } } : {}),
+        ...(f.departmentId ? { section: { departmentId: f.departmentId } } : {}),
         ...(f.buildingId ? { room: { floor: { buildingId: f.buildingId } } } : {}),
       },
       include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomName: true } }, proctor: { select: { fullName: true } } },
       orderBy: [{ date: "asc" }, { startMin: "asc" }],
       take: 12,
     }),
-    prisma.activity.findMany({ where: { status: "APPROVED", endDate: { gte: today }, startDate: { lte: until } }, orderBy: { startDate: "asc" }, take: 12 }),
+    prisma.activity.findMany({
+      where: { status: "APPROVED", endDate: { gte: today }, startDate: { lte: until }, ...(f.departmentId ? { OR: [{ departmentId: f.departmentId }, { departmentId: null }] } : {}) }, orderBy: { startDate: "asc" }, take: 12 }),
   ]);
   return [
     ...exams.map((e) => ({

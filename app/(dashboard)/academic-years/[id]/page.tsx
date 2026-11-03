@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { ACADEMIC_LEVELS, LEVELS, isAcademicLevel, termLabel } from "@/lib/academics/levels";
-import { Breadcrumbs } from "@/components/ux/breadcrumbs";
 import { CardGrid } from "@/components/ux/card-grid";
 import { PageHeader, SelectCard } from "@/components/ux/states";
 import { Badge } from "@/components/ui/badge";
@@ -43,15 +42,8 @@ export default async function AcademicYearDetailPage({
 
   return (
     <div className="space-y-5">
-      <Breadcrumbs
-        items={[
-          { label: "Academic Years & Terms", href: "/academic-years" },
-          { label: `A.Y. ${year.name}`, href: `/academic-years/${year.id}` },
-          ...(level ? [{ label: LEVELS[level].label }] : []),
-        ]}
-      />
       <PageHeader
-        title={`A.Y. ${year.name}`}
+        title={`Academic Year ${year.name}`}
         description={
           level
             ? LEVELS[level].termKind === "semester"

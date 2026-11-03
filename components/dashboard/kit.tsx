@@ -103,7 +103,7 @@ export function DashboardToolbar({
               value={f.value}
               onChange={(e) => set(f.key, e.target.value)}
               options={f.allLabel ? [{ value: "", label: f.allLabel }, ...f.options] : f.options}
-              className="w-60"
+              className="w-full sm:w-60"
             />
           ))}
           <ExportButtons filename={filename} rows={flat.slice(1)} columns={Array.from({ length: width }, (_, i) => ({ header: String(flat[0]?.[i] ?? ""), value: (r: (string | number | null)[]) => r[i] }))} />

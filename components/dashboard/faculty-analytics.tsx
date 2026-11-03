@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { UserMinus } from "@phosphor-icons/react/ssr";
@@ -7,11 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Heatmap, TOOLTIP_STYLE, CHART_SIZE } from "@/components/charts/utilization";
-import { LoadBar, LoadStatusLabel } from "@/components/workload/load-bar";
+import { LoadStatusLabel } from "@/components/workload/load-bar";
 import type { FacultyAnalytics } from "@/lib/analytics/faculty";
 import { HEATMAP_DAYS, HEATMAP_HOURS } from "@/lib/analytics/timetable";
 import { DAY_LONG, formatRange, formatTime } from "@/lib/scheduler/timetable";
-import { DashboardToolbar, StatCard, StatGrid, type ReportBlock } from "./kit";
+import { cn } from "@/lib/utils";
+import { ChangeBadge, DashboardToolbar, type ReportBlock } from "./kit";
 import { HoursBars, UpcomingList } from "./charts";
 import { WeekGrid } from "./week-grid";
 
@@ -46,10 +48,38 @@ function blocks(d: FacultyAnalytics): ReportBlock[] {
   ];
 }
 
+/** Circular gauge of the teaching load against the maximum allowed. */
+function Ring({ pct, value, unit }: { pct: number; value: number; unit: string }) {
+  const r = 40, c = 2 * Math.PI * r;
+  return (
+    <div className="relative size-28 shrink-0" role="img" aria-label={`${value} ${unit}, ${Math.round(pct)} percent of the maximum`}>
+      <svg viewBox="0 0 100 100" className="size-full -rotate-90">
+        <circle cx="50" cy="50" r={r} fill="none" strokeWidth="10" className="stroke-muted" />
+        <circle cx="50" cy="50" r={r} fill="none" strokeWidth="10" strokeLinecap="round" className={pct > 100 ? "stroke-red-600" : "stroke-primary"} strokeDasharray={c} strokeDashoffset={c * (1 - Math.min(pct, 100) / 100)} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center"><span className="text-2xl font-semibold tabular-nums">{value}</span><span className="text-[11px] text-muted-foreground">{unit}</span></div>
+    </div>
+  );
+}
+
+/** Compact figure tile for the secondary measures beside the headline load card. */
+function Tile({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
+  return (
+    <div className="rounded-xl border bg-card p-3">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="text-2xl font-semibold tabular-nums">{value}</dd>
+      {hint && <p className="truncate text-[11px] text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+const INSIGHTS = [["timetable", "Timetable"], ["hours", "Hours by day"], ["busy", "Busy hours"], ["rooms", "Rooms"], ["compare", "Compared with department"]] as const;
+
 const COMPARISON_FILL = ["var(--chart-1)", "var(--chart-3)", "#d97706", "#dc2626"];
 
 export function FacultyAnalyticsView({ data, terms, title = "My teaching analytics", toggle }: { data: FacultyAnalytics; terms: Option[]; title?: string; toggle?: React.ReactNode }) {
   const d = data;
+  const [tab, setTab] = useState<(typeof INSIGHTS)[number][0]>("timetable");
   return (
     <section aria-label={title} className="print-area space-y-4">
       <DashboardToolbar
@@ -63,32 +93,41 @@ export function FacultyAnalyticsView({ data, terms, title = "My teaching analyti
         {toggle}
       </DashboardToolbar>
 
-      <StatGrid>
-        <StatCard label="My teaching load" value={`${d.load.value} ${d.load.unit}`} hint={`${d.load.hours} hours and ${d.load.units} units this term`} change={d.hoursChange} previous={d.previousLabel}>
-          <LoadBar r={{ load: d.load.value, minimum: d.load.minimum, maximum: d.load.maximum, status: d.load.status }} className="mt-2" />
-          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>Allowed {d.load.minimum} to {d.load.maximum}</span>
-            <LoadStatusLabel status={d.load.status} />
-          </div>
-        </StatCard>
-        <StatCard label="Subjects, sections, and students" value={`${d.counts.subjects} · ${d.counts.sections} · ${d.counts.students}`} hint="Subjects · sections · students taught" />
-        <StatCard label="My Faculty Utilization Rate" value={`${d.utilization}%`} hint={`${d.load.hours} of ${d.maxHours} maximum teaching hours`} />
-        <StatCard label="Upcoming classes" value={`${d.today.length} today · ${d.weekCount} this week`} hint="Next seven days, after any rescheduling" />
-        <StatCard label="My room bookings" value={String(d.bookings.length)} hint={d.bookings[0] ? `Next: ${d.bookings[0].room}, ${d.bookings[0].date}` : "No upcoming bookings"} />
-        <StatCard label="Changes to my classes" value={String(d.changes.count)} hint="Rescheduled, substituted, cancelled, or reassigned" />
-      </StatGrid>
-
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         <Card>
+          <CardContent className="flex items-center gap-5">
+            <Ring pct={d.load.maximum ? (d.load.value / d.load.maximum) * 100 : 0} value={d.load.value} unit={d.load.unit} />
+            <div className="min-w-0 space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">My teaching load</p>
+              <p className="text-2xl font-semibold tabular-nums">{d.load.hours} hours</p>
+              <p className="text-[11px] text-muted-foreground">{d.load.units} units this term · allowed {d.load.minimum} to {d.load.maximum}</p>
+              <ChangeBadge change={d.hoursChange} previous={d.previousLabel} />
+              <LoadStatusLabel status={d.load.status} />
+            </div>
+          </CardContent>
+        </Card>
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Tile label="Subjects" value={d.counts.subjects} hint={`${d.counts.sections} sections`} />
+          <Tile label="Students taught" value={d.counts.students} />
+          <Tile label="Faculty Utilization Rate" value={`${d.utilization}%`} hint={`${d.load.hours} of ${d.maxHours} hours`} />
+          <Tile label="Classes today" value={d.today.length} hint={`${d.weekCount} in the next seven days`} />
+          <Tile label="Room bookings" value={d.bookings.length} hint={d.bookings[0] ? `Next: ${d.bookings[0].room}, ${d.bookings[0].date}` : "None upcoming"} />
+          <Tile label="Changes to my classes" value={d.changes.count} hint="Moved, substituted, or cancelled" />
+        </dl>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3 lg:items-start">
+        <Card className="h-fit lg:max-h-[32rem] lg:overflow-y-auto">
           <CardHeader><CardTitle className="text-base">Today</CardTitle></CardHeader>
           <CardContent>
             {d.today.length === 0 ? <p className="text-sm text-muted-foreground">No classes today.</p> : (
-              <ul className="space-y-2">
+              <ul className="max-h-96 space-y-2 overflow-y-auto">
                 {d.today.map((c, i) => (
-                  <li key={i} className="flex items-center gap-3 rounded-lg border p-2.5 text-sm">
-                    <span className="w-32 shrink-0 text-xs font-medium text-muted-foreground">{c.time}</span>
-                    <span className="min-w-0 flex-1 truncate font-medium">{c.label}</span>
-                    <span className="text-xs text-muted-foreground">{c.room}</span>
+                  <li key={i} className="flex items-center gap-3 border-l-4 border-primary/60 py-1 pl-3 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{c.label}</p>
+                      <p className="text-xs text-muted-foreground">{c.time} · {c.room}</p>
+                    </div>
                     {c.changed && <Badge variant="secondary">Rescheduled</Badge>}
                   </li>
                 ))}
@@ -96,6 +135,7 @@ export function FacultyAnalyticsView({ data, terms, title = "My teaching analyti
             )}
           </CardContent>
         </Card>
+        <div className="contents">
         <Card>
           <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base">Changes made to my classes</CardTitle>
@@ -116,13 +156,26 @@ export function FacultyAnalyticsView({ data, terms, title = "My teaching analyti
             )}
           </CardContent>
         </Card>
+          <UpcomingList items={d.upcoming} title="My upcoming examinations and activities" />
+        </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle className="text-base">My weekly teaching hours by day</CardTitle></CardHeader>
-          <CardContent className="h-56">
-            <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
+      <Card>
+        <CardHeader className="gap-3">
+          <div role="tablist" aria-label="Teaching insights" className="flex w-fit max-w-full gap-1 overflow-x-auto rounded-lg border bg-muted/40 p-1 print:hidden">
+            {INSIGHTS.map(([id, label]) => (
+              <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className="shrink-0 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring aria-selected:bg-card aria-selected:text-foreground aria-selected:shadow-sm">{label}</button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div role="tabpanel" className={cn(tab !== "timetable" && "hidden print:block")}>
+            <h3 className="mb-2 text-base font-semibold">My timetable</h3>
+            {d.timetable.length ? <WeekGrid entries={d.timetable} /> : <p className="text-sm text-muted-foreground">No classes this term.</p>}
+          </div>
+          <div role="tabpanel" className={cn("h-72", tab !== "hours" && "hidden print:block")}>
+            <h3 className="mb-2 text-base font-semibold">My weekly teaching hours by day</h3>
+            <ResponsiveContainer width="100%" height="90%" initialDimension={CHART_SIZE}>
               <BarChart data={d.byDay} margin={{ top: 20 }}>
                 <CartesianGrid vertical={false} stroke="currentColor" opacity={0.08} />
                 <XAxis dataKey="day" fontSize={11} tickLine={false} axisLine={false} />
@@ -133,12 +186,17 @@ export function FacultyAnalyticsView({ data, terms, title = "My teaching analyti
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle className="text-base">My load compared with the department</CardTitle></CardHeader>
-          <CardContent className="h-56">
-            <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
+          </div>
+          <div role="tabpanel" className={cn(tab !== "busy" && "hidden print:block")}>
+            <Heatmap grid={d.heatmap} />
+            <p className="mt-1 text-xs text-muted-foreground">Darker cells are my busiest hours; empty cells are free hours.</p>
+          </div>
+          <div role="tabpanel" className={cn(tab !== "rooms" && "hidden print:block")}>
+            <HoursBars title="Rooms I use most" rows={d.rooms} />
+          </div>
+          <div role="tabpanel" className={cn("h-72", tab !== "compare" && "hidden print:block")}>
+            <h3 className="mb-2 text-base font-semibold">My load compared with the department</h3>
+            <ResponsiveContainer width="100%" height="90%" initialDimension={CHART_SIZE}>
               <BarChart data={d.comparison} layout="vertical" margin={{ left: 8, right: 32 }}>
                 <CartesianGrid horizontal={false} stroke="currentColor" opacity={0.08} />
                 <XAxis type="number" fontSize={11} tickLine={false} axisLine={false} />
@@ -150,29 +208,16 @@ export function FacultyAnalyticsView({ data, terms, title = "My teaching analyti
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader><CardTitle className="text-base">My timetable</CardTitle></CardHeader>
-        <CardContent>{d.timetable.length ? <WeekGrid entries={d.timetable} /> : <p className="text-sm text-muted-foreground">No classes this term.</p>}</CardContent>
+          </div>
+        </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="space-y-1">
-          <Heatmap grid={d.heatmap} />
-          <p className="px-1 text-xs text-muted-foreground">Darker cells are my busiest hours; empty cells are free hours.</p>
-        </div>
-        <HoursBars title="Rooms I use most" rows={d.rooms} />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div>
         <Card>
           <CardHeader><CardTitle className="text-base">Notifications</CardTitle></CardHeader>
           <CardContent>
             {d.notifications.length === 0 ? <p className="text-sm text-muted-foreground">No workload, rescheduling, suspension, or unavailability updates.</p> : (
-              <ul className="max-h-96 space-y-2 overflow-y-auto">
+              <ul className="grid max-h-96 gap-2 overflow-y-auto md:grid-cols-2">
                 {d.notifications.map((n) => (
                   <li key={n.id} className="rounded-lg border p-2.5 text-sm">
                     <p className="flex flex-wrap items-center gap-2"><Badge variant="secondary">{n.kind}</Badge><span className="font-medium">{n.title}</span>{!n.isRead && <Badge>New</Badge>}</p>
@@ -184,7 +229,6 @@ export function FacultyAnalyticsView({ data, terms, title = "My teaching analyti
             )}
           </CardContent>
         </Card>
-        <UpcomingList items={d.upcoming} title="My upcoming examinations and activities" />
       </div>
     </section>
   );

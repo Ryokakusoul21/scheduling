@@ -2,10 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BookOpen, CalendarBlank, UsersThree, CalendarDots } from "@phosphor-icons/react/ssr";
 import { prisma } from "@/lib/db/prisma";
-import { requireRole } from "@/lib/auth/session";
+import { policyUserFromScope, requireScope } from "@/lib/permissions/scope";
+import { can } from "@/lib/permissions/policy";
+import { departmentWhere } from "@/lib/permissions/department";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { LEVELS, YEAR_LEVELS, gradeLabel, levelLabel, termLabel, yearLabel } from "@/lib/academics/levels";
-import { Breadcrumbs } from "@/components/ux/breadcrumbs";
 import { PageHeader } from "@/components/ux/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,11 +18,11 @@ import { EditProgramButton } from "./edit-program-button";
 export const metadata = { title: "Program · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function ProgramDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireRole(...STAFF_ROLES);
+  const scope = await requireScope(...STAFF_ROLES);
   const { id } = await params;
   const [program, departments] = await Promise.all([
-    prisma.program.findUnique({
-      where: { id },
+    prisma.program.findFirst({
+      where: { id, ...departmentWhere.program(scope) },
       include: {
         department: true,
         sections: { select: { yearLevel: true, gradeLevel: true, studentCount: true, _count: { select: { schedules: true } } } },
@@ -29,10 +30,12 @@ export default async function ProgramDetailPage({ params }: { params: Promise<{ 
         semesters: { include: { academicYear: true }, orderBy: { startDate: "desc" } },
       },
     }),
-    prisma.department.findMany({ orderBy: { code: "asc" } }),
+    prisma.department.findMany({ where: departmentWhere.department(scope), orderBy: { code: "asc" } }),
   ]);
   if (!program || (program.level !== "COLLEGE" && program.level !== "SENIOR_HIGH")) notFound();
 
+  // Heads of Department see the same page without the Edit action.
+  const canEdit = can(policyUserFromScope(scope), "edit", { type: "programCatalog", id: program.id, departmentId: program.departmentId });
   const isCollege = program.level === "COLLEGE";
   const stages = isCollege
     ? YEAR_LEVELS.slice(0, 4).map((y) => ({ key: y, label: yearLabel(y), param: `year=${y}` }))
@@ -52,7 +55,6 @@ export default async function ProgramDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div className="space-y-5">
-      <Breadcrumbs items={[{ label: "Programs & Strands", href: "/programs" }, { label: program.code }]} />
       <PageHeader
         title={`${program.code} — ${program.name}`}
         description={`${levelLabel(program.level)}${program.department ? ` · ${program.department.name}` : ""}`}
@@ -61,10 +63,12 @@ export default async function ProgramDetailPage({ params }: { params: Promise<{ 
             <Button variant="outline" nativeButton={false} render={<Link href={`/scheduler?level=${program.level}&programId=${program.id}`} />}>
               <CalendarDots className="size-4" /> Open in Scheduler
             </Button>
-            <EditProgramButton
-              program={{ id: program.id, code: program.code, name: program.name, level: program.level, departmentId: program.departmentId ?? "" }}
-              departments={departments.map((d) => ({ value: d.id, label: d.name }))}
-            />
+            {canEdit && (
+              <EditProgramButton
+                program={{ id: program.id, code: program.code, name: program.name, level: program.level, departmentId: program.departmentId ?? "" }}
+                departments={departments.map((d) => ({ value: d.id, label: d.name }))}
+              />
+            )}
           </>
         }
       />
@@ -136,7 +140,7 @@ export default async function ProgramDetailPage({ params }: { params: Promise<{ 
               <p className="text-sm text-muted-foreground">
                 This course uses the shared College semesters. Add course-specific ones from{" "}
                 <Link href="/academic-years" className="font-medium text-primary hover:underline">
-                  Academic Years & Terms
+                  Academic Years and Terms
                 </Link>
                 .
               </p>
@@ -146,7 +150,7 @@ export default async function ProgramDetailPage({ params }: { params: Promise<{ 
                   <li key={t.id}>
                     <Link href={`/academic-years/${t.academicYearId}?level=COLLEGE`}>
                       <Badge variant={t.isActive ? "default" : "secondary"}>
-                        A.Y. {t.academicYear.name} · {termLabel(t.type)}
+                        Academic Year {t.academicYear.name} · {termLabel(t.type)}
                       </Badge>
                     </Link>
                   </li>

@@ -53,10 +53,10 @@ const NAV_SHORTCUTS: { keys: string; href: string; description: string }[] = [
   { keys: "g d", href: "/dashboard", description: "Go to Dashboard" },
   { keys: "g s", href: "/scheduler", description: "Go to Scheduler" },
   { keys: "g c", href: "/calendar", description: "Go to Calendar of Activities" },
-  { keys: "g x", href: "/examinations", description: "Go to Examinations" },
+  { keys: "g x", href: "/scheduler?mode=examinations", description: "Go to Examination Schedule" },
   { keys: "g b", href: "/bookings", description: "Go to Room Booking" },
-  { keys: "g y", href: "/academic-years", description: "Go to Academic Years & Terms" },
-  { keys: "g p", href: "/programs", description: "Go to Programs & Strands" },
+  { keys: "g y", href: "/academic-years", description: "Go to Academic Years and Terms" },
+  { keys: "g p", href: "/programs", description: "Go to Programs and Strands" },
   { keys: "g u", href: "/subjects", description: "Go to Subjects" },
   { keys: "g e", href: "/sections", description: "Go to Sections" },
   { keys: "g f", href: "/faculty", description: "Go to Faculty" },
@@ -105,6 +105,7 @@ export function ShortcutProvider({ allowedHrefs, children }: { allowedHrefs?: st
       if (e.defaultPrevented) return;
       const typing = isTypingTarget(e.target);
       const key = eventToKey(e);
+      if (!key) return;
 
       // Second key of a "g x" sequence.
       if (pending.current) {

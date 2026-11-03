@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { releaseDisplaced } from "@/lib/bookings/service";
 import { prisma } from "@/lib/db/prisma";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
@@ -53,7 +54,7 @@ async function authorize(scope: Scope, req: AdjustmentRequest): Promise<string |
     return canManageDepartment(scope, r?.departmentId) ? null : "You can only close rooms that belong to your department.";
   }
   if (req.sectionIds.length === 0) return "Choose the sections to suspend; only the Administrator can suspend every section.";
-  const outside = await prisma.section.count({ where: { id: { in: req.sectionIds }, NOT: { program: { departmentId: scope.manageDepartmentId } } } });
+  const outside = await prisma.section.count({ where: { id: { in: req.sectionIds }, NOT: { departmentId: scope.manageDepartmentId } } });
   return outside ? "You can only suspend classes of sections in your department." : null;
 }
 
@@ -99,7 +100,8 @@ export async function applyAdjustmentAction(input: AdjustmentRequest): Promise<R
   const when = { startDate: new Date(`${req.start}T00:00:00Z`), endDate: new Date(`${req.end}T00:00:00Z`), startMin: req.startMin, endMin: req.endMin };
   if (req.kind === "SUSPENSION") {
     await prisma.activity.create({ data: { type: "CLASS_SUSPENSION", title: req.title, description: req.reason, sectionIds: req.sectionIds, batchId, createdById: scope.userId, ...when } });
-  } else if (req.kind === "FACULTY" && req.reportId) {
+  } else if (req.kind === "FACULTY" && req.reportId && (await prisma.unavailability.count({ where: { id: req.reportId, facultyId: req.facultyId, status: "PENDING" } }))) {
+    // Only the pending report of the same (already authorized) faculty member can be marked applied.
     const report = await prisma.unavailability.update({ where: { id: req.reportId }, data: { status: "APPLIED", batchId, ...when } });
     if (report.reportedById) await notifyUsers([report.reportedById], { title: "Unavailability report applied", message: `Your classes for ${dates} were reassigned or cancelled for make-up.`, link: "/availability" });
   } else {
@@ -117,10 +119,10 @@ async function batchScope(batchId: string) {
   const scope = await requireScope(...STAFF_ROLES);
   const batch = await prisma.adjustmentBatch.findUnique({
     where: { id: batchId },
-    include: { activity: true, unavailability: true, booking: true, adjustments: { select: { schedule: { select: { section: { select: { program: { select: { departmentId: true } } } } } } } } },
+    include: { activity: true, unavailability: true, booking: true, adjustments: { select: { schedule: { select: { section: { select: { departmentId: true } } } } } } },
   });
   if (!batch) return { error: "This change no longer exists." } as const;
-  const allowed = scope.isAdmin || batch.createdById === scope.userId || batch.adjustments.every((a) => canManageDepartment(scope, a.schedule.section.program?.departmentId));
+  const allowed = scope.isAdmin || batch.createdById === scope.userId || batch.adjustments.every((a) => canManageDepartment(scope, a.schedule.section.departmentId));
   return allowed ? ({ scope, batch } as const) : ({ error: "You can only manage changes in your department." } as const);
 }
 
@@ -132,7 +134,10 @@ export async function undoAdjustmentAction(batchId: string): Promise<Result> {
   const problem = await undoBatch(batchId, batch.booking ? [batch.booking.id] : []);
   if (problem) return { ok: false, error: problem };
   if (batch.activity) await prisma.activity.delete({ where: { id: batch.activity.id } });
-  if (batch.booking) await prisma.roomBooking.update({ where: { id: batch.booking.id }, data: { status: "CANCELLED" } });
+  if (batch.booking) {
+    await prisma.roomBooking.update({ where: { id: batch.booking.id }, data: { status: "CANCELLED" } });
+    await releaseDisplaced(scope, batch.booking.id);
+  }
   if (batch.unavailability) {
     // Reports from faculty go back to pending; closures entered here are removed.
     const u = batch.unavailability;
@@ -151,9 +156,16 @@ function batchEnd(batch: { activity: { endDate: Date } | null; unavailability: {
   return end ? end.toISOString().slice(0, 10) : fallback;
 }
 
+/** The class must be part of this change and, for a Head of Department, of their own department. */
+async function classInBatch(scope: Scope, batchId: string, scheduleId: string) {
+  const row = await prisma.scheduleAdjustment.findFirst({ where: { batchId, scheduleId }, select: { schedule: { select: { section: { select: { departmentId: true } } } } } });
+  return !!row && canManageDepartment(scope, row.schedule.section.departmentId);
+}
+
 export async function makeUpOptionsAction(batchId: string, scheduleId: string, date: string): Promise<Result<(Placement & { reason: string })[]>> {
   const b = await batchScope(batchId);
   if ("error" in b) return { ok: false, error: b.error! };
+  if (!(await classInBatch(b.scope, batchId, scheduleId))) return { ok: false, error: "That class is not part of this change in your department." };
   return { ok: true, data: await findMakeUpOptions(scheduleId, date, batchEnd(b.batch, date)) };
 }
 
@@ -164,6 +176,7 @@ export async function scheduleMakeUpAction(batchId: string, scheduleId: string, 
   if ("error" in b) return { ok: false, error: b.error! };
   const parsed = choiceSchema.safeParse(choice);
   if (!parsed.success) return { ok: false, error: "Invalid make-up option." };
+  if (!(await classInBatch(b.scope, batchId, scheduleId))) return { ok: false, error: "That class is not part of this change in your department." };
   const already = await prisma.scheduleAdjustment.count({ where: { batchId, scheduleId, date: new Date(`${date}T00:00:00Z`), kind: "MAKE_UP" } });
   if (already) return { ok: false, error: "A make-up class is already scheduled for this meeting." };
   const problem = await addMakeUp(batchId, scheduleId, date, parsed.data);

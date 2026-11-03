@@ -1,6 +1,7 @@
 "use server";
 
-import { requireUser } from "@/lib/auth/session";
+import { getScope } from "@/lib/permissions/scope";
+import { departmentWhere } from "@/lib/permissions/department";
 import { prisma } from "@/lib/db/prisma";
 import { ANY_YEAR, GENERAL, flowHref } from "@/lib/academics/flow";
 
@@ -13,18 +14,20 @@ export interface SearchResult {
 }
 
 export async function globalSearchAction(query: string): Promise<SearchResult[]> {
-  await requireUser();
+  // Results are limited to the person's department (the Administrator searches everything).
+  const scope = await getScope();
   const q = query.trim();
   if (q.length < 2) return [];
 
   const [subjects, faculty, rooms, sections] = await Promise.all([
     prisma.subject.findMany({
-      where: { archivedAt: null, OR: [{ code: { contains: q, mode: "insensitive" } }, { name: { contains: q, mode: "insensitive" } }] },
+      where: { archivedAt: null, ...departmentWhere.subject(scope), AND: [{ OR: [{ code: { contains: q, mode: "insensitive" } }, { name: { contains: q, mode: "insensitive" } }] }] },
       take: 5,
     }),
     prisma.faculty.findMany({
       where: {
         archivedAt: null,
+        ...departmentWhere.faculty(scope),
         OR: [
           { fullName: { contains: q, mode: "insensitive" } },
           { employeeId: { contains: q, mode: "insensitive" } },
@@ -35,6 +38,7 @@ export async function globalSearchAction(query: string): Promise<SearchResult[]>
     prisma.room.findMany({
       where: {
         archivedAt: null,
+        AND: [departmentWhere.room(scope)],
         OR: [
           { roomName: { contains: q, mode: "insensitive" } },
           { roomNumber: { contains: q, mode: "insensitive" } },
@@ -44,7 +48,7 @@ export async function globalSearchAction(query: string): Promise<SearchResult[]>
       take: 5,
     }),
     prisma.section.findMany({
-      where: { archivedAt: null, name: { contains: q, mode: "insensitive" } },
+      where: { archivedAt: null, ...departmentWhere.section(scope), name: { contains: q, mode: "insensitive" } },
       take: 5,
     }),
   ]);

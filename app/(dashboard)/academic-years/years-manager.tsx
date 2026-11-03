@@ -49,7 +49,7 @@ export function YearsManager({ years }: { years: Year[] }) {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Academic Years & Terms"
+        title="Academic Years and Terms"
         description="Create or select an academic year, then set up semesters per course (College) and quarters (Senior High School, Junior High School, Elementary)."
         actions={
           <Button onClick={dialog.openCreate} aria-keyshortcuts="n">
@@ -87,7 +87,7 @@ export function YearsManager({ years }: { years: Year[] }) {
                     <CalendarBlank className="size-5" />
                   </span>
                   <div>
-                    <p className="text-lg font-semibold">A.Y. {y.name}</p>
+                    <p className="text-lg font-semibold">Academic Year {y.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {fmt(y.startDate)} – {fmt(y.endDate)}
                     </p>
@@ -129,7 +129,7 @@ export function YearsManager({ years }: { years: Year[] }) {
       <FormDialog
         open={!!dialog.state}
         onOpenChange={(o) => !o && dialog.close()}
-        title={editing ? `Edit A.Y. ${editing.name}` : "New academic year"}
+        title={editing ? `Edit Academic Year ${editing.name}` : "New academic year"}
         fields={FIELDS}
         values={editing ?? {}}
         submitLabel={editing ? "Save changes" : "Create"}
@@ -139,7 +139,7 @@ export function YearsManager({ years }: { years: Year[] }) {
       <ConfirmDialog
         open={!!deleting}
         onOpenChange={(o) => !o && del.close()}
-        title={`Delete A.Y. ${deleting?.name ?? ""}?`}
+        title={`Delete Academic Year ${deleting?.name ?? ""}?`}
         description="This can only be done when the academic year has no terms."
         successMessage="Academic year deleted"
         onConfirm={() => deleteAcademicYearAction(deleting!.id)}

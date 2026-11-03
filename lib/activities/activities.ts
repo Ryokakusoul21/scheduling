@@ -9,13 +9,15 @@ import { formatLongDate } from "@/lib/calendar";
 import type { ActivityListItem, ActivityStatus } from "./status";
 
 /**
- * Which activities a person sees: approved ones for everyone, plus every status of their own
- * department's submissions (Head of Department) or of all departments (Administrator).
+ * Which activities a person sees: the Administrator everything; a Head of Department every status of their
+ * own department's activities plus approved institution-wide ones; everyone else approved activities of
+ * their own department and of the whole school. Other departments' activities stay hidden.
  */
 export function visibleActivities(scope: Pick<Scope, "isAdmin" | "role" | "departmentId">): Prisma.ActivityWhereInput {
   if (scope.isAdmin) return {};
-  if (scope.role === "HEAD_OF_DEPARTMENT" && scope.departmentId) return { OR: [{ status: "APPROVED" }, { departmentId: scope.departmentId }] };
-  return { status: "APPROVED" };
+  const own = scope.departmentId;
+  if (scope.role === "HEAD_OF_DEPARTMENT" && own) return { OR: [{ departmentId: own }, { departmentId: null, status: "APPROVED" }] };
+  return { status: "APPROVED", OR: [{ departmentId: null }, ...(own ? [{ departmentId: own }] : [])] };
 }
 
 const include = { department: { select: { name: true } }, room: { select: { roomName: true } } } as const;
@@ -73,13 +75,13 @@ export async function activityConflicts(activities: Row[]): Promise<Map<string, 
 
   const [plan, sections, others] = await Promise.all([
     loadPlan(from, to),
-    prisma.section.findMany({ select: { id: true, level: true, program: { select: { departmentId: true } } } }),
+    prisma.section.findMany({ select: { id: true, level: true, departmentId: true } }),
     prisma.activity.findMany({
       where: { status: "APPROVED", roomId: { not: null }, startDate: { lte: new Date(`${to}T00:00:00Z`) }, endDate: { gte: new Date(`${from}T00:00:00Z`) } },
       select: { id: true, title: true, roomId: true, startDate: true, endDate: true, startMin: true, endMin: true },
     }),
   ]);
-  const sectionInfo = new Map(sections.map((s) => [s.id, { level: s.level, departmentId: s.program?.departmentId ?? null }]));
+  const sectionInfo = new Map(sections.map((s) => [s.id, { level: s.level, departmentId: s.departmentId ?? null }]));
 
   for (const { a, from: start, to: end } of spans) {
     const lo = a.startMin ?? 0;

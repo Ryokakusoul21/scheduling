@@ -39,7 +39,7 @@ function withinAvailability(windows: Window[], slot: Slot) {
 }
 
 export function rankFaculty(
-  faculty: { id: string; teachingLevels: string[]; availability: Window[] }[],
+  faculty: { id: string; teachingLevels: string[]; availability: Window[]; dayOff?: string | null }[],
   slot: Slot,
   bookings: Booking[],
   level?: string
@@ -47,7 +47,7 @@ export function rankFaculty(
   return faculty
     .map((f) => {
       const busy = isBusy(bookings, "facultyId", f.id, slot);
-      const available = withinAvailability(f.availability, slot);
+      const available = withinAvailability(f.availability, slot) && !(f.dayOff && f.dayOff === (slot as { dayOfWeek?: string }).dayOfWeek);
       const teaches = !level || f.teachingLevels.includes(level);
       return {
         id: f.id,

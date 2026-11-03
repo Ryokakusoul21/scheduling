@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 export interface NativeOption {
   value: string;
   label: string;
+  title?: string;
   disabled?: boolean;
 }
 
@@ -34,7 +35,7 @@ export function NativeSelect({
       >
         {placeholder !== undefined && <option value="">{placeholder}</option>}
         {options?.map((o) => (
-          <option key={o.value} value={o.value} disabled={o.disabled}>
+          <option key={o.value} value={o.value} disabled={o.disabled} title={o.title}>
             {o.label}
           </option>
         ))}
@@ -42,7 +43,7 @@ export function NativeSelect({
           g.options.length ? (
             <optgroup key={g.label} label={g.label}>
               {g.options.map((o) => (
-                <option key={o.value} value={o.value} disabled={o.disabled}>
+                <option key={o.value} value={o.value} disabled={o.disabled} title={o.title}>
                   {o.label}
                 </option>
               ))}

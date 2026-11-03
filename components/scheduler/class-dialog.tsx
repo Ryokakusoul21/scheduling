@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { CircleNotch, Copy, Trash, WarningOctagon, Warning, CheckCircle } from "@phosphor-icons/react/ssr";
+import { CircleNotch, Copy, Trash } from "@phosphor-icons/react/ssr";
+import { ConflictAlert, NoConflict } from "@/components/ux/conflict";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -12,6 +13,8 @@ import { detectConflicts, isOverlapConflict } from "@/lib/scheduler/conflictDete
 import { DAY_LONG, WEEK_DAYS, formatTime, subjectAppliesToSection, timeOptions } from "@/lib/scheduler/timetable";
 import type { DetectedConflict } from "@/lib/scheduler/types";
 import { rankFaculty, rankRooms } from "@/lib/scheduler/suggest";
+import { assignedFor } from "@/lib/subjects/assignment-rules";
+import { projectionWarning } from "@/lib/workload/projection";
 import type { ClassInput } from "@/app/(dashboard)/scheduler/actions";
 import type { SchedulerData, SchedulerEntry, ScheduleStatus } from "./types";
 import type { ConflictContextBuilder } from "./scheduler-workspace";
@@ -29,6 +32,7 @@ export interface ClassDraft {
   endMin: number;
   status?: ScheduleStatus;
   notes?: string;
+  source?: "CURRICULUM_QUEUE";
 }
 
 const STATUS_OPTIONS: { value: ScheduleStatus; label: string }[] = [
@@ -130,15 +134,22 @@ function ClassForm({
 
   const slot = { dayOfWeek: form.dayOfWeek, startMin: form.startMin, endMin: form.endMin };
 
+  const [showAllFaculty, setShowAllFaculty] = useState(false);
+  const assignedId = form.subjectId && form.sectionId ? assignedFor(data.assignments, form.subjectId, form.sectionId) : null;
+  const assignedFaculty = data.faculty.find((f) => f.id === assignedId) ?? null;
+  const restricted = !!assignedFaculty && !showAllFaculty;
+
   const facultyOptions = useMemo(() => {
-    const pool = data.faculty.filter((f) => f.status === "ACTIVE" || f.id === form.facultyId);
+    // An assigned subject offers only its professor (and the current one, so an existing class still shows) unless overridden.
+    const pool = data.faculty.filter((f) => restricted ? f.id === assignedId || f.id === form.facultyId : f.status === "ACTIVE" || f.id === form.facultyId);
     const byId = new Map(pool.map((f) => [f.id, f]));
     return rankFaculty(pool, slot, concurrent, section?.level).map((r) => {
-      const name = byId.get(r.id)!.fullName;
+      const f = byId.get(r.id)!;
+      const name = `${f.foreign ? `${f.fullName} (another department, needs approval)` : f.fullName}${f.id === assignedId ? " (assigned)" : ""}`;
       return { value: r.id, label: r.notes.length ? `${name} — ${r.notes.join(", ")}` : `${name} ✓` };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- slot fields listed individually
-  }, [data.faculty, section?.level, form.facultyId, concurrent, slot.dayOfWeek, slot.startMin, slot.endMin]);
+  }, [data.faculty, section?.level, form.facultyId, concurrent, restricted, assignedId, slot.dayOfWeek, slot.startMin, slot.endMin]);
 
   const roomOptions = useMemo(() => {
     const pool = data.rooms.filter((r) => !r.archived || r.id === form.roomId);
@@ -152,13 +163,26 @@ function ClassForm({
       const room = byId.get(r.id)!;
       return {
         value: r.id,
-        label: `${room.roomName} (${room.capacity}) · ${room.location}${r.notes.length ? ` — ${r.notes.join(", ")}` : " ✓"}`,
+        label: `${room.roomName} (${room.capacity}) · ${room.location}${room.foreign ? " · another department, needs approval" : ""}${r.notes.length ? ` — ${r.notes.join(", ")}` : " ✓"}`,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- slot fields listed individually
   }, [data.rooms, form.roomId, section?.studentCount, subject?.requiredRoomType, form.component, concurrent, slot.dayOfWeek, slot.startMin, slot.endMin]);
 
   // Live conflict preview for the candidate placement.
+  // Projected teaching loads: the new teacher gains this meeting, a replaced teacher loses it.
+  const loadWarnings = useMemo(() => {
+    const unit = data.workload.measure === "HOURS" ? "hours" : "units";
+    const teaches = (facultyId: string) => entries.some((e) => e.id !== draft.id && e.facultyId === facultyId && e.sectionId === form.sectionId && e.subjectId === form.subjectId);
+    const amount = (facultyId: string) => (data.workload.measure === "HOURS" ? (form.endMin - form.startMin) / 60 : teaches(facultyId) ? 0 : (subject?.units ?? 0));
+    const loadOf = (id: string) => data.workload.loads.find((l) => l.facultyId === id);
+    const changes: [string, number][] = [];
+    if (form.facultyId && form.facultyId !== draft.facultyId) changes.push([form.facultyId, amount(form.facultyId)]);
+    if (draft.id && draft.facultyId && draft.facultyId !== form.facultyId) changes.push([draft.facultyId, -((draft.endMin - draft.startMin) / 60)]);
+    if (draft.id && form.facultyId === draft.facultyId && data.workload.measure === "HOURS") changes.push([form.facultyId, (form.endMin - form.startMin - (draft.endMin - draft.startMin)) / 60]);
+    return changes.flatMap(([id, delta]) => { const l = loadOf(id); const w = l && delta ? projectionWarning(l, delta, unit) : null; return w ? [w] : []; });
+  }, [data.workload, entries, draft, form.facultyId, form.sectionId, form.subjectId, form.startMin, form.endMin, subject?.units]);
+
   const preview: DetectedConflict[] = useMemo(() => {
     if (!form.sectionId || !form.subjectId || !form.facultyId || !form.roomId || !form.semesterId) return [];
     const candidate = { ...form, id: form.id ?? "__candidate__" };
@@ -271,6 +295,7 @@ function ClassForm({
         <Field>
           <FieldLabel htmlFor="cls-faculty">Faculty</FieldLabel>
           <NativeSelect id="cls-faculty" value={form.facultyId} onChange={(e) => set("facultyId", e.target.value)} placeholder="Select faculty" options={facultyOptions} required />
+          {assignedFaculty && <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={showAllFaculty} onChange={(e) => setShowAllFaculty(e.target.checked)} /> Show all faculty</label>}
         </Field>
         <Field>
           <FieldLabel htmlFor="cls-room">Room</FieldLabel>
@@ -293,20 +318,14 @@ function ClassForm({
 
       <div className="mt-4 space-y-2" aria-live="polite">
         {overlaps.map((c, i) => (
-          <p key={`o${i}`} className="flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-700 dark:text-red-300">
-            <WarningOctagon className="mt-0.5 size-4 shrink-0" weight="fill" /> {c.description} ({describeOther(c, form.id ?? "__candidate__", data)})
-          </p>
+          <ConflictAlert key={`o${i}`} title={c.description}>{describeOther(c, form.id ?? "__candidate__", data)}</ConflictAlert>
         ))}
-        {warnings.map((c, i) => (
-          <p key={`w${i}`} className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-sm text-amber-800 dark:text-amber-300">
-            <Warning className="mt-0.5 size-4 shrink-0" weight="fill" /> {c.description}
-          </p>
-        ))}
-        {preview.length === 0 && form.facultyId && form.roomId && (
-          <p className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400">
-            <CheckCircle className="size-4" weight="fill" /> No conflicts for this time slot.
-          </p>
+        {assignedFaculty && form.facultyId && form.facultyId !== assignedFaculty.id && (
+          <ConflictAlert severity="warning" title={`This subject is assigned to ${assignedFaculty.fullName}.`}>Change the assignment on the Subjects page if someone else should teach it.</ConflictAlert>
         )}
+        {loadWarnings.map((w) => <ConflictAlert key={w} severity="warning" title={w} />)}
+        {warnings.map((c, i) => <ConflictAlert key={`w${i}`} severity="warning" title={c.description} />)}
+        {preview.length === 0 && form.facultyId && form.roomId && <NoConflict>No conflicts for this time slot.</NoConflict>}
       </div>
 
       <DialogFooter className="mt-6 flex-wrap gap-2 sm:justify-between">
@@ -355,6 +374,7 @@ function ClassForm({
 function describeOther(c: DetectedConflict, selfId: string, data: SchedulerData) {
   const other = c.entryA.id === selfId ? c.entryB : c.entryA;
   if (!other) return "";
+  if ((other as SchedulerEntry).busy) return `a class of another department, ${DAY_LONG[other.dayOfWeek]} ${formatTime(other.startMin)}`;
   const subject = data.subjects.find((s) => s.id === other.subjectId)?.code ?? "class";
   const section = data.sections.find((s) => s.id === other.sectionId)?.name ?? "";
   return `${subject} ${section}, ${DAY_LONG[other.dayOfWeek]} ${formatTime(other.startMin)}`;

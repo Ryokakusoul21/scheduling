@@ -68,6 +68,7 @@ export const authConfig = {
         token.status = user.status;
         token.sessionVersion = user.sessionVersion;
         token.remember = user.remember;
+        token.sid = user.sessionId;
         token.loginAt = Math.floor(Date.now() / 1000);
         return token;
       }
@@ -82,6 +83,7 @@ export const authConfig = {
         session.user.id = token.id;
         session.user.role = token.role as Role;
         session.user.status = token.status as UserStatus;
+        session.user.sessionId = token.sid;
       }
       return session;
     },

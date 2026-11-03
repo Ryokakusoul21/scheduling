@@ -5,8 +5,9 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { requireScope } from "@/lib/permissions/scope";
+import { departmentWhere } from "@/lib/permissions/department";
 import { ACADEMIC_LEVELS } from "@/lib/academics/levels";
-import { notifyManagers, notifyUsers } from "@/lib/notify";
+import { notifyEach, notifyManagers } from "@/lib/notify";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -51,7 +52,7 @@ export async function saveActivityAction(input: ActivityInput, id?: string): Pro
     if (!existing || existing.type === "CLASS_SUSPENSION") return { ok: false, error: "Edit class suspensions in Schedule Adjustments." };
     if (!scope.isAdmin && (existing.type === "HOLIDAY" || existing.departmentId !== scope.departmentId)) return { ok: false, error: "You can only edit your own department's activities." };
   }
-  if (d.roomId && !(await prisma.room.findFirst({ where: { id: d.roomId, archivedAt: null }, select: { id: true } }))) return { ok: false, error: "That room is not available." };
+  if (d.roomId && !(await prisma.room.findFirst({ where: { id: d.roomId, archivedAt: null, ...departmentWhere.room(scope) }, select: { id: true } }))) return { ok: false, error: "That room is not available." };
 
   const holiday = d.type === "HOLIDAY";
   const data = {
@@ -131,15 +132,19 @@ export async function reviewActivitiesAction(input: z.input<typeof reviewSchema>
       newValue: { status: decision, note: note || null },
     })),
   });
-  for (const t of targets) {
-    if (!t.createdById || t.createdById === scope.userId) continue;
-    await notifyUsers([t.createdById], {
-      title: `Activity ${DECISION_TEXT[decision]}`,
-      message: `"${t.title}" was ${DECISION_TEXT[decision]}${note ? `: ${note}` : "."}`,
-      link: "/calendar?tab=table",
-      type: decision === "APPROVED" ? "SUCCESS" : decision === "REJECTED" ? "ERROR" : "WARNING",
-    });
-  }
+  await notifyEach(
+    targets
+      .filter((t) => t.createdById && t.createdById !== scope.userId)
+      .map((t) => ({
+        userIds: [t.createdById!],
+        msg: {
+          title: `Activity ${DECISION_TEXT[decision]}`,
+          message: `"${t.title}" was ${DECISION_TEXT[decision]}${note ? `: ${note}` : "."}`,
+          link: "/calendar?tab=table",
+          type: decision === "APPROVED" ? ("SUCCESS" as const) : decision === "REJECTED" ? ("ERROR" as const) : ("WARNING" as const),
+        },
+      }))
+  );
   revalidate();
   return { ok: true, count: targets.length };
 }

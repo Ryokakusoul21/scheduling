@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { CheckCircle, ArrowBendUpLeft, Warning, X } from "@phosphor-icons/react/ssr";
+import { CheckCircle, ArrowBendUpLeft, X } from "@phosphor-icons/react/ssr";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,6 +16,7 @@ import { formatLongDate } from "@/lib/calendar";
 import { ACTIVITY_STATUSES, ACTIVITY_STATUS_COLORS, ACTIVITY_STATUS_LABELS, type ActivityListItem } from "@/lib/activities/status";
 import { formatRange } from "@/lib/scheduler/timetable";
 import { cn } from "@/lib/utils";
+import { ConflictAlert, NoConflict } from "@/components/ux/conflict";
 import { reviewActivitiesAction } from "./actions";
 
 type Decision = "APPROVED" | "REJECTED" | "CHANGES_REQUESTED";
@@ -96,11 +97,11 @@ export function ApprovalsBoard({ items, departments }: { items: ActivityListItem
           </label>
         )}
         {chosen.length > 0 && (
-          <div className="ml-auto flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2">
             <span className="self-center text-sm text-muted-foreground">{chosen.length} selected</span>
-            <Button size="sm" disabled={pending} onClick={() => start("APPROVED", chosen)}><CheckCircle className="size-4" /> Approve</Button>
+            <Button size="sm" disabled={pending} onClick={() => start("APPROVED", chosen)}><CheckCircle className="size-4" /> Approve Selected</Button>
             <Button size="sm" variant="outline" disabled={pending} onClick={() => start("CHANGES_REQUESTED", chosen)}><ArrowBendUpLeft className="size-4" /> Request changes</Button>
-            <Button size="sm" variant="destructive" disabled={pending} onClick={() => start("REJECTED", chosen)}><X className="size-4" /> Reject</Button>
+            <Button size="sm" variant="destructive" disabled={pending} onClick={() => start("REJECTED", chosen)}><X className="size-4" /> Reject Selected</Button>
           </div>
         )}
       </div>
@@ -129,14 +130,9 @@ export function ApprovalsBoard({ items, departments }: { items: ActivityListItem
                   {a.reviewNote && (<><dt className="text-muted-foreground">Review note</dt><dd>{a.reviewNote}</dd></>)}
                 </dl>
                 {a.conflicts.length > 0 ? (
-                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
-                    <p className="mb-1 flex items-center gap-1 font-medium"><Warning className="size-3.5 text-amber-600" aria-hidden /> {a.conflicts.length} conflict(s) detected</p>
-                    <ul className="max-h-28 list-disc space-y-0.5 overflow-y-auto pl-4 text-muted-foreground">
-                      {a.conflicts.map((c, i) => <li key={i}>{c}</li>)}
-                    </ul>
-                  </div>
+                  <ConflictAlert severity="warning" title={`${a.conflicts.length} conflict${a.conflicts.length === 1 ? "" : "s"} detected`} items={a.conflicts} className="max-h-40 overflow-y-auto" />
                 ) : (
-                  <p className="text-xs text-emerald-700 dark:text-emerald-300">No conflicts with rooms, classes, or examinations.</p>
+                  <NoConflict>No conflicts with rooms, classes, or examinations.</NoConflict>
                 )}
                 {a.status !== "APPROVED" && (
                   <div className="flex flex-wrap justify-end gap-1.5 pt-1">

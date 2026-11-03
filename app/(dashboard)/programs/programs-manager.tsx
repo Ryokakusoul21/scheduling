@@ -56,7 +56,7 @@ export function ProgramsManager({ programs, departments }: { programs: ProgramRo
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Programs & Strands"
+        title="Programs and Strands"
         description="Manage College courses and Senior High strands. Drag the handle (or focus it and press Space) to reorder."
         actions={
           <>

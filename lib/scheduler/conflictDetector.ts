@@ -9,6 +9,9 @@ import {
   rangesOverlap,
 } from "./types";
 
+/** A working day for full-time and part-time faculty alike. */
+export const MAX_DAILY_MINUTES = 8 * 60;
+
 export interface ConflictContext {
   facultyById: Map<string, SchedFaculty>;
   roomById: Map<string, SchedRoom>;
@@ -84,6 +87,10 @@ export function detectConflicts(entries: SchedEntry[], ctx: ConflictContext): De
       }
     }
 
+    if (faculty?.dayOff && faculty.dayOff === a.dayOfWeek) {
+      push(out, "DAY_OFF_CONFLICT", "MEDIUM", `${faculty.fullName} is part-time and has ${a.dayOfWeek} as a day off.`, a);
+    }
+
     if (faculty && faculty.availability.length > 0) {
       const available = faculty.availability.some(
         (w) => w.dayOfWeek === a.dayOfWeek && a.startMin >= w.startMin && a.endMin <= w.endMin
@@ -105,7 +112,7 @@ export function detectConflicts(entries: SchedEntry[], ctx: ConflictContext): De
       if (!rangesOverlap(a, b)) continue;
       if (!termsConcurrent(a, b, ctx.termRanges)) continue;
 
-      if (a.facultyId === b.facultyId) {
+      if (a.facultyId && a.facultyId === b.facultyId) {
         push(out, "FACULTY_CONFLICT", "CRITICAL", "Faculty is double-booked at this time.", a, b);
       }
       if (a.roomId === b.roomId) {
@@ -114,6 +121,21 @@ export function detectConflicts(entries: SchedEntry[], ctx: ConflictContext): De
       if (a.sectionId === b.sectionId) {
         push(out, "SECTION_CONFLICT", "CRITICAL", "Section has two classes scheduled at this time.", a, b);
       }
+    }
+  }
+
+  // A working day is 8 hours, so one faculty member's classes on a day total at most that.
+  const perDay = new Map<string, { minutes: number; last: SchedEntry }>();
+  for (const e of entries) {
+    if (!e.facultyId) continue;
+    const key = `${e.facultyId}|${e.semesterId}|${e.dayOfWeek}`;
+    const cur = perDay.get(key) ?? { minutes: 0, last: e };
+    perDay.set(key, { minutes: cur.minutes + e.endMin - e.startMin, last: e });
+  }
+  for (const [key, { minutes, last }] of perDay) {
+    if (minutes > MAX_DAILY_MINUTES) {
+      const name = ctx.facultyById.get(key.split("|")[0])?.fullName ?? "Faculty";
+      push(out, "DAILY_HOURS_CONFLICT", "MEDIUM", `${name} is scheduled for ${Math.round((minutes / 60) * 10) / 10} hours on ${last.dayOfWeek}; the limit is 8 hours a day.`, last);
     }
   }
 

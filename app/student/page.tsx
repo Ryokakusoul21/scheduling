@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { prisma } from "@/lib/db/prisma";
 import { requireStudent } from "@/lib/auth/session";
 import { isoDate } from "@/lib/occupancy/engine";
@@ -8,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { EmptyState } from "@/components/ux/states";
 import { ActivitiesReportButtons, RoomAssignmentsReportButtons, TimetableReportButtons } from "@/components/ux/export-buttons";
 import { PortalHeader } from "@/components/student/portal-header";
+import { AppBreadcrumbs } from "@/components/ux/breadcrumbs";
 import { activeTermLabel } from "@/lib/academics/term-label";
 
 export const metadata = { title: "Student Portal · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
@@ -52,6 +54,7 @@ export default async function StudentPortalPage() {
       <div className="min-h-screen bg-background">
         <PortalHeader name={user.name ?? ""} />
         <main className="mx-auto max-w-5xl p-4 md:p-6">
+          <Suspense fallback={<div className="h-5" aria-hidden />}><AppBreadcrumbs role="STUDENT" /></Suspense>
           <EmptyState title="No section on file" description="Your section was removed or is not set. Ask the Administrator to assign your section." />
         </main>
       </div>
@@ -81,7 +84,6 @@ export default async function StudentPortalPage() {
     }),
     levelTerms.length === 0 ? [] : prisma.activity.findMany({
       where: {
-        status: "APPROVED",
         startDate: { lte: to },
         endDate: { gte: from },
         // Suspensions for other sections are not shown.
@@ -124,6 +126,7 @@ export default async function StudentPortalPage() {
     <div className="min-h-screen bg-background">
       <PortalHeader name={user.name ?? ""} />
       <main className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
+        <Suspense fallback={<div className="h-5" aria-hidden />}><AppBreadcrumbs role="STUDENT" /></Suspense>
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Section {section.name}</h1>
           <p className="text-sm text-muted-foreground">

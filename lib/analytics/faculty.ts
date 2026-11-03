@@ -59,11 +59,11 @@ export async function facultyAnalytics({ facultyId, userId, termId }: { facultyI
       take: 12,
     }),
     prisma.examination.findMany({
-      where: { date: { gte: new Date(`${today}T00:00:00Z`), lte: new Date(`${addDays(today, 21)}T00:00:00Z`) }, OR: [{ proctorId: facultyId }, { section: { schedules: { some: { facultyId } } } }] },
+      where: { status: "PUBLISHED", date: { gte: new Date(`${today}T00:00:00Z`), lte: new Date(`${addDays(today, 21)}T00:00:00Z`) }, OR: [{ proctorId: facultyId }, { section: { schedules: { some: { facultyId } } } }] },
       include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomName: true } } },
       orderBy: [{ date: "asc" }, { startMin: "asc" }],
     }),
-    prisma.activity.findMany({ where: { status: "APPROVED", endDate: { gte: new Date(`${today}T00:00:00Z`) }, startDate: { lte: new Date(`${addDays(today, 21)}T00:00:00Z`) } }, orderBy: { startDate: "asc" }, take: 8 }),
+    prisma.activity.findMany({ where: { status: "APPROVED", OR: [{ departmentId: null }, ...(me.departmentId ? [{ departmentId: me.departmentId }] : [])], endDate: { gte: new Date(`${today}T00:00:00Z`) }, startDate: { lte: new Date(`${addDays(today, 21)}T00:00:00Z`) } }, orderBy: { startDate: "asc" }, take: 8 }),
     loadWorkload([term.id], me.departmentId),
   ]);
 
@@ -106,7 +106,7 @@ export async function facultyAnalytics({ facultyId, userId, termId }: { facultyI
         id: a.id,
         label: `${a.schedule.subject.code} ${a.schedule.section.name}`,
         date: isoDate(a.date),
-        kind: a.kind === "MOVED" ? (a.facultyId === facultyId ? "You are covering this class" : "Moved") : a.kind === "CANCELLED" ? "Cancelled" : "Make-up class",
+        kind: a.kind === "MOVED" ? (a.facultyId === facultyId ? "You are covering this class" : "Moved") : a.kind === "CANCELLED" ? "Cancelled" : a.kind === "ONLINE" ? "Online or asynchronous" : "Make-up class",
         reason: a.reason,
       })),
     },

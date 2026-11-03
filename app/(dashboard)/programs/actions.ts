@@ -2,7 +2,9 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { canManageDepartment, OUTSIDE_DEPARTMENT, programDepartment, requireScope } from "@/lib/permissions/scope";
+import { OUTSIDE_DEPARTMENT, policyUserFromScope, programDepartment, requireScope } from "@/lib/permissions/scope";
+import { can } from "@/lib/permissions/policy";
+import { logBlocked } from "@/lib/permissions/department";
 import { prisma } from "@/lib/db/prisma";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 
@@ -17,6 +19,8 @@ const schema = z
   })
   .refine((d) => d.level !== "COLLEGE" || !!d.departmentId, { message: "Choose the department offering this course", path: ["departmentId"] });
 
+const READ_ONLY = "Programs and strands are managed by the Administrator. You can rename your department.";
+
 function revalidate(id?: string) {
   revalidatePath("/programs");
   if (id) revalidatePath(`/programs/${id}`);
@@ -28,7 +32,13 @@ export async function saveProgramAction(id: string | null, formData: FormData): 
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const data = { ...parsed.data, departmentId: scope.isAdmin ? parsed.data.departmentId || null : scope.departmentId };
-  if (!canManageDepartment(scope, data.departmentId) || (id && !canManageDepartment(scope, await programDepartment(id)))) return { ok: false, error: OUTSIDE_DEPARTMENT };
+  const who = policyUserFromScope(scope);
+  const action = id ? "edit" : "create";
+  const allowed = can(who, action, { type: "programCatalog", id, departmentId: data.departmentId }) && (!id || can(who, "edit", { type: "programCatalog", id, departmentId: await programDepartment(id) }));
+  if (!allowed) {
+    await logBlocked(scope, `${action} a program or strand`, "Program", id);
+    return { ok: false, error: READ_ONLY };
+  }
 
   try {
     if (id) {
@@ -46,7 +56,10 @@ export async function saveProgramAction(id: string | null, formData: FormData): 
 
 export async function deleteProgramAction(id: string): Promise<Result> {
   const scope = await requireScope(...STAFF_ROLES);
-  if (!canManageDepartment(scope, await programDepartment(id))) return { ok: false, error: OUTSIDE_DEPARTMENT };
+  if (!can(policyUserFromScope(scope), "archive", { type: "programCatalog", id, departmentId: await programDepartment(id) })) {
+    await logBlocked(scope, "delete a program or strand", "Program", id);
+    return { ok: false, error: READ_ONLY };
+  }
   const [sections, subjects, terms] = await Promise.all([
     prisma.section.count({ where: { programId: id } }),
     prisma.subject.count({ where: { programId: id } }),
@@ -56,5 +69,37 @@ export async function deleteProgramAction(id: string): Promise<Result> {
   if (blockers.length) return { ok: false, error: `Still used by ${blockers.join(", ")}. Move or delete those first.` };
   await prisma.program.delete({ where: { id } });
   revalidate();
+  return { ok: true };
+}
+
+const renameSchema = z.object({ name: z.string().trim().min(2, "Enter the department name").max(100, "Use 100 characters or fewer") });
+
+/** Renames a department; only the name is read from the request, whatever else it carries. */
+export async function renameDepartmentAction(departmentId: string, formData: FormData): Promise<Result> {
+  const scope = await requireScope(...STAFF_ROLES);
+  if (!can(policyUserFromScope(scope), "rename", { type: "department", id: departmentId, departmentId })) {
+    await logBlocked(scope, "rename a department outside their own", "Department", departmentId);
+    return { ok: false, error: OUTSIDE_DEPARTMENT };
+  }
+  const parsed = renameSchema.safeParse({ name: formData.get("name") });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
+
+  const [current, clash] = await Promise.all([
+    prisma.department.findUnique({ where: { id: departmentId }, select: { name: true } }),
+    prisma.department.findFirst({ where: { id: { not: departmentId }, name: { equals: parsed.data.name, mode: "insensitive" } }, select: { id: true } }),
+  ]);
+  if (!current) return { ok: false, error: "That department no longer exists." };
+  if (clash) return { ok: false, error: "Another department already uses that name." };
+  if (current.name === parsed.data.name) return { ok: true };
+
+  await prisma.department.update({ where: { id: departmentId }, data: { name: parsed.data.name } });
+  await prisma.auditLog.create({
+    data: {
+      userId: scope.userId, role: scope.role, departmentId, action: "Renamed department", entity: "Department", entityId: departmentId,
+      oldValue: { name: current.name }, newValue: { name: parsed.data.name },
+    },
+  });
+  // The name is read from the database on every page, so refreshing the layout updates the header, filters and breadcrumbs.
+  revalidatePath("/", "layout");
   return { ok: true };
 }

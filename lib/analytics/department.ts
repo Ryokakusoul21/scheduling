@@ -10,7 +10,7 @@ export async function departmentExtras(departmentId: string) {
   const target = records.length ? upcomingTerms(records)[0] : null;
   const since = new Date();
   since.setDate(since.getDate() - 14);
-  const inDept = { section: { program: { departmentId } } };
+  const inDept = { section: { departmentId } };
 
   const [forecast, awaiting, bookingBatches, reports] = await Promise.all([
     target ? loadForecast(target, departmentId) : null,

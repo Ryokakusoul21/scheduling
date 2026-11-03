@@ -63,7 +63,7 @@ export async function weeklyDoubleBooking(entry: {
   dayOfWeek: string;
   startMin: number;
   endMin: number;
-}, excludeId?: string) {
+}, excludeId?: string, viewerDepartmentId?: string | null) {
   const termIds = await concurrentTermIds(entry.semesterId);
   const clash = await prisma.schedule.findFirst({
     where: {
@@ -75,7 +75,7 @@ export async function weeklyDoubleBooking(entry: {
       endMin: { gt: entry.startMin },
       OR: [{ facultyId: entry.facultyId }, { roomId: entry.roomId }, { sectionId: entry.sectionId }],
     },
-    include: { subject: { select: { code: true } }, section: { select: { name: true } } },
+    include: { subject: { select: { code: true } }, section: { select: { name: true, departmentId: true } } },
   });
   if (!clash) return null;
   const what = [
@@ -83,5 +83,9 @@ export async function weeklyDoubleBooking(entry: {
     clash.roomId === entry.roomId && "room",
     clash.sectionId === entry.sectionId && "section",
   ].filter(Boolean).join(", ");
+  // A Head of Department learns only that another department's resource is busy, never which class holds it.
+  if (viewerDepartmentId !== undefined && clash.section.departmentId !== viewerDepartmentId) {
+    return `The ${what} is busy on ${DAY_NAMES[clash.dayOfWeek]} at this time (another department's class).`;
+  }
   return `Double booking: ${clash.subject.code} ${clash.section.name} already uses the ${what} on ${DAY_NAMES[clash.dayOfWeek]} at an overlapping time.`;
 }

@@ -1,6 +1,7 @@
 import "server-only";
 import type { RoomType } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { stageLabel } from "@/lib/academics/levels";
 import {
   addDays,
   expandSessions,
@@ -12,17 +13,23 @@ import {
   type Session,
   type WeeklyClass,
 } from "./engine";
+import type { BookingMeta, Priority } from "@/lib/bookings/plan";
 
 export interface ClassInfo {
   subjectCode: string;
   subjectName: string;
   sectionName: string;
   departmentId: string | null;
+  departmentName: string;
+  /** Year or grade level of the section, for example "First Year". */
+  stage: string;
 }
 
 export interface LoadedPlan {
   ctx: PlanContext;
   sessions: Session[];
+  /** Confirmed room bookings in the range with their priority, for override decisions. */
+  bookings: BookingMeta[];
   classInfo: Map<string, ClassInfo>;
   roomName: Map<string, string>;
   facultyName: Map<string, string>;
@@ -50,7 +57,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
       where: { semesterId: { in: terms.map((t) => t.id) }, status: { not: "ARCHIVED" } },
       include: {
         subject: { select: { code: true, name: true } },
-        section: { select: { name: true, program: { select: { departmentId: true } } } },
+        section: { select: { name: true, departmentId: true, level: true, yearLevel: true, gradeLevel: true, department: { select: { name: true } } } },
       },
     }),
     prisma.scheduleAdjustment.findMany({
@@ -93,7 +100,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
   );
 
   const classInfo = new Map<string, ClassInfo>(
-    schedules.map((s) => [s.id, { subjectCode: s.subject.code, subjectName: s.subject.name, sectionName: s.section.name, departmentId: s.section.program?.departmentId ?? null }])
+    schedules.map((s) => [s.id, { subjectCode: s.subject.code, subjectName: s.subject.name, sectionName: s.section.name, departmentId: s.section.departmentId ?? null, departmentName: s.section.department?.name ?? "", stage: stageLabel(s.section) }])
   );
   const label = (s: Pick<Session, "scheduleId">) => {
     const c = classInfo.get(s.scheduleId);
@@ -108,7 +115,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
     })),
     ...bookings.map((b) => ({
       kind: "BOOKING" as const, refId: b.id, date: isoDate(b.date), startMin: b.startMin, endMin: b.endMin, roomId: b.roomId,
-      facultyIds: [], sectionIds: [], label: `Room booking: ${b.purpose}`,
+      facultyIds: [], sectionIds: [], label: `${b.priority === "REGULAR" ? "Room booking" : `${b.priority[0]}${b.priority.slice(1).toLowerCase()} booking`}: ${b.purpose}`,
     })),
   ];
 
@@ -133,6 +140,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
   return {
     ctx,
     sessions,
+    bookings: bookings.map((b) => ({ id: b.id, roomId: b.roomId, date: isoDate(b.date), startMin: b.startMin, endMin: b.endMin, priority: b.priority as Priority, purpose: b.purpose, attendees: b.attendees, bookedById: b.bookedById })),
     classInfo,
     roomName: new Map(rooms.map((r) => [r.id, r.roomName])),
     facultyName: new Map(faculty.map((f) => [f.id, f.fullName])),

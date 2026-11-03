@@ -1,4 +1,20 @@
 import Image from "next/image";
+import { CalendarCheck, ShieldCheck, UsersThree } from "@phosphor-icons/react/ssr";
+
+const HIGHLIGHTS = [
+  { icon: CalendarCheck, label: "Automated timetabling" },
+  { icon: ShieldCheck, label: "Conflict detection" },
+  { icon: UsersThree, label: "Faculty & room allocation" },
+];
+
+/** Round school seal used in both the brand panel and the compact mobile header. */
+function Seal({ size }: { size: number }) {
+  return (
+    <div className="relative shrink-0 overflow-hidden rounded-full bg-white ring-2 ring-brand-gold/70" style={{ width: size, height: size }}>
+      <Image src="/branding/logo.jpg" alt="GRANBY COLLEGES OF SCIENCE & TECHNOLOGY Seal" fill sizes={`${size}px`} className="object-cover" />
+    </div>
+  );
+}
 
 /** Split-screen layout shared by login, registration, and password recovery pages. */
 export function AuthShell({
@@ -12,43 +28,55 @@ export function AuthShell({
 }) {
   return (
     <div className="flex min-h-screen w-full">
-      <div className="relative hidden flex-1 flex-col justify-between overflow-hidden p-12 text-primary-foreground lg:flex">
-        <Image src="/branding/school.jpg" alt="GRANBY COLLEGES OF SCIENCE & TECHNOLOGY Campus" fill priority sizes="(min-width: 1024px) 50vw, 1px" className="object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-b from-primary/95 via-primary/90 to-primary/95" />
+      <aside className="relative hidden flex-col justify-between overflow-hidden p-12 text-white lg:flex lg:w-[55%]">
+        <Image src="/branding/school.jpg" alt="GRANBY COLLEGES OF SCIENCE & TECHNOLOGY Campus" fill priority sizes="(min-width: 1024px) 55vw, 1px" className="object-cover" />
+        <div className="absolute inset-0 bg-linear-to-t from-brand-navy via-brand-navy/75 to-brand-blue/70" />
 
         <div className="relative flex items-center gap-3">
-          <div className="relative size-14 shrink-0 overflow-hidden rounded-full bg-white ring-2 ring-gold/60">
-            <Image src="/branding/logo.jpg" alt="GRANBY COLLEGES OF SCIENCE & TECHNOLOGY Seal" fill sizes="56px" className="object-cover" />
-          </div>
+          <Seal size={56} />
           <div>
-            <p className="text-sm font-semibold tracking-widest text-gold uppercase">Scheduling System</p>
-            <p className="text-xs text-primary-foreground/70">Est. 1999</p>
+            <p className="text-sm font-semibold tracking-widest text-white/90 uppercase">Scheduling System</p>
+            <p className="text-xs text-white/70">Est. 1999</p>
           </div>
         </div>
 
-        <div className="relative">
-          <h1 className="max-w-md text-4xl font-semibold leading-tight">
-            GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY
-          </h1>
-          <p className="mt-4 max-w-sm text-primary-foreground/70">Naic, Cavite, Philippines</p>
+        <div className="relative space-y-8">
+          <div>
+            <div className="mb-5 h-1 w-12 rounded-full bg-brand-gold" />
+            <h1 className="max-w-lg text-4xl font-semibold leading-tight xl:text-5xl">
+              GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY
+            </h1>
+          </div>
+          <ul className="space-y-3">
+            {HIGHLIGHTS.map(({ icon: Icon, label }) => (
+              <li key={label} className="flex items-center gap-3 text-sm text-white/90">
+                <span className="flex size-8 items-center justify-center rounded-lg bg-white/10 ring-1 ring-white/15">
+                  <Icon className="size-4 text-brand-gold" weight="bold" />
+                </span>
+                {label}
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-white/70">Naic, Cavite, Philippines · &copy; {new Date().getFullYear()}</p>
         </div>
-        <div className="relative max-w-sm text-sm text-primary-foreground/60">
-          Smart Scheduling Management System — automated timetabling, conflict
-          detection, and faculty &amp; room allocation for the whole institution.
-        </div>
-      </div>
-      <div className="flex flex-1 items-center justify-center bg-background p-8">
-        <div className="w-full max-w-sm">
-          <div className="mb-8 flex flex-col items-center text-center lg:items-start lg:text-left">
-            <div className="relative mb-4 size-14 overflow-hidden rounded-full ring-1 ring-border lg:hidden">
-              <Image src="/branding/logo.jpg" alt="GRANBY COLLEGES OF SCIENCE & TECHNOLOGY Seal" fill sizes="56px" className="object-cover" />
+      </aside>
+
+      <main className="flex flex-1 items-center justify-center bg-background px-4 py-10 sm:px-8">
+        <div className="w-full max-w-[400px]">
+          <div className="mb-8 flex items-center gap-3 lg:hidden">
+            <Seal size={44} />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold leading-snug">GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY</p>
+              <p className="text-xs text-muted-foreground">Scheduling System</p>
             </div>
-            <h2 className="text-2xl font-semibold">{title}</h2>
+          </div>
+          <div className="mb-8 space-y-1.5">
+            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h2>
             {description && <p className="text-sm text-muted-foreground">{description}</p>}
           </div>
           {children}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

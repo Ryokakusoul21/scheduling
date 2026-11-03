@@ -1,64 +1,76 @@
 "use server";
 
+import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
-import { PUBLISH_ROLES, STAFF_ROLES } from "@/lib/permissions/roles";
+import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { canManageDepartment, requireScope } from "@/lib/permissions/scope";
-import { applyMoves, queueWorkloadCheck, runWorkloadCheck, undoFix } from "@/lib/workload/auto";
+import { logBlocked } from "@/lib/permissions/department";
+import { runWorkloadCheck, undoFix } from "@/lib/workload/auto";
+import { editProposalRow, reviewProposal } from "@/lib/workload/review";
 import type { Move } from "@/lib/workload/optimizer";
 
 type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
 function revalidate() {
-  revalidatePath("/workload");
-  revalidatePath("/dashboard");
-  revalidatePath("/scheduler");
+  for (const path of ["/workload", "/dashboard", "/scheduler", "/faculty", "/subjects", "/my-subjects"]) revalidatePath(path);
 }
 
-/** Runs the continuous workload check immediately (it also runs after every schedule change). */
-export async function recheckWorkloadAction(): Promise<Result<{ applied: number; proposed: number; flags: number }>> {
+/** Runs the workload check immediately (it also runs after every change that affects a load). */
+export async function recheckWorkloadAction(): Promise<Result<{ proposed: number; flags: number }>> {
   const scope = await requireScope(...STAFF_ROLES);
   const status = await runWorkloadCheck("Manual recheck", scope.userId);
   revalidate();
-  return { ok: true, data: { applied: status.applied, proposed: status.proposed, flags: status.flags.filter((f) => f.kind !== "UNDERLOADED").length } };
+  return { ok: true, data: { proposed: status.proposed, flags: status.flags.filter((f) => f.kind !== "UNDERLOADED").length } };
 }
 
-async function reviewable(id: string) {
-  const scope = await requireScope(...PUBLISH_ROLES);
-  const proposal = await prisma.workloadProposal.findUnique({ where: { id } });
-  if (!proposal || proposal.status !== "PENDING") return { error: "This proposal was already reviewed or replaced by a newer one." } as const;
-  // Department proposals may be approved by that department's Head; school-wide ones by the Administrator.
-  if (!scope.isAdmin && (!proposal.departmentId || !canManageDepartment(scope, proposal.departmentId))) return { error: "Only the Administrator can approve this proposal." } as const;
-  return { scope, proposal } as const;
-}
+const reviewSchema = z.object({
+  proposalId: z.string().min(1),
+  version: z.number().int().min(1),
+  itemIds: z.array(z.string().min(1)).max(200).optional(),
+  reason: z.string().max(500).optional(),
+});
 
-/** Approval applies every move that is still valid; stale or conflicting ones are skipped and reported. */
-export async function approveProposalAction(id: string): Promise<Result<{ applied: number; skipped: string[] }>> {
-  const r = await reviewable(id);
-  if ("error" in r) return { ok: false, error: r.error! };
-  const { scope, proposal } = r;
-  const result = await applyMoves(proposal.items as unknown as Move[], { mode: "APPROVED", trigger: "Approved proposal", actorId: scope.userId, proposalId: id });
-  await prisma.workloadProposal.update({ where: { id }, data: { status: "APPLIED", reviewedById: scope.userId, reviewedAt: new Date() } });
-  await prisma.auditLog.create({
-    data: { userId: scope.userId, action: `Approved workload proposal: ${result.applied.length} reassignment(s) applied`, entity: "WorkloadProposal", entityId: id, newValue: result },
-  });
-  queueWorkloadCheck("Workload proposal approved", scope.userId);
+type ReviewData = { applied: number; rejected: number; awaiting: number; summary: string | null };
+
+async function review(decision: "APPROVE" | "REJECT", input: z.infer<typeof reviewSchema>): Promise<Result<ReviewData>> {
+  const scope = await requireScope(...STAFF_ROLES);
+  const parsed = reviewSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Refresh the page and try again." };
+  const result = await reviewProposal(scope, { ...parsed.data, decision });
+  if (!result.ok) {
+    if (result.error.startsWith("There is nothing")) await logBlocked(scope, `${decision === "APPROVE" ? "approve" : "reject"} a workload proposal outside the department`, "WorkloadProposal", parsed.data.proposalId);
+    return result;
+  }
   revalidate();
-  return { ok: true, data: { applied: result.applied.length, skipped: result.skipped.map((s) => s.reason) } };
+  const { applied, rejected, awaiting, summary } = result;
+  return { ok: true, data: { applied, rejected, awaiting, summary } };
 }
 
-export async function rejectProposalAction(id: string): Promise<Result> {
-  const r = await reviewable(id);
-  if ("error" in r) return { ok: false, error: r.error! };
-  await prisma.workloadProposal.update({ where: { id }, data: { status: "REJECTED", reviewedById: r.scope.userId, reviewedAt: new Date() } });
-  await prisma.auditLog.create({ data: { userId: r.scope.userId, action: "Rejected workload proposal", entity: "WorkloadProposal", entityId: id } });
+/** Approves the given rows (or every row the reviewer may approve); applied atomically after re-validation. */
+export async function approveProposalAction(input: z.infer<typeof reviewSchema>) {
+  return review("APPROVE", input);
+}
+
+/** Rejects the given rows (or the whole proposal); the reason is optional. */
+export async function rejectProposalAction(input: z.infer<typeof reviewSchema>) {
+  return review("REJECT", input);
+}
+
+/** Picks a different receiver for one row; the row is re-validated and both approvals start over. */
+export async function editProposalRowAction(input: { proposalId: string; version: number; itemId: string; toFacultyId: string }): Promise<Result<Move>> {
+  const scope = await requireScope(...STAFF_ROLES);
+  const parsed = z.object({ proposalId: z.string().min(1), version: z.number().int().min(1), itemId: z.string().min(1), toFacultyId: z.string().min(1) }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Choose a faculty member." };
+  const result = await editProposalRow(scope, parsed.data);
+  if (!result.ok) return result;
   revalidate();
-  return { ok: true, data: undefined };
+  return { ok: true, data: result.move };
 }
 
 /** Undoes one applied fix; a Head of Department may undo fixes within their department. */
 export async function undoFixAction(id: string): Promise<Result> {
-  const scope = await requireScope(...PUBLISH_ROLES);
+  const scope = await requireScope(...STAFF_ROLES);
   const fix = await prisma.workloadFix.findUnique({ where: { id } });
   if (!fix) return { ok: false, error: "This fix no longer exists." };
   if (!scope.isAdmin) {
@@ -67,7 +79,7 @@ export async function undoFixAction(id: string): Promise<Result> {
   }
   const problem = await undoFix(id, scope.userId);
   if (problem) return { ok: false, error: problem };
-  await prisma.auditLog.create({ data: { userId: scope.userId, action: `Undid workload fix: ${fix.label}`, entity: "WorkloadFix", entityId: id } });
+  await prisma.auditLog.create({ data: { userId: scope.userId, role: scope.role, departmentId: fix.departmentId, action: `Undid workload fix: ${fix.label}`, entity: "WorkloadFix", entityId: id } });
   revalidate();
   return { ok: true, data: undefined };
 }

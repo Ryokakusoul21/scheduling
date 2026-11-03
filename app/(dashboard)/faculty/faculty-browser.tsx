@@ -8,7 +8,7 @@ import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
 import { ArchiveButton } from "@/components/ux/archive-button";
@@ -18,21 +18,27 @@ import { useShortcut } from "@/components/ux/shortcuts";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { ACADEMIC_LEVELS, LEVELS, levelLabel } from "@/lib/academics/levels";
 import { cn } from "@/lib/utils";
+import { LoadBar, LoadStatusLabel } from "@/components/workload/load-bar";
 import { createFacultyAction, updateFacultyAction } from "./actions";
 
 export interface FacultyRow {
   id: string;
   employeeId: string;
   fullName: string;
+  image: string | null;
   email: string;
   position: string;
   specialization: string;
   departmentId: string;
   department: string | null;
   maxHours: number;
+  employmentType: "FULL_TIME" | "PART_TIME";
+  dayOff: string;
   status: string;
   teachingLevels: string[];
-  loadHours: number;
+  /** Workload engine row for active faculty (null for inactive ones). */
+  load: { load: number; minimum: number; maximum: number; status: "UNDERLOADED" | "BALANCED" | "OVERLOADED" } | null;
+  loadUnit: string;
   classes: number;
 }
 
@@ -41,16 +47,6 @@ const STATUS = [
   { value: "ON_LEAVE", label: "On leave" },
   { value: "INACTIVE", label: "Inactive" },
 ];
-
-function initials(name: string) {
-  return name
-    .replace(/^(Prof\.|Dr\.|Mr\.|Ms\.|Mrs\.)\s*/, "")
-    .split(" ")
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}
 
 export function FacultyBrowser({
   faculty,
@@ -67,7 +63,8 @@ export function FacultyBrowser({
   const [status, setStatus] = useState("");
   const [view, setView] = useState<"cards" | "table">("cards");
   const searchRef = useRef<HTMLInputElement>(null);
-  const dialog = useDialogState<FacultyRow>();  const { ref: gridRef, onKeyDown: onGridKeyDown, onFocus: onGridFocus } = useRovingFocus({ orientation: "grid" });
+  const dialog = useDialogState<FacultyRow>();
+  const { ref: gridRef, onKeyDown: onGridKeyDown, onFocus: onGridFocus } = useRovingFocus({ orientation: "grid" });
   const { ref: rowsRef, onKeyDown: onRowsKeyDown, onFocus: onRowsFocus } = useRovingFocus<HTMLTableSectionElement>();
 
   useShortcut({ keys: "n", description: "Add faculty member", group: "Faculty", handler: dialog.openCreate });
@@ -85,7 +82,8 @@ export function FacultyBrowser({
     );
   }, [faculty, query, level, department, status]);
 
-  const editing = dialog.state?.mode === "edit" ? dialog.state.item : null;  const filtersOn = !!(query || level || department || status);
+  const editing = dialog.state?.mode === "edit" ? dialog.state.item : null;
+  const filtersOn = !!(query || level || department || status);
 
   const fields: FormField[] = [
     { name: "employeeId", label: "Employee ID", type: "text", required: true, placeholder: "F-019" },
@@ -95,6 +93,8 @@ export function FacultyBrowser({
     { name: "position", label: "Position", type: "text", placeholder: "Instructor I" },
     { name: "specialization", label: "Specialization", type: "text", placeholder: "Mathematics" },
     { name: "maxHours", label: "Maximum teaching hours per week", type: "number", min: 1, max: 80, required: true },
+    { name: "employmentType", label: "Employment type", type: "select", required: true, options: [{ value: "FULL_TIME", label: "Full-time (8 hours a day, every day)" }, { value: "PART_TIME", label: "Part-time (8 hours a day, one day off)" }] },
+    { name: "dayOff", label: "Day off (part-time only)", type: "select", options: [{ value: "", label: "None" }, ...["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"].map((d) => ({ value: d, label: d[0] + d.slice(1).toLowerCase() }))] },
     { name: "status", label: "Status", type: "select", required: true, options: STATUS },
     {
       name: "teachingLevels",
@@ -118,23 +118,17 @@ export function FacultyBrowser({
     </div>
   );
 
-  const loadBar = (f: FacultyRow) => {
-    const pct = Math.min(Math.round((f.loadHours / Math.max(f.maxHours, 1)) * 100), 100);
-    const over = f.loadHours > f.maxHours;
-    return (
-      <div>
-        <div className="flex justify-between text-[11px] text-muted-foreground">
-          <span>Load this term</span>
-          <span className={cn(over && "font-semibold text-destructive")}>
-            {f.loadHours} of {f.maxHours} hours
-          </span>
-        </div>
-        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Teaching load ${pct}%`}>
-          <div className={cn("h-full rounded-full", over ? "bg-destructive" : pct > 85 ? "bg-amber-500" : "bg-primary")} style={{ width: `${pct}%` }} />
-        </div>
+  // Live status colors: red overloaded, amber near limit, green balanced, blue underloaded.
+  const loadBar = (f: FacultyRow) => f.load && (
+    <div>
+      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+        <span>Load this term</span>
+        <span className="tabular-nums">{f.load.load} of {f.load.maximum} {f.loadUnit}</span>
       </div>
-    );
-  };
+      <LoadBar r={f.load} className="mt-1 h-1.5" />
+      <div className="mt-1"><LoadStatusLabel status={f.load.status} r={f.load} /></div>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -149,7 +143,7 @@ export function FacultyBrowser({
       />
 
       <Card className="flex-row flex-wrap items-center gap-3 p-3">
-        <div className="relative min-w-56 flex-1">
+        <div className="relative w-full min-w-0 flex-1 sm:min-w-56">
           <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             ref={searchRef}
@@ -213,9 +207,7 @@ export function FacultyBrowser({
           {filtered.map((f) => (
             <div key={f.id} className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs transition-shadow hover:shadow-md">
               <div className="flex items-start gap-3">
-                <Avatar className="size-11">
-                  <AvatarFallback className="bg-primary/10 font-semibold text-primary">{initials(f.fullName)}</AvatarFallback>
-                </Avatar>
+                <UserAvatar name={f.fullName} image={f.image} className="size-11" />
                 <button
                   type="button"
                   data-roving=""
@@ -296,7 +288,7 @@ export function FacultyBrowser({
         onOpenChange={(o) => !o && dialog.close()}
         title={editing ? `Edit ${editing.fullName}` : "Add faculty member"}
         fields={fields}
-        values={editing ?? { maxHours: 24, status: "ACTIVE", teachingLevels: level ? [level] : ["COLLEGE"] }}
+        values={editing ?? { maxHours: 24, employmentType: "FULL_TIME", dayOff: "", status: "ACTIVE", teachingLevels: level ? [level] : ["COLLEGE"] }}
         submitLabel={editing ? "Save changes" : "Add faculty"}
         successMessage={editing ? "Faculty updated" : "Faculty added"}
         onSubmit={(fd) => (editing ? updateFacultyAction(editing.id, fd) : createFacultyAction(fd))}

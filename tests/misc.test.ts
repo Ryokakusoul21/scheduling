@@ -6,6 +6,7 @@ import { canAccessPath, rolesForPath } from "@/lib/permissions/routes";
 import { NAV_GROUPS, filterNavForRole } from "@/components/layout/nav-config";
 import { ROLES } from "@/lib/permissions/roles";
 import { eventToKey } from "@/lib/keyboard";
+import { buildBreadcrumbs } from "@/lib/navigation/breadcrumbs";
 
 const slot = { dayOfWeek: "MONDAY" as const, startMin: 480, endMin: 570 };
 
@@ -111,5 +112,24 @@ describe("keyboard shortcuts", () => {
     expect(eventToKey(ev("k", { metaKey: true }))).toBe("mod+k");
     expect(eventToKey(ev("ArrowDown", { shiftKey: true }))).toBe("shift+arrowdown");
     expect(eventToKey(ev("Escape"))).toBe("escape");
+    expect(eventToKey({})).toBe("");
+  });
+});
+
+describe("application breadcrumbs", () => {
+  it("builds deep review queue paths from a direct link", () => {
+    const items = buildBreadcrumbs("/admin/review-center", new URLSearchParams("queue=room-bookings"), "ADMINISTRATOR");
+    expect(items.map((item) => item.label)).toEqual(["Dashboard", "Administrator Review Center", "Room Booking Requests"]);
+    expect(items.at(-1)?.href).toBeUndefined();
+  });
+
+  it("uses only the authenticated department for a Head of Department", () => {
+    const items = buildBreadcrumbs("/scheduler", new URLSearchParams("department=Other Department&level=SENIOR_HIGH"), "HEAD_OF_DEPARTMENT", "College of Informatics");
+    expect(items.map((item) => item.label)).toEqual(["Dashboard", "Senior High School", "College of Informatics", "Class Schedules"]);
+    expect(items.some((item) => item.label === "Other Department")).toBe(false);
+  });
+
+  it("uses the student dashboard as the student home item", () => {
+    expect(buildBreadcrumbs("/student", new URLSearchParams(), "STUDENT")).toEqual([{ label: "Student Dashboard", home: true }]);
   });
 });

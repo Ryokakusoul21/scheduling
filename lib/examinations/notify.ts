@@ -18,7 +18,7 @@ export interface ExamDetails {
   endMin: number;
 }
 
-const TYPE_WORD: Record<ExaminationType, string> = { PRELIMINARY: "preliminary", MIDTERM: "midterm", FINAL: "final", SPECIAL: "special" };
+const TYPE_WORD: Record<ExaminationType, string> = { PRELIMINARY: "preliminary", MIDTERM: "midterm", SEMI_FINAL: "semi-finals", FINAL: "final", SPECIAL: "special" };
 
 /** Titles used for examination notifications (also how dashboards recognize them). */
 export const EXAM_TITLES = {
@@ -41,7 +41,7 @@ async function usersOf(facultyIds: string[]) {
 export async function notifyExamParticipants(exam: ExamDetails, notice: ExamNotice, opts: { actorUserId?: string; previousProctorId?: string } = {}) {
   const [subject, section, room, proctor, teaching] = await Promise.all([
     prisma.subject.findUnique({ where: { id: exam.subjectId }, select: { code: true, name: true } }),
-    prisma.section.findUnique({ where: { id: exam.sectionId }, select: { name: true, program: { select: { departmentId: true } } } }),
+    prisma.section.findUnique({ where: { id: exam.sectionId }, select: { name: true, departmentId: true } }),
     prisma.room.findUnique({ where: { id: exam.roomId }, select: { roomName: true } }),
     prisma.faculty.findUnique({ where: { id: exam.proctorId }, select: { fullName: true } }),
     prisma.schedule.findMany({
@@ -59,7 +59,7 @@ export async function notifyExamParticipants(exam: ExamDetails, notice: ExamNoti
   const send = async (userIds: string[], title: string, message: string) => {
     const fresh = userIds.filter((id) => !sent.has(id));
     fresh.forEach((id) => sent.add(id));
-    await notifyUsers(fresh, { title, message, link: "/examinations", type });
+    await notifyUsers(fresh, { title, message, link: "/scheduler?mode=examinations", type });
   };
   const before = sent.size;
 
@@ -69,7 +69,7 @@ export async function notifyExamParticipants(exam: ExamDetails, notice: ExamNoti
   }
   const instructors = teaching.map((t) => t.facultyId).filter((id) => id !== exam.proctorId);
   await send(await usersOf(instructors), EXAM_TITLES.instructor[notice], `The ${what} ${verb} ${when}. Proctor: ${proctor?.fullName ?? "to be assigned"}.`);
-  const departmentId = section?.program?.departmentId;
+  const departmentId = section?.departmentId;
   if (departmentId) {
     const heads = await prisma.user.findMany({ where: { role: "HEAD_OF_DEPARTMENT", status: "ACTIVE", archivedAt: null, faculty: { departmentId } }, select: { id: true } });
     await send(heads.map((h) => h.id), EXAM_TITLES.head[notice], `The ${what} ${verb} ${when}. Proctor: ${proctor?.fullName ?? "to be assigned"}.`);

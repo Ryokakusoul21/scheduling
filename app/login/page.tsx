@@ -27,7 +27,7 @@ export default async function LoginPage({
   const message = notice ? NOTICES[notice] : undefined;
 
   return (
-    <AuthShell title="Welcome back" description="Sign in to the GRANBY COLLEGES OF SCIENCE & TECHNOLOGY Scheduling System">
+    <AuthShell title="Welcome back" description="Sign in to manage schedules, rooms, and faculty loads.">
       {message && (
         <div role="status" className="mb-4 flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm">
           <CheckCircle className="mt-0.5 size-4 shrink-0 text-emerald-600" />

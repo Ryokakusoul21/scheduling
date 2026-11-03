@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { canManageDepartment, requireScope } from "@/lib/permissions/scope";
+import { departmentWhere } from "@/lib/permissions/department";
 import { ConstraintsManager } from "./manager";
 
 export const metadata = { title: "Scheduling Constraints · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
@@ -13,9 +14,9 @@ export default async function ConstraintsPage() {
       where: scope.isAdmin ? {} : { OR: [{ departmentId: null }, { departmentId: scope.manageDepartmentId }] },
       orderBy: [{ kind: "asc" }, { createdAt: "asc" }],
     }),
-    prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.faculty.findMany({ where: { archivedAt: null, ...(scope.isAdmin ? {} : { departmentId: scope.departmentId }) }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true } }),
-    prisma.subject.findMany({ where: { archivedAt: null }, orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),
+    prisma.department.findMany({ where: departmentWhere.department(scope), orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.faculty.findMany({ where: { archivedAt: null, ...departmentWhere.faculty(scope) }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true } }),
+    prisma.subject.findMany({ where: { archivedAt: null, ...departmentWhere.subject(scope) }, orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),
   ]);
   const departmentName = new Map(departments.map((d) => [d.id, d.name]));
 

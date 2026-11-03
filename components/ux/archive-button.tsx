@@ -11,10 +11,16 @@ import { archiveRecordAction } from "@/actions/archive";
 import { ARCHIVE_CONFIRM_TEXT, ARCHIVE_LABELS, type ArchiveKind } from "@/lib/archive/kinds";
 
 /** Archive action for any archivable record: optional reason, then a warning when classes this term still use it. */
-export function ArchiveButton({ kind, id, name, onDone }: { kind: ArchiveKind; id: string; name: string; onDone?: () => void }) {
-  const [open, setOpen] = useState(false);
+export function ArchiveButton({ kind, id, name, onDone, open: controlled, onOpenChange, hideTrigger }: {
+  kind: ArchiveKind; id: string; name: string; onDone?: () => void;
+  /** Control the dialog from outside (for example a row menu); the trigger button can then be hidden. */
+  open?: boolean; onOpenChange?: (open: boolean) => void; hideTrigger?: boolean;
+}) {
+  const [inner, setInner] = useState(false);
+  const open = controlled ?? inner;
+  const setOpen = (next: boolean) => (setInner(next), onOpenChange?.(next));
   const [reason, setReason] = useState("");
-  const [classes, setClasses] = useState<{ list: string[]; teaching: boolean } | null>(null);
+  const [classes, setClasses] = useState<{ list: string[]; teaching: boolean; learners?: number } | null>(null);
   const [pending, startTransition] = useTransition();
 
   function close() {
@@ -30,14 +36,14 @@ export function ArchiveButton({ kind, id, name, onDone }: { kind: ArchiveKind; i
         toast.success(res.message);
         close();
         onDone?.();
-      } else if ("classes" in res) setClasses({ list: res.classes, teaching: res.teaching });
+      } else if ("classes" in res) setClasses({ list: res.classes, teaching: res.teaching, learners: res.learners });
       else toast.error(res.error);
     });
   }
 
   return (
     <>
-      <ActionButton kind="archive" onClick={() => setOpen(true)} />
+      {!hideTrigger && <ActionButton kind="archive" onClick={() => setOpen(true)} />}
       <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -48,8 +54,9 @@ export function ArchiveButton({ kind, id, name, onDone }: { kind: ArchiveKind; i
           {classes ? (
             <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
               <p className="flex items-center gap-1.5 font-medium">
-                <Warning className="size-4 text-amber-600" aria-hidden /> Still used by {classes.list.length} class meeting(s) this term
+                <Warning className="size-4 text-amber-600" aria-hidden /> Review before archiving
               </p>
+              {!!classes.learners && <p>{classes.learners} enrolled learners are assigned to this section.</p>}
               <ul className="max-h-40 list-disc space-y-0.5 overflow-y-auto pl-5 text-muted-foreground">
                 {classes.list.map((c) => <li key={c}>{c}</li>)}
               </ul>

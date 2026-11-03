@@ -11,6 +11,8 @@ import { clientIp, isIpRateLimited, recordLoginAttempt } from "@/lib/auth/rate-l
 import { verifyCaptcha } from "@/lib/auth/captcha";
 import { decryptSecret } from "@/lib/auth/crypto";
 import { verifyTotp } from "@/lib/auth/totp";
+import { describeDevice } from "@/lib/auth/device";
+import { consumeRecoveryCode } from "@/lib/auth/recovery";
 
 const credentialsSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -96,7 +98,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // Password is correct from here on, so account-state errors don't leak anything.
         if (user.twoFactorEnabled && user.twoFactorSecret) {
           if (!code) throw new LoginError("two_factor_required");
-          if (!verifyTotp(decryptSecret(user.twoFactorSecret), code)) {
+          // A recovery code works in place of the authenticator code and is spent when used.
+          const valid =
+            verifyTotp(decryptSecret(user.twoFactorSecret), code) ||
+            (await consumeRecoveryCode(user.id, user.twoFactorRecoveryCodes, code));
+          if (!valid) {
             const locked = await registerFailure(user.id, user.failedLoginAttempts);
             await recordLoginAttempt(email, ip, false);
             throw new LoginError(locked ? "locked" : "two_factor_invalid");
@@ -119,6 +125,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         });
         await recordLoginAttempt(email, ip, true);
 
+        // One row per sign-in feeds the device list; rows idle past the longest session are dropped.
+        const session = await prisma.userSession.create({
+          data: { userId: user.id, version: user.sessionVersion, device: describeDevice(request.headers.get("user-agent")), ipAddress: ip },
+        });
+        await prisma.userSession
+          .deleteMany({ where: { userId: user.id, lastActiveAt: { lt: new Date(Date.now() - AUTH.rememberMeMaxAgeSeconds * 1000) } } })
+          .catch(() => {});
+
         return {
           id: user.id,
           email: user.email,
@@ -127,6 +141,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           status: user.status,
           sessionVersion: user.sessionVersion,
           remember: remember === "true",
+          sessionId: session.id,
         };
       },
     }),
@@ -158,6 +173,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       token.role = current.role;
       token.status = current.status;
+
+      // A revoked device is signed out on its next request; active ones are touched at most every 5 minutes.
+      if (token.sid) {
+        const row = await prisma.userSession.findUnique({ where: { id: token.sid }, select: { revokedAt: true, lastActiveAt: true } });
+        if (!row || row.revokedAt) return null;
+        if (Date.now() - row.lastActiveAt.getTime() > 5 * 60_000) {
+          await prisma.userSession.update({ where: { id: token.sid }, data: { lastActiveAt: new Date() } }).catch(() => {});
+        }
+      }
       return token;
     },
   },
@@ -171,6 +195,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async signOut(message) {
       const userId = "token" in message ? message.token?.id : undefined;
       if (!userId) return;
+      const sid = "token" in message ? message.token?.sid : undefined;
+      if (sid) await prisma.userSession.updateMany({ where: { id: sid, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {});
       await prisma.auditLog
         .create({ data: { userId, action: "Signed out", entity: "Auth", entityId: userId } })
         .catch(() => {});

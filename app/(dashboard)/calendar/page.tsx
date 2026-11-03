@@ -5,8 +5,9 @@ import { loadPlan } from "@/lib/occupancy/load";
 import { isoDate } from "@/lib/occupancy/engine";
 import { calendarRange, type CalendarView } from "@/lib/calendar";
 import { formatRange } from "@/lib/scheduler/timetable";
-import { levelLabel } from "@/lib/academics/levels";
+import { levelLabel, stageLabel } from "@/lib/academics/levels";
 import { listActivities, visibleActivities } from "@/lib/activities/activities";
+import { departmentWhere } from "@/lib/permissions/department";
 import { ACTIVITY_STATUS_LABELS } from "@/lib/activities/status";
 import { PageHeader } from "@/components/ux/states";
 import { ActivitiesReportButtons } from "@/components/ux/export-buttons";
@@ -34,8 +35,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
 
   const [departments, rooms, term, pendingCount] = await Promise.all([
-    prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.room.findMany({ where: { archivedAt: null }, orderBy: { roomName: "asc" }, select: { id: true, roomName: true } }),
+    prisma.department.findMany({ where: departmentWhere.department(scope), orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.room.findMany({ where: { archivedAt: null, ...departmentWhere.room(scope) }, orderBy: { roomName: "asc" }, select: { id: true, roomName: true } }),
     activeTermLabel(),
     scope.isAdmin ? prisma.activity.count({ where: { status: "PENDING" } }) : 0,
   ]);
@@ -59,6 +60,9 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           {t === "approvals" && pendingCount > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[11px] font-semibold text-white">{pendingCount}</span>}
         </Link>
       ))}
+      {(scope.isAdmin || scope.role === "HEAD_OF_DEPARTMENT") && (
+        <Link href="/calendar/proposals" className="-mb-px flex items-center border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">Semester Proposals</Link>
+      )}
     </nav>
   );
 
@@ -68,7 +72,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         ? await listActivities(visibleActivities(scope))
         : await listActivities({ type: { not: "CLASS_SUSPENSION" }, departmentId: { not: null }, endDate: { gte: new Date(`${today}T00:00:00Z`) } }, { conflicts: true });
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 pt-1">
         <PageHeader title="Calendar of Activities" description="School events, holidays, and class suspensions, with approval of department submissions." />
         {nav}
         {tab === "table" ? (
@@ -93,11 +97,16 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const [plan, exams, bookings, activities] = await Promise.all([
     loadPlan(from, to),
     prisma.examination.findMany({
-      where: { date: { gte: fromDate, lte: toDate } },
-      include: { subject: { select: { code: true, name: true } }, section: { select: { name: true, program: { select: { departmentId: true } } } }, room: { select: { roomName: true } }, proctor: { select: { fullName: true } } },
+      // Only approved examinations are visible, except to the Administrator and the owning Head of Department.
+      where: {
+        date: { gte: fromDate, lte: toDate },
+        ...(scope.isAdmin ? {} : scope.role === "HEAD_OF_DEPARTMENT" ? { OR: [{ status: "PUBLISHED" as const }, departmentWhere.examination(scope)] } : { status: "PUBLISHED" as const }),
+      },
+      include: { subject: { select: { code: true, name: true } }, section: { select: { name: true, departmentId: true, level: true, yearLevel: true, gradeLevel: true, department: { select: { name: true } } } }, room: { select: { roomName: true } }, proctor: { select: { fullName: true } } },
     }),
     prisma.roomBooking.findMany({
-      where: { status: "CONFIRMED", date: { gte: fromDate, lte: toDate } },
+      // Bookings of other departments' rooms stay hidden.
+      where: { status: "CONFIRMED", date: { gte: fromDate, lte: toDate }, room: departmentWhere.room(scope) },
       include: { room: { select: { roomName: true } }, bookedBy: { select: { name: true } } },
     }),
     // Rejected submissions never reach the calendar; pending ones show only to the Administrator and their department.
@@ -122,26 +131,30 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       startMin: s.startMin,
       endMin: s.endMin,
       detail: [
-        info?.subjectName,
-        `${plan.roomName.get(s.roomId)} · ${plan.facultyName.get(s.facultyId)}`,
         s.component === "LABORATORY" ? "Laboratory" : "Lecture",
         moved && s.original ? `${s.status === "MAKE_UP" ? "Make-up for" : "Moved from"} ${s.original.date}, ${formatRange(s.original.startMin, s.original.endMin)}` : null,
         s.reason,
       ].filter(Boolean).join("\n"),
       badge: s.status === "MOVED" ? "Moved" : s.status === "MAKE_UP" ? "Make-up" : undefined,
+      info: { code: info?.subjectCode, subject: info?.subjectName, room: plan.roomName.get(s.roomId), section: info?.sectionName, faculty: plan.facultyName.get(s.facultyId), department: info?.departmentName, stage: info?.stage },
+      resources: { roomId: s.roomId, facultyId: s.facultyId, sectionId: s.sectionId },
     });
   }
   for (const e of exams) {
-    if (!inScope([e.proctorId], e.section.program?.departmentId ?? null)) continue;
+    if (!inScope([e.proctorId], e.section.departmentId ?? null)) continue;
     events.push({
       id: `exam-${e.id}`, type: "EXAMINATION", title: `Examination: ${e.subject.code} ${e.section.name}`, date: isoDate(e.date), endDate: isoDate(e.date),
-      startMin: e.startMin, endMin: e.endMin, detail: `${e.subject.name}\n${e.room.roomName} · Proctor: ${e.proctor.fullName}`, href: "/examinations",
+      startMin: e.startMin, endMin: e.endMin, detail: "", href: "/scheduler?mode=examinations",
+      info: { code: e.subject.code, subject: e.subject.name, room: e.room.roomName, section: e.section.name, faculty: e.proctor.fullName, department: e.section.department?.name, stage: stageLabel(e.section) },
+      resources: { roomId: e.roomId, facultyId: e.proctorId, sectionId: e.sectionId },
     });
   }
   for (const b of bookings) {
     events.push({
-      id: `booking-${b.id}`, type: "BOOKING", title: `${b.room.roomName}: ${b.purpose}`, date: isoDate(b.date), endDate: isoDate(b.date),
+      id: `booking-${b.id}`, type: "BOOKING", title: `${b.priority === "URGENT" || b.priority === "CRITICAL" ? "Urgent: " : ""}${b.room.roomName}: ${b.purpose}`, date: isoDate(b.date), endDate: isoDate(b.date),
       startMin: b.startMin, endMin: b.endMin, detail: `Booked by ${b.bookedBy.name} · ${b.attendees} attendees`, href: "/bookings",
+      info: { code: b.room.roomName, subject: b.purpose, room: b.room.roomName, faculty: b.bookedBy.name },
+      resources: { roomId: b.roomId },
     });
   }
   for (const a of activities) {
@@ -153,13 +166,14 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       badge: pending ? ACTIVITY_STATUS_LABELS[a.status] : undefined,
       pending,
       activity: a,
+      info: { room: a.location || undefined, department: a.department, stage: a.level ? levelLabel(a.level) : "All levels" },
       href: a.type === "CLASS_SUSPENSION" ? "/adjustments" : undefined,
     });
   }
   const official = activities.filter((a) => a.status === "APPROVED");
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pt-1">
       <PageHeader
         title="Calendar of Activities"
         description="Classes, examinations, room bookings, school events, holidays, and class suspensions in one place."
@@ -169,6 +183,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             term={term}
             filename={`school-activities-${from}`}
             rows={official.map((a) => ({ ...a, level: a.level ? levelLabel(a.level) : "", status: ACTIVITY_STATUS_LABELS[a.status] }))}
+            official
+            department={classScope === "department" ? departments[0]?.name ?? "All Departments" : "All Departments"}
           />
         }
       />

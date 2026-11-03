@@ -45,6 +45,8 @@ export interface BatchView {
   summary: string;
   createdAt: string;
   undone: boolean;
+  /** The room booking that displaced these classes, when there is one. */
+  booking: { id: string; label: string } | null;
   items: (PlanItem & { makeUpScheduled: boolean })[];
 }
 
@@ -261,6 +263,7 @@ export function AdjustmentWorkspace(props: {
                 <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-sm">
                   <Badge variant="secondary">{b.cause}</Badge>
                   <span className="min-w-0 flex-1 truncate font-medium">{b.summary}</span>
+                  {b.booking && <a href={`/bookings?booking=${b.booking.id}`} onClick={(e) => e.stopPropagation()} className="text-xs font-medium text-brand-link">{b.booking.label}</a>}
                   <span className="text-xs text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("en-PH")} · {b.items.length} change(s)</span>
                   {b.undone && <Badge variant="outline">Undone</Badge>}
                 </summary>

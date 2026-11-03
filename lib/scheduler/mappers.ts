@@ -17,6 +17,7 @@ export function toSchedFaculty(f: FacultyWithAvailability, assignedHours = 0): S
     id: f.id,
     fullName: f.fullName,
     maxHours: f.maxHours,
+    dayOff: f.employmentType === "PART_TIME" ? f.dayOff : null,
     specialization: f.specialization,
     assignedHours,
     availability: f.availability.map((a) => ({

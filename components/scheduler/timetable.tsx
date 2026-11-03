@@ -2,8 +2,9 @@
 
 import { memo, useEffect, useMemo, useRef } from "react";
 import { useDndContext, useDraggable, useDroppable } from "@dnd-kit/core";
-import { Warning, WarningOctagon } from "@phosphor-icons/react/ssr";
+import { Lock, PushPin, Warning } from "@phosphor-icons/react/ssr";
 import { cn } from "@/lib/utils";
+import { ConflictTag } from "@/components/ux/conflict";
 import {
   DAY_LONG,
   DEFAULT_GRID,
@@ -16,6 +17,7 @@ import {
   type Severity,
 } from "@/lib/scheduler/timetable";
 import type { DayOfWeek } from "@/lib/scheduler/types";
+import type { SlotStatus } from "@/lib/scheduler/slot-check";
 import type { SchedulerEntry } from "./types";
 
 export const PALETTE = [
@@ -35,6 +37,12 @@ export interface BlockInfo {
   lines: string[]; // e.g. section, faculty, room
   colorIndex: number;
   status: string;
+  ghost?: boolean;
+  contextual?: boolean;
+  pinned?: boolean;
+  override?: string;
+  /** Part of a Resolve issues proposal being previewed. */
+  proposed?: boolean;
 }
 
 export interface DropPreview {
@@ -54,6 +62,8 @@ export function Timetable({
   editable,
   highlightId,
   preview,
+  heatmap,
+  slots,
   onOpen,
   onEmptySlot,
   grid = DEFAULT_GRID,
@@ -65,6 +75,9 @@ export function Timetable({
   editable: boolean;
   highlightId: string | null;
   preview: DropPreview | null;
+  heatmap?: Map<DayOfWeek, "valid" | "warning" | "conflict">;
+  /** While dragging: whether each slot start is valid, with reasons when not. */
+  slots?: Map<DayOfWeek, SlotStatus[]>;
   onOpen: (entry: SchedulerEntry) => void;
   onEmptySlot?: (day: DayOfWeek, startMin: number) => void;
   grid?: GridConfig;
@@ -119,7 +132,7 @@ export function Timetable({
   const firstId = useMemo(() => entries.slice().sort(sortByDayTime(days))[0]?.id, [entries, days]);
 
   return (
-    <div className="overflow-x-auto rounded-lg border bg-card" ref={containerRef}>
+    <div className="h-full overflow-auto rounded-lg border bg-card" ref={containerRef}>
       <div
         role="grid"
         aria-label="Weekly timetable"
@@ -135,7 +148,7 @@ export function Timetable({
           </div>
         ))}
 
-        <div style={{ height }} className="relative" aria-hidden>
+        <div style={{ height }} className="relative pt-3" aria-hidden>
           {hours.map((h) => (
             <div
               key={h}
@@ -157,6 +170,8 @@ export function Timetable({
             editable={editable}
             onEmptySlot={onEmptySlot}
             preview={preview?.day === day ? preview : null}
+            heat={heatmap?.get(day)}
+            slots={slots?.get(day)}
           >
             {(() => {
               const list = byDay.get(day) ?? [];
@@ -197,6 +212,8 @@ function DayColumn({
   editable,
   onEmptySlot,
   preview,
+  heat,
+  slots,
   children,
 }: {
   day: DayOfWeek;
@@ -206,9 +223,13 @@ function DayColumn({
   editable: boolean;
   onEmptySlot?: (day: DayOfWeek, startMin: number) => void;
   preview: DropPreview | null;
+  heat?: "valid" | "warning" | "conflict";
+  slots?: SlotStatus[];
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: dayDroppableId(day), disabled: !editable, data: { day } });
+  const blocked = preview && slots?.find((x) => x.startMin === preview.startMin)?.reasons;
+  const status = slots ? (blocked?.length ? "conflict" : "valid") : heat;
 
   return (
     <div
@@ -216,7 +237,13 @@ function DayColumn({
       role="gridcell"
       aria-label={DAY_LONG[day]}
       style={{ height }}
-      className={cn("relative border-l transition-colors", isOver && "bg-primary/[0.04]")}
+      className={cn(
+        "relative border-l transition-colors",
+        isOver && "bg-primary/[0.04]",
+        heat === "valid" && "bg-emerald-500/[0.06]",
+        heat === "warning" && "bg-amber-500/[0.08] [background-image:repeating-linear-gradient(135deg,transparent,transparent_8px,oklch(0.75_0.15_75/0.12)_8px,oklch(0.75_0.15_75/0.12)_10px)]",
+        heat === "conflict" && "bg-red-500/[0.08] [background-image:repeating-linear-gradient(135deg,transparent,transparent_7px,oklch(0.65_0.2_25/0.15)_7px,oklch(0.65_0.2_25/0.15)_10px)]"
+      )}
       onDoubleClick={(e) => {
         if (!editable || !onEmptySlot || e.target !== e.currentTarget) return;
         const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
@@ -235,13 +262,30 @@ function DayColumn({
           className="pointer-events-none absolute inset-x-0 border-t border-dashed border-border/40"
         />
       ))}
+      {slots?.map((x) => (
+        <div
+          key={x.startMin}
+          aria-hidden
+          title={x.reasons.length ? x.reasons.join(", ") : "Valid slot"}
+          style={{ top: minutesToY(x.startMin, grid), height: grid.rowHeight }}
+          className={cn(
+            "pointer-events-none absolute inset-x-0 border-l-4",
+            x.reasons.length
+              ? "border-l-red-600/70 bg-muted/60 [background-image:repeating-linear-gradient(135deg,transparent,transparent_6px,oklch(0.65_0.2_25/0.12)_6px,oklch(0.65_0.2_25/0.12)_8px)]"
+              : "border-l-emerald-600 bg-emerald-500/15"
+          )}
+        />
+      ))}
       {preview && (
         <div
           aria-hidden
           style={{ top: minutesToY(preview.startMin, grid), height: minutesToY(preview.endMin, grid) - minutesToY(preview.startMin, grid) }}
-          className="pointer-events-none absolute inset-x-1 z-10 rounded-md border-2 border-dashed border-primary bg-primary/10 px-1.5 py-1 text-[10px] font-semibold text-primary"
+          className={cn(
+            "pointer-events-none absolute inset-x-1 z-10 rounded-md border-2 border-dashed px-1.5 py-1 text-[10px] font-semibold",
+            status === "conflict" ? "border-red-600 bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-200" : status === "warning" ? "border-amber-600 bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200" : "border-emerald-600 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200"
+          )}
         >
-          {formatRange(preview.startMin, preview.endMin)}
+          {blocked?.length ? `Not allowed: ${blocked.join(", ")}` : status === "conflict" ? "Hard conflict" : status === "warning" ? "Soft warning" : "Available"} · {formatRange(preview.startMin, preview.endMin)}
         </div>
       )}
       {children}
@@ -274,7 +318,7 @@ const Block = memo(function Block({
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: entryDraggableId(entry.id),
-    disabled: !editable,
+    disabled: !editable || info.ghost || info.pinned || info.proposed,
     data: { kind: "entry", entry },
   });
   const { active } = useDndContext();
@@ -297,6 +341,7 @@ const Block = memo(function Block({
     `${info.title} ${info.subtitle}`,
     `${DAY_LONG[entry.dayOfWeek]} ${formatRange(entry.startMin, entry.endMin)}`,
     ...info.lines,
+    info.proposed && "Proposed change, not saved yet",
     statusLabel && `Status: ${statusLabel}`,
     conflict && `${conflict.severity === "conflict" ? "Conflict" : "Warning"}: ${conflict.messages.join(" ")}`,
   ]
@@ -317,7 +362,7 @@ const Block = memo(function Block({
       aria-label={label}
       aria-roledescription={editable ? "draggable class" : "class"}
       title={label}
-      onClick={() => onOpen(entry)}
+      onClick={() => !info.ghost && !info.proposed && onOpen(entry)}
       onKeyDown={(e) => {
         // While a keyboard drag is active, dnd-kit owns the arrow keys.
         if (!active) onKeyDown(e, entry);
@@ -329,20 +374,25 @@ const Block = memo(function Block({
         "focus-visible:z-10 focus-visible:ring-3 focus-visible:ring-ring/60",
         PALETTE[info.colorIndex % PALETTE.length],
         entry.status === "DRAFT" && "border-dashed",
-        conflict?.severity === "conflict" &&
-          "border-2 border-red-500 bg-red-50 text-red-950 ring-2 ring-red-500/30 dark:border-red-400 dark:bg-red-500/20 dark:text-red-50",
+        conflict?.severity === "conflict" && "border-2 border-red-500 bg-red-50 text-red-950 ring-2 ring-red-500/40 dark:border-red-400 dark:bg-red-500/20 dark:text-red-50 [background-image:repeating-linear-gradient(135deg,rgb(220_38_38/0.14)_0_6px,transparent_6px_12px)]",
         conflict?.severity === "warning" && "border-amber-500 ring-1 ring-amber-500/40",
-        editable && "cursor-grab active:cursor-grabbing",
+        editable && !info.ghost && !info.pinned && "cursor-grab active:cursor-grabbing",
+        info.contextual && "opacity-45 saturate-50",
+        info.ghost && "z-0 cursor-not-allowed border-slate-400 bg-slate-100/80 text-slate-700 [background-image:repeating-linear-gradient(135deg,transparent,transparent_7px,rgb(100_116_139/0.13)_7px,rgb(100_116_139/0.13)_10px)] dark:bg-slate-900/80 dark:text-slate-200",
+        info.proposed && "z-[2] border-2 border-dashed border-info ring-2 ring-info/30",
         isDragging && "opacity-40",
         highlighted && "animate-pulse ring-4 ring-red-500/60"
       )}
     >
+      {info.proposed && <span className="mb-0.5 inline-block rounded bg-info px-1 text-[10px] font-semibold text-white dark:text-background">Proposed</span>}
       <span className="flex items-center gap-1 font-semibold">
-        {conflict?.severity === "conflict" && <WarningOctagon className="size-3.5 shrink-0 text-red-600 dark:text-red-300" weight="fill" />}
-        {conflict?.severity === "warning" && <Warning className="size-3.5 shrink-0 text-amber-600" weight="fill" />}
+        {info.ghost && <Lock className="size-3.5 shrink-0" weight="fill" />}
+        {info.pinned && <PushPin className="size-3.5 shrink-0 text-primary" weight="fill" />}
         <span className="truncate">{info.title}</span>
+        {conflict && <ConflictTag severity={conflict.severity} className="ml-auto" />}
         {statusLabel && <span className="ml-auto shrink-0 rounded bg-black/10 px-1 text-[9px] font-medium uppercase dark:bg-white/15">{statusLabel}</span>}
       </span>
+      {info.override && <span title={info.override} className="mt-0.5 inline-flex items-center gap-0.5 rounded bg-amber-500/20 px-1 text-[9px] font-semibold text-amber-800 dark:text-amber-200"><Warning className="size-2.5" /> Override</span>}
       {!compact && <span className="block truncate opacity-80">{formatRange(entry.startMin, entry.endMin)}</span>}
       {info.lines.slice(0, compact ? 1 : 3).map((l, i) => (
         <span key={i} className="block truncate opacity-90">

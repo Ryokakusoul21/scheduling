@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CaretLeft, CaretRight, CircleNotch, Plus } from "@phosphor-icons/react/ssr";
+import { CaretLeft, CaretRight, Check, CircleNotch, Clock, MapPin, Plus, User, WarningCircle } from "@phosphor-icons/react/ssr";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,17 +20,22 @@ import {
   EVENT_DOTS,
   EVENT_LABELS,
   EVENT_TYPES,
-  collapseLanes,
+  VALUE_PALETTE,
+  findConflicts,
   formatLongDate,
   shiftDate,
   type CalendarView,
+  type EventResources,
+  CONFLICT_LABELS,
   type EventType,
 } from "@/lib/calendar";
 import { DEFAULT_GRID, formatRange, formatTime, timeOptions } from "@/lib/scheduler/timetable";
 import { ACADEMIC_LEVELS, levelLabel } from "@/lib/academics/levels";
 import type { ActivityListItem } from "@/lib/activities/status";
 import { cn } from "@/lib/utils";
+import { ConflictAlert } from "@/components/ux/conflict";
 import { deleteActivityAction, saveActivityAction, type ActivityInput } from "./actions";
+import { Chip, DAY_END, TimeGrid, WORK_END, isAllDay, onDate, type Conflicts } from "./time-grid";
 
 export interface CalendarEvent {
   id: string;
@@ -46,6 +51,9 @@ export interface CalendarEvent {
   /** Not yet approved; shown only to the Administrator and the submitting department. */
   pending?: boolean;
   activity?: ActivityListItem;
+  /** Display fields for cells, tooltips, grouping, and coloring. */
+  info?: { code?: string; subject?: string; room?: string; section?: string; faculty?: string; department?: string; stage?: string };
+  resources?: EventResources;
 }
 
 /** Choices for the activity form. */
@@ -70,17 +78,14 @@ export function activityForm(a: ActivityListItem): ActivityForm {
   };
 }
 
-const DAY_START = 7 * 60;
-const DAY_END = 21 * 60;
-const HOUR_PX = 48;
 const TIMES = timeOptions({ ...DEFAULT_GRID, dayEnd: DAY_END }).map((t) => ({ value: String(t.value), label: t.label }));
 const SCOPE_LABELS: Record<string, string> = { all: "All classes", department: "My department's classes", mine: "My classes only" };
 const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-const PENDING_STYLE = "border-2 border-dashed italic opacity-70";
-
-const isAllDay = (e: CalendarEvent) => e.startMin === null || e.endMin === null;
-const onDate = (e: CalendarEvent, d: string) => e.date <= d && e.endDate >= d;
+type GroupBy = "none" | "room" | "section" | "faculty";
+type ColorBy = "type" | "department" | "stage" | "room";
+const GROUP_OPTIONS = [{ value: "none", label: "Group by: None" }, { value: "room", label: "Group by: Room" }, { value: "section", label: "Group by: Section" }, { value: "faculty", label: "Group by: Faculty" }];
+const COLOR_OPTIONS = [{ value: "type", label: "Color by: Type" }, { value: "department", label: "Color by: Department" }, { value: "stage", label: "Color by: Year level" }, { value: "room", label: "Color by: Room" }];
 
 export function CalendarBoard(props: {
   view: CalendarView;
@@ -100,14 +105,48 @@ export function CalendarBoard(props: {
   const router = useRouter();
   const [hidden, setHidden] = useState<Set<EventType>>(new Set());
   const [selected, setSelected] = useState<CalendarEvent | null>(null);
-  const [group, setGroup] = useState<CalendarEvent[] | null>(null);
+  const [group, setGroup] = useState<{ events: CalendarEvent[]; label: string } | null>(null);
+  const [moreQuery, setMoreQuery] = useState("");
+  const [groupBy, setGroupBy] = useState<GroupBy>("none");
+  // The "more items" list is searchable and grouped by start time.
+  const moreGroups = useMemo(() => {
+    const q = moreQuery.trim().toLowerCase();
+    const hits = (group?.events ?? []).filter((e) => !q || [e.info?.code, e.title, e.info?.subject, e.info?.room, e.info?.section].filter(Boolean).join(" ").toLowerCase().includes(q));
+    const byStart = new Map<number, CalendarEvent[]>();
+    hits.forEach((e) => byStart.set(e.startMin!, [...(byStart.get(e.startMin!) ?? []), e]));
+    return [...byStart].sort(([a], [b]) => a - b).map(([start, list]) => [formatTime(start), list] as const);
+  }, [group, moreQuery]);
+  const [slice, setSlice] = useState("");
+  const [colorBy, setColorBy] = useState<ColorBy>("type");
+  const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState<{ id?: string; form: ActivityForm } | null>(null);
 
   const go = (next: Partial<{ view: CalendarView; date: string; scope: string }>) => {
     const p = new URLSearchParams({ view, date, scope: classScope, ...next });
     router.push(`/calendar?${p}`);
   };
-  const visible = useMemo(() => events.filter((e) => !hidden.has(e.type)), [events, hidden]);
+  // Values for the chosen grouping; events without one (holidays, school events) stay visible in every slice.
+  const sliceOptions = useMemo(() => (groupBy === "none" ? [] : [...new Set(events.map((e) => e.info?.[groupBy]).filter(Boolean) as string[])].sort()), [events, groupBy]);
+  const activeSlice = sliceOptions.includes(slice) ? slice : sliceOptions[0] ?? "";
+  const visible = useMemo(
+    () => events.filter((e) => !hidden.has(e.type) && (groupBy === "none" || !e.info?.[groupBy] || e.info[groupBy] === activeSlice)),
+    [events, hidden, groupBy, activeSlice],
+  );
+  const conflicts: Conflicts = useMemo(
+    () => findConflicts(events.filter((e) => !isAllDay(e) && e.resources).map((e) => ({ id: e.id, date: e.date, startMin: e.startMin!, endMin: e.endMin!, ...e.resources }))),
+    [events],
+  );
+  // Stable palette index per value so the legend and cells agree.
+  const valueColors = useMemo(() => {
+    if (colorBy === "type") return new Map<string, number>();
+    const values = [...new Set(visible.map((e) => e.info?.[colorBy]).filter(Boolean) as string[])].sort();
+    return new Map(values.map((v, i) => [v, i % VALUE_PALETTE.length]));
+  }, [visible, colorBy]);
+  const colorOf = (e: CalendarEvent) => {
+    const v = colorBy === "type" ? undefined : e.info?.[colorBy];
+    return v !== undefined && valueColors.has(v) ? VALUE_PALETTE[valueColors.get(v)!].cell : EVENT_COLORS[e.type];
+  };
+  const late = visible.filter((e) => !isAllDay(e) && e.endMin! > WORK_END).length;
   const toggle = (t: EventType) => setHidden((h) => { const n = new Set(h); if (n.has(t)) n.delete(t); else n.add(t); return n; });
 
   const title =
@@ -129,6 +168,15 @@ export function CalendarBoard(props: {
             {scopeOptions.length > 1 && (
               <NativeSelect aria-label="Classes shown" value={classScope} onChange={(e) => go({ scope: e.target.value })} options={scopeOptions.map((o) => ({ value: o, label: SCOPE_LABELS[o] }))} className="w-52" />
             )}
+            {view !== "month" && (
+              <>
+                <NativeSelect aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} options={GROUP_OPTIONS} className="w-44" />
+                {groupBy !== "none" && (
+                  <NativeSelect aria-label={`Choose ${groupBy}`} value={activeSlice} onChange={(e) => setSlice(e.target.value)} options={sliceOptions.map((v) => ({ value: v, label: v }))} placeholder={sliceOptions.length ? undefined : "Nothing to group"} className="w-48" />
+                )}
+              </>
+            )}
+            <NativeSelect aria-label="Color by" value={colorBy} onChange={(e) => setColorBy(e.target.value as ColorBy)} options={COLOR_OPTIONS} className="w-48" />
             <div className="flex rounded-md border p-0.5" role="tablist" aria-label="Calendar view">
               {(["month", "week", "day"] as const).map((v) => (
                 <button key={v} role="tab" aria-selected={view === v} onClick={() => go({ view: v })} className={cn("rounded px-2.5 py-1 text-xs font-medium capitalize", view === v ? "bg-primary text-primary-foreground" : "hover:bg-muted")}>
@@ -144,13 +192,28 @@ export function CalendarBoard(props: {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-1.5" aria-label="Show or hide activity types">
-          {EVENT_TYPES.map((t) => (
-            <button key={t} onClick={() => toggle(t)} aria-pressed={!hidden.has(t)} className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs", hidden.has(t) && "opacity-40")}>
-              <span className={cn("size-2 rounded-full", EVENT_DOTS[t])} /> {EVENT_LABELS[t]}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Show or hide activity types">
+          <span className="text-xs text-muted-foreground">Show:</span>
+          {EVENT_TYPES.map((t) => {
+            const on = !hidden.has(t);
+            return (
+              <button key={t} onClick={() => toggle(t)} aria-pressed={on} title={`${on ? "Hide" : "Show"} ${EVENT_LABELS[t].toLowerCase()}`} className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors", on ? "bg-card" : "border-dashed text-muted-foreground line-through opacity-60")}>
+                {on ? <Check weight="bold" className="size-3" /> : <span className="size-3" />}
+                <span className={cn("size-2.5 rounded-full", EVENT_DOTS[t], !on && "opacity-40")} /> {EVENT_LABELS[t]}
+              </button>
+            );
+          })}
+          {view !== "month" && (
+            <Button size="sm" variant="ghost" className="ml-auto" aria-pressed={expanded} onClick={() => setExpanded((x) => !x)}>
+              {expanded ? "Show 7:00 AM to 6:00 PM" : `Expand hours${late ? ` (${late} after 6:00 PM)` : ""}`}
+            </Button>
+          )}
         </div>
+        {colorBy !== "type" && valueColors.size > 0 && (
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs" aria-label="Color legend">
+            {[...valueColors].map(([v, i]) => <span key={v} className="flex items-center gap-1.5"><span className={cn("size-2.5 rounded-full", VALUE_PALETTE[i].dot)} />{v}</span>)}
+          </div>
+        )}
         {events.some((e) => e.pending) && (
           <p className="text-xs text-muted-foreground">
             <span className="mr-1 inline-block rounded border border-dashed border-amber-500 px-1.5 italic">Pending</span>
@@ -159,30 +222,61 @@ export function CalendarBoard(props: {
         )}
 
         {view === "month" ? (
-          <MonthGrid from={from} to={to} month={date.slice(0, 7)} today={today} events={visible} onDay={(d) => go({ view: "day", date: d })} onSelect={setSelected} />
+          <MonthGrid from={from} to={to} month={date.slice(0, 7)} today={today} events={visible} colorOf={colorOf} onDay={(d) => go({ view: "day", date: d })} onSelect={setSelected} />
         ) : (
-          <TimeGrid dates={view === "week" ? eachDate(from, to) : [date]} today={today} events={visible} onSelect={setSelected} onDay={(d) => go({ view: "day", date: d })} onMore={setGroup} />
+          <TimeGrid
+            dates={view === "week" ? eachDate(from, to) : [date]}
+            today={today}
+            events={visible}
+            dayEnd={expanded ? DAY_END : WORK_END}
+            colorOf={colorOf}
+            conflicts={conflicts}
+            onSelect={setSelected}
+            onDay={(d) => go({ view: "day", date: d })}
+            onMore={(list, label) => setGroup({ events: list, label })}
+          />
         )}
       </CardContent>
 
-      <Dialog open={!!group} onOpenChange={(o) => !o && setGroup(null)}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={!!group} onOpenChange={(o) => { if (!o) { setGroup(null); setMoreQuery(""); } }}>
+        <DialogContent className="flex max-h-[85vh] flex-col gap-3 sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{group?.length} items at this time</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">{group?.label} <Badge variant="secondary">{group?.events.length} items</Badge></DialogTitle>
             <DialogDescription>Choose one to see its details.</DialogDescription>
           </DialogHeader>
-          <ul className="max-h-[60vh] space-y-1.5 overflow-y-auto">
-            {group?.map((e) => (
-              <li key={e.id}>
-                <Chip e={e} onSelect={(x) => { setGroup(null); setSelected(x); }} className="py-1.5 text-xs" />
-              </li>
+          <Input value={moreQuery} onChange={(e) => setMoreQuery(e.target.value)} placeholder="Search code, subject, room, or section" aria-label="Search these items" className="h-9" />
+          <div className="-mx-4 min-h-0 flex-1 space-y-3 overflow-y-auto px-4">
+            {moreGroups.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing matches your search.</p>}
+            {moreGroups.map(([time, list]) => (
+              <section key={time} aria-label={time}>
+                <h3 className="sticky top-0 z-10 bg-popover py-1 text-xs font-semibold text-muted-foreground">{time}</h3>
+                <ul className="space-y-1">
+                  {list.map((e) => (
+                    <li key={e.id}>
+                      <button onClick={() => { setGroup(null); setMoreQuery(""); setSelected(e); }} className={cn("flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring", conflicts.has(e.id) && "border-red-500/60")}>
+                        <span className={cn("size-3 shrink-0 rounded-full border", colorOf(e))} aria-hidden />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1 text-sm font-semibold">
+                            {conflicts.has(e.id) && <WarningCircle weight="fill" className="size-4 text-red-600" aria-label="Conflict" />}
+                            {e.info?.code ?? e.title}
+                            {e.pending && <Badge variant="secondary" className="ml-1">Pending</Badge>}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">{[e.info?.subject, e.info?.room, e.info?.section].filter(Boolean).join(" · ")}</span>
+                        </span>
+                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatRange(e.startMin!, e.endMin!)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             ))}
-          </ul>
+          </div>
         </DialogContent>
       </Dialog>
 
       <EventDialog
         event={selected}
+        conflict={selected ? conflicts.get(selected.id) : undefined}
         onClose={() => setSelected(null)}
         canEdit={(e) => !!e.activity && canManageActivity(e.activity, props.isAdmin, props.ownDepartmentId)}
         onEdit={(e) => {
@@ -196,16 +290,7 @@ export function CalendarBoard(props: {
   );
 }
 
-function Chip({ e, onSelect, className }: { e: CalendarEvent; onSelect: (e: CalendarEvent) => void; className?: string }) {
-  return (
-    <button onClick={() => onSelect(e)} className={cn("block w-full truncate rounded border px-1.5 py-0.5 text-left text-[11px] leading-tight", EVENT_COLORS[e.type], e.badge && "border-dashed", e.pending && PENDING_STYLE, className)} title={e.title}>
-      {!isAllDay(e) && <span className="mr-1 font-medium">{formatTime(e.startMin!)}</span>}
-      {e.title}
-    </button>
-  );
-}
-
-function MonthGrid({ from, to, month, today, events, onDay, onSelect }: { from: string; to: string; month: string; today: string; events: CalendarEvent[]; onDay: (d: string) => void; onSelect: (e: CalendarEvent) => void }) {
+function MonthGrid({ from, to, month, today, events, colorOf, onDay, onSelect }: { from: string; to: string; month: string; today: string; events: CalendarEvent[]; colorOf: (e: CalendarEvent) => string; onDay: (d: string) => void; onSelect: (e: CalendarEvent) => void }) {
   return (
     <div className="overflow-x-auto">
       <div className="grid min-w-[720px] grid-cols-7 overflow-hidden rounded-lg border">
@@ -219,10 +304,10 @@ function MonthGrid({ from, to, month, today, events, onDay, onSelect }: { from: 
               <button onClick={() => onDay(d)} className={cn("mb-0.5 flex size-6 items-center justify-center rounded-full text-xs font-medium hover:bg-muted", d === today && "bg-primary text-primary-foreground")} aria-label={`Open ${formatLongDate(d)}`}>
                 {Number(d.slice(8))}
               </button>
-              {others.slice(0, 3).map((e) => <Chip key={e.id} e={e} onSelect={onSelect} />)}
-              {others.length > 3 && <button onClick={() => onDay(d)} className="text-[11px] text-muted-foreground hover:underline">{others.length - 3} more</button>}
+              {others.slice(0, 3).map((e) => <Chip key={e.id} e={e} color={colorOf(e)} onSelect={onSelect} />)}
+              {others.length > 3 && <button onClick={() => onDay(d)} className="text-xs text-muted-foreground hover:underline">+{others.length - 3} more</button>}
               {classes.length > 0 && (
-                <button onClick={() => onDay(d)} className={cn("block w-full truncate rounded border px-1.5 py-0.5 text-left text-[11px]", EVENT_COLORS.CLASS)}>
+                <button onClick={() => onDay(d)} className={cn("block w-full truncate rounded border px-1.5 py-0.5 text-left text-xs", EVENT_COLORS.CLASS)}>
                   {classes.length} class{classes.length === 1 ? "" : "es"}
                 </button>
               )}
@@ -234,110 +319,75 @@ function MonthGrid({ from, to, month, today, events, onDay, onSelect }: { from: 
   );
 }
 
-function TimeGrid({ dates, today, events, onSelect, onDay, onMore }: { dates: string[]; today: string; events: CalendarEvent[]; onSelect: (e: CalendarEvent) => void; onDay: (d: string) => void; onMore: (events: CalendarEvent[]) => void }) {
-  const hours = Array.from({ length: (DAY_END - DAY_START) / 60 }, (_, i) => DAY_START + i * 60);
-  const height = ((DAY_END - DAY_START) / 60) * HOUR_PX;
-  const y = (min: number) => ((Math.min(Math.max(min, DAY_START), DAY_END) - DAY_START) / 60) * HOUR_PX;
-  const single = dates.length === 1;
-  // At most this many items side by side; the rest fold into a "+N more" block.
-  const maxLanes = single ? 6 : 3;
+/** Soft header tint per activity type, taken from the same colours used on the calendar. */
+const colorOfType = (type: CalendarEvent["type"]) => EVENT_COLORS[type];
 
-  return (
-    <div className="overflow-x-auto rounded-lg border">
-      <div className={cn("grid", single ? "min-w-[360px]" : "min-w-[900px]")} style={{ gridTemplateColumns: `56px repeat(${dates.length}, minmax(0, 1fr))` }}>
-        <div className="border-b bg-muted/50" />
-        {dates.map((d) => (
-          <button key={d} onClick={() => onDay(d)} className={cn("border-b border-l bg-muted/50 px-2 py-1 text-left text-xs font-medium", d === today && "text-primary")}>
-            {formatLongDate(d, { weekday: "short", month: "short", day: "numeric" })}
-          </button>
-        ))}
-        <div className="border-b px-1 py-1 text-[10px] text-muted-foreground">All day</div>
-        {dates.map((d) => (
-          <div key={d} className="min-h-8 space-y-0.5 border-b border-l p-1">
-            {events.filter((e) => onDate(e, d) && isAllDay(e)).map((e) => <Chip key={e.id} e={e} onSelect={onSelect} />)}
-          </div>
-        ))}
-        <div className="relative" style={{ height }}>
-          {hours.map((h) => <span key={h} className="absolute right-1 -translate-y-1/2 text-[10px] text-muted-foreground" style={{ top: y(h) }}>{formatTime(h)}</span>)}
-        </div>
-        {dates.map((d) => {
-          const timed = events.filter((e) => onDate(e, d) && !isAllDay(e));
-          const { shown, overflow } = collapseLanes(timed.map((e) => ({ id: e.id, startMin: e.startMin!, endMin: e.endMin! })), maxLanes);
-          return (
-            <div key={d} className={cn("relative border-l", d === today && "bg-primary/[0.03]")} style={{ height }}>
-              {hours.map((h) => <div key={h} className="absolute inset-x-0 border-t border-dashed border-border/60" style={{ top: y(h) }} />)}
-              {timed.map((e) => {
-                const l = shown.get(e.id);
-                if (!l) return null;
-                return (
-                  <button
-                    key={e.id}
-                    onClick={() => onSelect(e)}
-                    className={cn("absolute overflow-hidden rounded border px-1 py-0.5 text-left text-[11px] leading-tight shadow-xs", EVENT_COLORS[e.type], e.badge && "border-dashed", e.pending && PENDING_STYLE)}
-                    style={{ top: y(e.startMin!), height: Math.max(y(e.endMin!) - y(e.startMin!), 18), left: `${(l.lane / l.lanes) * 100}%`, width: `${100 / l.lanes}%` }}
-                    title={`${e.title}\n${formatRange(e.startMin!, e.endMin!)}`}
-                  >
-                    <span className="block truncate font-medium">{e.title}</span>
-                    {single && <span className="block truncate opacity-80">{formatRange(e.startMin!, e.endMin!)} · {e.detail.split("\n")[1] ?? ""}</span>}
-                    {e.badge && <span className="block truncate font-semibold">{e.badge}</span>}
-                  </button>
-                );
-              })}
-              {overflow.map((o) => (
-                <button
-                  key={o.ids.join()}
-                  onClick={() => (single ? onMore(timed.filter((e) => o.ids.includes(e.id))) : onDay(d))}
-                  className="absolute flex items-start justify-center overflow-hidden rounded border border-border bg-muted px-1 py-0.5 text-[11px] font-semibold text-foreground shadow-xs hover:bg-accent"
-                  style={{ top: y(o.startMin), height: Math.max(y(o.endMin) - y(o.startMin), 18), left: `${(o.lane / o.lanes) * 100}%`, width: `${100 / o.lanes}%` }}
-                  title={single ? "Show every item at this time" : "Open this day to see every item"}
-                >
-                  +{o.ids.length} more
-                </button>
-              ))}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function EventDialog({ event, onClose, canEdit, onEdit, onDeleted }: { event: CalendarEvent | null; onClose: () => void; canEdit: (e: CalendarEvent) => boolean; onEdit: (e: CalendarEvent) => void; onDeleted: () => void }) {
+function EventDialog({ event, conflict, onClose, canEdit, onEdit, onDeleted }: { event: CalendarEvent | null; conflict?: Set<"ROOM" | "FACULTY" | "SECTION">; onClose: () => void; canEdit: (e: CalendarEvent) => boolean; onEdit: (e: CalendarEvent) => void; onDeleted: () => void }) {
   const [pending, startTransition] = useTransition();
   if (!event) return null;
   const when = event.date === event.endDate ? formatLongDate(event.date) : `${formatLongDate(event.date)} to ${formatLongDate(event.endDate)}`;
+  const info = event.info;
+  const facts = info?.code ? [
+    [event.type === "EXAMINATION" ? "Proctor" : event.type === "BOOKING" ? "Booked by" : "Faculty", info.faculty, User],
+    ["Room", info.room, MapPin],
+    ["Section", info.section, null],
+    ["Year level", info.stage, null],
+  ].filter(([, v]) => v) as [string, string, typeof User | null][] : [];
+  const canChange = canEdit(event);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><span className={cn("size-2.5 rounded-full", EVENT_DOTS[event.type])} />{event.title}</DialogTitle>
-          <DialogDescription>{when}{!isAllDay(event) && ` · ${formatRange(event.startMin!, event.endMin!)}`}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-2 text-sm">
-          <div className="flex gap-1.5"><Badge variant="secondary">{EVENT_LABELS[event.type]}</Badge>{event.badge && <Badge variant="outline">{event.badge}</Badge>}</div>
-          {event.detail && <p className="whitespace-pre-line text-muted-foreground">{event.detail}</p>}
+      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+        <div className={cn("border-b p-5 pr-12", colorOfType(event.type))}>
+          <div className="mb-2 flex flex-wrap gap-1.5"><Badge variant="secondary">{EVENT_LABELS[event.type]}</Badge>{(event.badge ?? (event.pending ? "Pending approval" : null)) && <Badge variant="outline">{event.badge ?? "Pending approval"}</Badge>}</div>
+          <DialogTitle className="text-lg leading-snug">{info?.code ? `${info.code} ${info.subject ?? event.title}` : event.title}</DialogTitle>
+          <DialogDescription className="sr-only">Details for {event.title}</DialogDescription>
         </div>
-        <DialogFooter>
-          {event.href && <Button variant="outline" nativeButton={false} render={<Link href={event.href} />}>Open {event.type === "CLASS_SUSPENSION" ? "Schedule Adjustments" : EVENT_LABELS[event.type]}</Button>}
-          {canEdit(event) && (
-            <>
-              <ActionButton
-                kind="delete"
-                size="default"
-                disabled={pending}
-                onClick={() =>
-                  startTransition(async () => {
-                    const res = await deleteActivityAction(event.activity!.id);
-                    if (!res.ok) return void toast.error(res.error);
-                    toast.success("Activity deleted.");
-                    onDeleted();
-                  })
-                }
-              />
-              <ActionButton kind="edit" size="default" onClick={() => onEdit(event)} />
-            </>
+        <div className="space-y-4 p-5 text-sm">
+          <div className="flex items-center gap-3 rounded-xl bg-muted/50 p-3">
+            <Clock className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+            <div>
+              <p className="font-medium">{when}</p>
+              <p className="text-muted-foreground">{isAllDay(event) ? "Whole day" : formatRange(event.startMin!, event.endMin!)}</p>
+            </div>
+          </div>
+          {conflict && (
+            <ConflictAlert title="Double booking detected" items={[...conflict].map((w) => CONFLICT_LABELS[w].charAt(0).toUpperCase() + CONFLICT_LABELS[w].slice(1))}>Open the Scheduler to move one of these classes.</ConflictAlert>
           )}
-        </DialogFooter>
+          {facts.length > 0 && (
+            <dl className="grid gap-2 sm:grid-cols-2">
+              {facts.map(([k, v]) => (
+                <div key={k} className="rounded-lg border p-2.5">
+                  <dt className="text-xs text-muted-foreground">{k}</dt>
+                  <dd className="font-medium">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          {event.detail && <p className="whitespace-pre-line rounded-lg border border-dashed p-2.5 text-muted-foreground">{event.detail}</p>}
+        </div>
+        {(event.href || canChange) && (
+          <DialogFooter className="m-0 rounded-none border-t bg-muted/30 p-3">
+            {event.href && <Button variant="outline" nativeButton={false} render={<Link href={event.href} />}>Open {event.type === "CLASS_SUSPENSION" ? "Schedule Adjustments" : EVENT_LABELS[event.type]}</Button>}
+            {canChange && (
+              <>
+                <ActionButton
+                  kind="delete"
+                  size="default"
+                  disabled={pending}
+                  onClick={() =>
+                    startTransition(async () => {
+                      const res = await deleteActivityAction(event.activity!.id);
+                      if (!res.ok) return void toast.error(res.error);
+                      toast.success("Activity deleted.");
+                      onDeleted();
+                    })
+                  }
+                />
+                <ActionButton kind="edit" size="default" onClick={() => onEdit(event)} />
+              </>
+            )}
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );

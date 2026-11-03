@@ -177,7 +177,7 @@ export function ActivitiesTable({
                       <TableCell>{a.location || "Not set"}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={ACTIVITY_STATUS_COLORS[a.status]}>{ACTIVITY_STATUS_LABELS[a.status]}</Badge>
-                        {a.reviewNote && <span className="mt-0.5 block max-w-56 text-xs text-muted-foreground">{a.reviewNote}</span>}
+                        {a.reviewNote && <span className="mt-0.5 block max-w-56 whitespace-normal break-words text-xs text-muted-foreground">{a.reviewNote}</span>}
                       </TableCell>
                       {canEdit && (
                         <TableCell className="text-right">

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { requireRole } from "@/lib/auth/session";
+import { requireScope } from "@/lib/permissions/scope";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -7,10 +7,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 export const metadata = { title: "Audit Logs · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function AuditLogsPage() {
-  await requireRole("ADMINISTRATOR");
+  await requireScope("ADMINISTRATOR");
 
   const logs = await prisma.auditLog.findMany({
-    include: { user: { select: { name: true, email: true } } },
+    include: { user: { select: { name: true } } },
     orderBy: { createdAt: "desc" },
     take: 300,
   });

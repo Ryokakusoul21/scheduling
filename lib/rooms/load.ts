@@ -1,6 +1,8 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { departmentWhere } from "@/lib/permissions/department";
+import type { Scope } from "@/lib/permissions/scope";
 import { photoUrl, type BuildingPurpose } from "./buildings";
 import type { Building } from "./rooms";
 
@@ -15,10 +17,14 @@ export interface LoadedBuilding extends Building {
   photo: string | null;
 }
 
-/** Buildings with floors and active rooms (archived rooms left out), without the photo bytes. */
-export async function loadBuildings(where: Prisma.BuildingWhereInput = {}): Promise<LoadedBuilding[]> {
+/**
+ * Buildings with floors and active rooms (archived rooms left out), without the photo bytes. A Head of
+ * Department gets only their department's rooms and shared rooms, and only buildings that hold one.
+ */
+export async function loadBuildings(scope: Scope, where: Prisma.BuildingWhereInput = {}): Promise<LoadedBuilding[]> {
+  const visibleRooms = { archivedAt: null, ...departmentWhere.room(scope) };
   const rows = await prisma.building.findMany({
-    where,
+    where: scope.isAdmin ? where : { ...where, floors: { some: { rooms: { some: visibleRooms } } } },
     omit: { photo: true },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     include: {
@@ -26,7 +32,7 @@ export async function loadBuildings(where: Prisma.BuildingWhereInput = {}): Prom
         orderBy: { number: "asc" },
         include: {
           rooms: {
-            where: { archivedAt: null },
+            where: visibleRooms,
             orderBy: [{ sortOrder: "asc" }, { roomNumber: "asc" }],
             include: {
               programs: { select: { id: true } },
@@ -74,10 +80,10 @@ export async function loadBuildings(where: Prisma.BuildingWhereInput = {}): Prom
 }
 
 /** Departments and programs for the room form, limited to the Head of Department's own department. */
-export async function roomFormOptions(scope: { isAdmin: boolean; departmentId: string | null }) {
+export async function roomFormOptions(scope: Scope) {
   const [departments, programs] = await Promise.all([
     prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.program.findMany({ where: { level: { in: ["COLLEGE", "SENIOR_HIGH"] } }, orderBy: [{ level: "desc" }, { sortOrder: "asc" }], select: { id: true, code: true, name: true } }),
+    prisma.program.findMany({ where: { level: { in: ["COLLEGE", "SENIOR_HIGH"] }, ...departmentWhere.program(scope) }, orderBy: [{ level: "desc" }, { sortOrder: "asc" }], select: { id: true, code: true, name: true } }),
   ]);
   return {
     departments: (scope.isAdmin ? departments : departments.filter((d) => d.id === scope.departmentId)).map((d) => ({ value: d.id, label: d.name })),

@@ -12,6 +12,7 @@ import {
   yearLabel,
   type AcademicLevel,
 } from "@/lib/academics/levels";
+import { fixedFilters, sanitizeFilters, scopedLevels } from "@/lib/scheduler/filter-scope";
 import type { SchedulerData, SchedulerEntry, SectionOption } from "./types";
 
 export const ACTIVE_TERMS = "active";
@@ -60,7 +61,8 @@ export function useSchedulerFilters(data: SchedulerData, defaults: Partial<Filte
   const [filters, setFilters] = useState<Filters>(() => {
     const read = (k: keyof Filters) => params.get(k) ?? defaults[k] ?? "";
     const level = read("level");
-    return {
+    // Stale or guessed address parameters outside the scope fall back to the default scoped view.
+    return sanitizeFilters({
       level: isAcademicLevel(level) ? level : "",
       departmentId: read("departmentId"),
       programId: read("programId"),
@@ -70,8 +72,10 @@ export function useSchedulerFilters(data: SchedulerData, defaults: Partial<Filte
       sectionId: read("sectionId"),
       facultyId: read("facultyId"),
       roomId: read("roomId"),
-    };
+    }, data, defaults);
   });
+  // Selectors with a single possible value are hidden and pre-selected.
+  const fixed = useMemo(() => fixedFilters(data), [data]);
 
   const update = useCallback((patch: Partial<Filters>) => {
     setFilters((prev) => {
@@ -81,9 +85,9 @@ export function useSchedulerFilters(data: SchedulerData, defaults: Partial<Filte
         if (patch[key] === prev[key]) continue;
         for (const dep of DEPENDENTS[key] ?? []) if (!(dep in patch)) reset[dep] = dep === "termId" ? ACTIVE_TERMS : "";
       }
-      return { ...prev, ...reset, ...patch } as Filters;
+      return { ...prev, ...reset, ...patch, ...fixed } as Filters;
     });
-  }, []);
+  }, [fixed]);
 
   // Mirror filters to the address after the change commits; updaters run during render and must stay pure.
   const first = useRef(true);
@@ -100,6 +104,8 @@ export function useSchedulerFilters(data: SchedulerData, defaults: Partial<Filte
     }
     if (url.href !== window.location.href) window.history.replaceState(null, "", url);
   }, [filters]);
+
+  const activeTermIds = useMemo(() => new Set(data.terms.filter((t) => t.isActive).map((t) => t.id)), [data.terms]);
 
   const options = useMemo(() => {
     const { level, departmentId, programId, yearLevel, gradeLevel } = filters;
@@ -118,13 +124,19 @@ export function useSchedulerFilters(data: SchedulerData, defaults: Partial<Filte
 
     const deptProgramIds = departmentId ? new Set(programs.map((p) => p.id)) : null;
     const sections = data.sections.filter(
-      (s) => sectionMatches(s, filters) && (!deptProgramIds || (!!s.programId && deptProgramIds.has(s.programId)))
+      (s) =>
+        sectionMatches(s, filters) &&
+        (filters.termId === ACTIVE_TERMS ? activeTermIds.has(s.semesterId ?? "") : s.semesterId === filters.termId) &&
+        (!deptProgramIds || (!!s.programId && deptProgramIds.has(s.programId)))
     );
 
     return {
-      levels: ACADEMIC_LEVELS.map((l) => ({ value: l, label: levelLabel(l) })),
+      levels: ACADEMIC_LEVELS.filter((l) => scopedLevels(data).includes(l)).map((l) => ({ value: l, label: levelLabel(l) })),
+      levelFixed: !!fixed.level,
+      programFixed: !!fixed.programId,
+      departmentFixed: !!fixed.departmentId,
       departments: departments.map((d) => ({ value: d.id, label: d.name })),
-      programs: programs.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` })),
+      programs: programs.map((p) => ({ value: p.id, label: p.code, title: p.name })),
       programLabel: level === "SENIOR_HIGH" ? "Strand" : "Program",
       showDepartment: level === "COLLEGE",
       showProgram: level === "COLLEGE" || level === "SENIOR_HIGH",
@@ -138,32 +150,30 @@ export function useSchedulerFilters(data: SchedulerData, defaults: Partial<Filte
       ],
       sections,
       sectionOptions: sections.map((s) => ({ value: s.id, label: s.name })),
-      faculty: data.faculty.map((f) => ({ value: f.id, label: f.fullName })),
-      rooms: data.rooms.map((r) => ({ value: r.id, label: `${r.roomName} · ${r.location}` })),
+      faculty: data.faculty.filter((f) => !f.foreign).map((f) => ({ value: f.id, label: f.fullName })),
+      rooms: data.rooms.filter((r) => !r.foreign).map((r) => ({ value: r.id, label: `${r.roomName} · ${r.capacity} seats`, title: r.location })),
       yearLevel,
       gradeLevel,
     };
-  }, [data, filters]);
+  }, [data, filters, activeTermIds, fixed]);
 
-  const activeTermIds = useMemo(() => new Set(data.terms.filter((t) => t.isActive).map((t) => t.id)), [data.terms]);
-
-  /** Entries that match every filter except the specific section (used for conflicts & section cards). */
+  /** Entries in the academic/program scope. Room and faculty are perspectives, not destructive filters. */
   const scopeEntries = useMemo(() => {
     const sectionIds = new Set(options.sections.map((s) => s.id));
     return data.entries.filter(
       (e) =>
         (filters.termId === ACTIVE_TERMS ? activeTermIds.has(e.semesterId) : e.semesterId === filters.termId) &&
-        sectionIds.has(e.sectionId) &&
-        (!filters.facultyId || e.facultyId === filters.facultyId) &&
-        (!filters.roomId || e.roomId === filters.roomId)
+        sectionIds.has(e.sectionId)
     );
     // data.entries is replaced wholesale by the workspace, so it is a safe dependency.
   }, [data.entries, options.sections, filters, activeTermIds]);
 
-  const visibleEntries = useMemo(
-    () => (filters.sectionId ? scopeEntries.filter((e) => e.sectionId === filters.sectionId) : scopeEntries),
-    [scopeEntries, filters.sectionId]
-  );
+  const visibleEntries = useMemo(() => {
+    if (filters.sectionId) return scopeEntries.filter((e) => e.sectionId === filters.sectionId);
+    if (filters.facultyId) return scopeEntries.filter((e) => e.facultyId === filters.facultyId);
+    if (filters.roomId) return scopeEntries.filter((e) => e.roomId === filters.roomId);
+    return scopeEntries;
+  }, [scopeEntries, filters.sectionId, filters.facultyId, filters.roomId]);
 
   /** Focused timetable subject: a single section, faculty member, or room. */
   const focus = filters.sectionId

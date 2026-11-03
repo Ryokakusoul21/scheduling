@@ -18,7 +18,7 @@ export default async function ForecastPage({ searchParams }: { searchParams: Pro
 
   const targets = upcomingTerms(records);
   const target = targets.find((t) => t.value === params.target) ?? targets[0];
-  const departmentId = scope.isAdmin ? params.department || null : scope.departmentId;
+  const departmentId = scope.isAdmin ? params.department || null : scope.manageDepartmentId;
   const data = await loadForecast(target, departmentId);
 
   // Optional narrative on request; only aggregated figures are sent.

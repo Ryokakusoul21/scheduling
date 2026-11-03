@@ -9,6 +9,7 @@ import { AUTH } from "@/lib/auth/config";
 import { appUrl, sendMail } from "@/lib/email/mailer";
 import { accountApprovedEmail } from "@/lib/email/templates";
 import { passwordSchema } from "@/lib/validation/auth";
+import { deleteAvatarFiles } from "@/lib/avatar/storage";
 
 const ADMIN = ["ADMINISTRATOR"] as const;
 
@@ -108,6 +109,20 @@ export async function approveUserAction(id: string) {
     data: { userId: id, type: "SUCCESS", title: "Welcome!", message: "Your account has been approved." },
   });
   await sendMail(accountApprovedEmail(user.email, user.name, appUrl("/login")));
+  revalidatePath("/admin/users");
+  return { ok: true };
+}
+
+/** Moderation: removes another user's profile photo. */
+export async function removeUserAvatarAction(id: string) {
+  const admin = await requireRole(...ADMIN);
+  const user = await prisma.user.findUnique({ where: { id }, select: { image: true } });
+  if (!user?.image) return { ok: false, error: "This user has no profile photo." };
+  await prisma.user.update({ where: { id }, data: { image: null } });
+  await deleteAvatarFiles(user.image);
+  await prisma.auditLog.create({
+    data: { userId: admin.id, action: "Removed user profile photo", entity: "User", entityId: id, role: admin.role },
+  });
   revalidatePath("/admin/users");
   return { ok: true };
 }

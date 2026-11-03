@@ -9,11 +9,21 @@ export const metadata = { title: "User Management · GRANBY COLLEGES OF SCIENCE 
 
 export default async function UsersPage() {
   await requireRole("ADMINISTRATOR");
-  const [users, faculty, archivedCount] = await Promise.all([
-    prisma.user.findMany({ where: NOT_ARCHIVED, orderBy: { createdAt: "desc" } }),
+  const [users, faculty, archivedCount, programs] = await Promise.all([
+    prisma.user.findMany({
+      where: NOT_ARCHIVED,
+      orderBy: { createdAt: "desc" },
+      include: {
+        faculty: { select: { departmentId: true } },
+        departmentAssignments: { select: { departmentId: true } },
+        programAssignments: { include: { program: { select: { code: true, name: true } } }, orderBy: { startDate: "asc" } },
+      },
+    }),
     prisma.faculty.findMany({ where: NOT_ARCHIVED, select: { id: true, fullName: true, employeeId: true }, orderBy: { fullName: "asc" } }),
     countArchived(),
+    prisma.program.findMany({ select: { id: true, code: true, name: true, departmentId: true }, orderBy: [{ level: "asc" }, { sortOrder: "asc" }] }),
   ]);
+  const day = (d: Date) => d.toISOString().slice(0, 10);
 
   return (
     <div className="space-y-4">
@@ -32,7 +42,15 @@ export default async function UsersPage() {
           role: u.role,
           status: u.status,
           facultyId: u.facultyId,
+          image: u.image,
           createdAt: u.createdAt.toLocaleDateString(),
+          // Only programs of the head's own department can be assigned.
+          programOptions: programs
+            .filter((p) => [u.faculty?.departmentId, ...u.departmentAssignments.map((a) => a.departmentId)].includes(p.departmentId))
+            .map((p) => ({ id: p.id, label: `${p.name} (${p.code})` })),
+          assignments: u.programAssignments.map((a) => ({
+            id: a.id, programId: a.programId, label: `${a.program.name} (${a.program.code})`, isActing: a.isActing, startDate: day(a.startDate), endDate: a.endDate ? day(a.endDate) : null,
+          })),
         }))}
       />
     </div>

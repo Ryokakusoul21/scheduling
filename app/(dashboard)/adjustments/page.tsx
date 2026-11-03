@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { requireScope } from "@/lib/permissions/scope";
-import { isoDate } from "@/lib/occupancy/engine";
+import { isoDate, ONLINE_ROOM } from "@/lib/occupancy/engine";
 import type { PlanItem } from "@/lib/occupancy/adjust";
 import { PageHeader } from "@/components/ux/states";
 import { AdjustmentWorkspace, type BatchView, type ReportView } from "./adjustment-workspace";
@@ -26,7 +26,7 @@ export default async function AdjustmentsPage({ searchParams }: { searchParams: 
     prisma.faculty.findMany({ where: { status: "ACTIVE", archivedAt: null, ...dept }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true } }),
     prisma.room.findMany({ where: { ...dept, archivedAt: null }, orderBy: { roomName: "asc" }, select: { id: true, roomName: true } }),
     prisma.section.findMany({
-      where: { archivedAt: null, ...(scope.isAdmin ? {} : { program: { departmentId: scope.manageDepartmentId } }) },
+      where: { archivedAt: null, ...(scope.isAdmin ? {} : { departmentId: scope.manageDepartmentId }) },
       orderBy: [{ level: "asc" }, { sortOrder: "asc" }],
       select: { id: true, name: true, level: true },
     }),
@@ -38,9 +38,10 @@ export default async function AdjustmentsPage({ searchParams }: { searchParams: 
     prisma.adjustmentBatch.findMany({
       where: {
         createdAt: { gte: since },
-        ...(scope.isAdmin ? {} : { OR: [{ createdById: scope.userId }, { adjustments: { some: { schedule: { section: { program: { departmentId: scope.manageDepartmentId } } } } } }] }),
+        ...(scope.isAdmin ? {} : { OR: [{ createdById: scope.userId }, { adjustments: { some: { schedule: { section: { departmentId: scope.manageDepartmentId } } } } }] }),
       },
       include: {
+        booking: { select: { id: true, priority: true } },
         adjustments: {
           include: {
             schedule: {
@@ -65,10 +66,10 @@ export default async function AdjustmentsPage({ searchParams }: { searchParams: 
     const items: (PlanItem & { makeUpScheduled: boolean })[] = b.adjustments.map((a) => {
       const s = a.schedule;
       const before = { date: isoDate(a.date), roomId: s.roomId, roomName: s.room.roomName, facultyId: s.facultyId, facultyName: s.faculty.fullName, startMin: s.startMin, endMin: s.endMin };
-      const roomId = a.roomId ?? s.roomId;
+      const roomId = a.kind === "ONLINE" ? "" : (a.roomId ?? s.roomId);
       const facultyId = a.facultyId ?? s.facultyId;
       const after = a.kind === "CANCELLED" ? null : {
-        date: a.newDate ? isoDate(a.newDate) : before.date, roomId, roomName: roomNames.get(roomId) ?? "Room",
+        date: a.newDate ? isoDate(a.newDate) : before.date, roomId, roomName: a.kind === "ONLINE" ? ONLINE_ROOM : (roomNames.get(roomId) ?? "Room"),
         facultyId, facultyName: facultyNames.get(facultyId) ?? "Faculty", startMin: a.startMin ?? s.startMin, endMin: a.endMin ?? s.endMin,
       };
       return {
@@ -77,12 +78,13 @@ export default async function AdjustmentsPage({ searchParams }: { searchParams: 
         departmentId: null,
         before,
         after,
-        kind: a.kind === "CANCELLED" ? "CANCELLED" : "MOVED",
+        kind: a.kind === "CANCELLED" ? "CANCELLED" : a.kind === "ONLINE" ? "ONLINE" : "MOVED",
         reason: a.reason,
         makeUpScheduled: a.kind === "CANCELLED" && makeUps.some((m) => m.scheduleId === a.scheduleId && isoDate(m.date) === isoDate(a.date)),
       };
     });
-    return { id: b.id, cause: CAUSE_LABELS[b.cause], summary: b.summary, createdAt: b.createdAt.toISOString(), undone: !!b.undoneAt, items };
+    const booking = b.booking ? { id: b.booking.id, label: b.booking.priority === "REGULAR" || b.booking.priority === "HIGH" ? "View booking" : "View urgent booking" } : null;
+    return { id: b.id, cause: CAUSE_LABELS[b.cause], summary: b.summary, createdAt: b.createdAt.toISOString(), undone: !!b.undoneAt, booking, items };
   });
 
   const reportViews: ReportView[] = reports.map((r) => ({

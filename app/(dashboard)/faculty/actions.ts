@@ -25,13 +25,16 @@ const schema = z.object({
   specialization: z.string().optional(),
   maxHours: z.coerce.number().int().min(1).max(80),
   status: z.enum(["ACTIVE", "INACTIVE", "ON_LEAVE"]),
+  employmentType: z.enum(["FULL_TIME", "PART_TIME"]),
+  dayOff: z.enum(["", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"]).optional(),
   teachingLevels: z.array(z.enum(ACADEMIC_LEVELS)).min(1, "Choose at least one teaching level"),
 });
 
 function clean(d: z.infer<typeof schema>, scope: Scope) {
   // A Head of Department adds and edits faculty of their own department only.
   const departmentId = scope.isAdmin ? d.departmentId || null : scope.departmentId;
-  return { ...d, departmentId, position: d.position || null, specialization: d.specialization || null };
+  // Only part-time faculty have a day off.
+  return { ...d, departmentId, position: d.position || null, specialization: d.specialization || null, dayOff: d.employmentType === "PART_TIME" ? d.dayOff || null : null };
 }
 
 async function ownsFaculty(scope: Scope, id: string) {

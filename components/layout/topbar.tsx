@@ -9,7 +9,7 @@ import { useShortcuts } from "@/components/ux/shortcuts";
 import { GlobalSearch } from "./global-search";
 
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,118 +19,90 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { filterNavForRole } from "./nav-config";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { NavGroups } from "./sidebar";
 import type { AppRole } from "@/lib/permissions/roles";
 import Link from "next/link";
 import { roleLabel } from "@/lib/permissions/roles";
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}
-
 export function Topbar({
   name,
   email,
+  image,
   role,
   unreadNotifications = 0,
 }: {
   name: string;
   email: string;
+  image?: string | null;
   role: AppRole;
   unreadNotifications?: number;
 }) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
-  const groups = filterNavForRole(role);
+  const themeLabel = `Theme: ${theme === "dark" ? "Dark" : theme === "light" ? "Light" : "System"}`;
   const { openHelp } = useShortcuts();
 
   return (
+    <TooltipProvider>
     <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-black/10 bg-card px-4 py-2 md:flex-nowrap md:px-6">
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3 md:hidden">
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger render={<Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation" />}>
             <Menu className="size-5" />
           </SheetTrigger>
           <SheetContent side="left" className="w-72 bg-sidebar p-0 text-sidebar-foreground">
-            <nav className="space-y-4 overflow-y-auto p-4">
-              {groups.map((group, i) => (
-                <div key={i}>
-                  {group.label && (
-                    <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/45">
-                      {group.label}
-                    </p>
-                  )}
-                  <ul className="space-y-0.5">
-                    {group.items.map((item) => (
-                      <li key={item.href}>
-                        <Link
-                          href={item.href}
-                          onClick={() => setOpen(false)}
-                          className="flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium hover:bg-sidebar-accent"
-                        >
-                          <item.icon className="size-4" />
-                          {item.label}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </nav>
+            <div className="sidebar-scroll h-full overflow-y-auto p-4">
+              <NavGroups role={role} onNavigate={() => setOpen(false)} />
+            </div>
           </SheetContent>
         </Sheet>
-
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold tracking-tight sm:text-base">GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY</p>
-          <p className="hidden truncate text-xs text-muted-foreground sm:block">Class Scheduling and Room Booking System</p>
-        </div>
       </div>
 
-      <div className="order-3 w-full md:order-none md:max-w-sm md:flex-1">
+      <div className="order-3 w-full md:order-none md:max-w-md md:flex-1">
         <GlobalSearch />
       </div>
 
-      <div className="flex items-center gap-1.5">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="hidden sm:inline-flex"
-          aria-label="Keyboard shortcuts (?)"
-          title="Keyboard shortcuts (?)"
-          onClick={openHelp}
-        >
-          <Keyboard className="size-5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative"
-          nativeButton={false}
-          aria-label={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : "Notifications"}
-          render={<Link href="/notifications" />}
-        >
-          <Bell className="size-5" />
-          {unreadNotifications > 0 && (
-            <span className="absolute right-1.5 top-1.5 flex size-2 rounded-full bg-destructive" />
-          )}
-        </Button>
+      <div className="ml-auto flex items-center gap-1.5">
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button variant="ghost" size="icon" className="hidden size-9 sm:inline-flex" aria-label="Keyboard shortcuts" aria-keyshortcuts="?" onClick={openHelp} />}
+          >
+            <Keyboard className="size-5" />
+          </TooltipTrigger>
+          <TooltipContent>Keyboard shortcuts (?)</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative size-9"
+                nativeButton={false}
+                aria-label={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : "Notifications"}
+                render={<Link href="/notifications" />}
+              />
+            }
+          >
+            <Bell className="size-5" />
+            {unreadNotifications > 0 && (
+              <span aria-hidden className="absolute -top-0.5 -right-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-danger px-1 text-[11px] leading-none font-semibold text-white ring-2 ring-card">
+                {unreadNotifications > 99 ? "99+" : unreadNotifications}
+              </span>
+            )}
+          </TooltipTrigger>
+          <TooltipContent>Notifications</TooltipContent>
+        </Tooltip>
 
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon" />}>
-            {theme === "dark" ? (
-              <Moon className="size-5" />
-            ) : theme === "light" ? (
-              <Sun className="size-5" />
-            ) : (
-              <Laptop className="size-5" />
-            )}
-          </DropdownMenuTrigger>
+          <Tooltip>
+            <TooltipTrigger render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-9" aria-label={themeLabel} />} />}>
+              {theme === "dark" ? <Moon className="size-5" /> : theme === "light" ? <Sun className="size-5" /> : <Laptop className="size-5" />}
+            </TooltipTrigger>
+            <TooltipContent>{themeLabel}</TooltipContent>
+          </Tooltip>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => setTheme("light")}>
               <Sun className="size-4" /> Light
@@ -146,16 +118,12 @@ export function Topbar({
 
         <DropdownMenu>
           <DropdownMenuTrigger
-            render={<button className="ml-1 flex items-center gap-2.5 rounded-full pr-1 outline-none hover:bg-accent" />}
+            render={<button aria-label="Account menu" className="ml-1 flex items-center gap-2.5 rounded-full pr-1 outline-none hover:bg-accent" />}
           >
-            <Avatar className="size-9">
-              <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
-                {initials(name)}
-              </AvatarFallback>
-            </Avatar>
+            <UserAvatar name={name} image={image} small className="size-9" />
             <div className="hidden text-left leading-tight lg:block">
               <p className="text-sm font-medium">{name.split(" ")[0]}</p>
-              <p className="text-[11px] text-muted-foreground">{roleLabel(role)}</p>
+              <p className="text-xs text-muted-foreground">{roleLabel(role)}</p>
             </div>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
@@ -178,5 +146,6 @@ export function Topbar({
         </DropdownMenu>
       </div>
     </header>
+    </TooltipProvider>
   );
 }

@@ -10,7 +10,7 @@ export const metadata = { title: "Buildings and Rooms · GRANBY COLLEGES OF SCIE
 export default async function RoomsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const scope = await requireScope(...STAFF_ROLES);
   const { q } = await searchParams;
-  const [buildings, { programs }, termLabel] = await Promise.all([loadBuildings(), roomFormOptions(scope), activeTermLabel()]);
+  const [buildings, { programs }, termLabel] = await Promise.all([loadBuildings(scope), roomFormOptions(scope), activeTermLabel()]);
 
   return (
     <BuildingsOverview

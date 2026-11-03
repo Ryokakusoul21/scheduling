@@ -47,6 +47,7 @@ export function RoomsExplorer({
   allFloors,
   initialQuery,
   isAdmin,
+  ownDepartmentId = null,
   termLabel,
   departments,
   programs,
@@ -56,6 +57,8 @@ export function RoomsExplorer({
   allFloors: Option[];
   initialQuery: string;
   isAdmin: boolean;
+  /** A Head of Department edits only rooms their department owns; shared rooms are the Administrator's. */
+  ownDepartmentId?: string | null;
   termLabel: string;
   departments: Option[];
   programs: Option[];
@@ -221,6 +224,8 @@ export function RoomsExplorer({
               onEditFloor={() => setEditor({ kind: "floor", buildingId: building.id, item: f })}
               onDeleteFloor={() => setDeleting({ id: f.id, label: `${building.name} ${f.name}` })}
               onEditRoom={(r) => setEditor({ kind: "room", floorId: f.id, item: r })}
+              isAdmin={isAdmin}
+              canEditRoom={(r) => isAdmin || (!!ownDepartmentId && r.departmentId === ownDepartmentId)}
             />
           ))}
         </div>
@@ -259,6 +264,8 @@ function FloorPanel({
   onEditFloor,
   onDeleteFloor,
   onEditRoom,
+  isAdmin,
+  canEditRoom,
   programs,
 }: {
   floor: Floor;
@@ -270,6 +277,9 @@ function FloorPanel({
   onEditFloor: () => void;
   onDeleteFloor: () => void;
   onEditRoom: (r: Room) => void;
+  isAdmin: boolean;
+  /** Shared rooms and other departments' rooms are read-only for a Head of Department. */
+  canEditRoom: (r: Room) => boolean;
 }) {
   const { ref, onKeyDown, onFocus } = useRovingFocus<HTMLTableSectionElement>();
   return (
@@ -288,14 +298,16 @@ function FloorPanel({
           <Badge variant="secondary">{floor.rooms.length} rooms</Badge>
         </button>
         <ActionButton kind="add" onClick={onAddRoom}>Add room</ActionButton>
-        <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
-          <ActionButton kind="edit" onClick={onEditFloor}>
-            Rename
-          </ActionButton>
-          <ActionButton kind="delete" onClick={onDeleteFloor}>
-            Delete
-          </ActionButton>
-        </div>
+        {isAdmin && (
+          <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
+            <ActionButton kind="edit" onClick={onEditFloor}>
+              Rename
+            </ActionButton>
+            <ActionButton kind="delete" onClick={onDeleteFloor}>
+              Delete
+            </ActionButton>
+          </div>
+        )}
       </div>
 
       {expanded && (
@@ -322,7 +334,7 @@ function FloorPanel({
               </TableHeader>
               <SortableList
                 items={floor.rooms}
-                disabled={searching}
+                disabled={searching || !isAdmin}
                 getLabel={(r) => r.roomName}
                 onReorder={(ids) => reorderAction("room", ids)}
                 renderItem={(r, { setNodeRef, style, isDragging, handleProps }) => (
@@ -331,11 +343,11 @@ function FloorPanel({
                     style={style}
                     data-roving=""
                     tabIndex={-1}
-                    onClick={(e) => !(e.target as HTMLElement).closest("button,a") && onEditRoom(r)}
-                    aria-label={`${r.roomName}, ${r.capacity} seats, ${r.status.replace(/_/g, " ").toLowerCase()}. Press Enter to edit.`}
-                    className={cn("cursor-pointer", isDragging && "bg-card shadow-lg")}
+                    onClick={(e) => canEditRoom(r) && !(e.target as HTMLElement).closest("button,a") && onEditRoom(r)}
+                    aria-label={`${r.roomName}, ${r.capacity} seats, ${r.status.replace(/_/g, " ").toLowerCase()}.${canEditRoom(r) ? " Press Enter to edit." : ""}`}
+                    className={cn(canEditRoom(r) && "cursor-pointer", isDragging && "bg-card shadow-lg")}
                   >
-                    <TableCell>{!searching && <DragHandle {...handleProps} />}</TableCell>
+                    <TableCell>{!searching && isAdmin && <DragHandle {...handleProps} />}</TableCell>
                     <TableCell>
                       <span className="flex items-center gap-2">
                         <Door className="size-4 text-muted-foreground" />
@@ -368,13 +380,15 @@ function FloorPanel({
                     </TableCell>
                     <TableCell>
                       <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
-                        <ActionButton kind="edit" onClick={() => onEditRoom(r)}>
-                          Edit
-                        </ActionButton>
+                        {canEditRoom(r) && (
+                          <ActionButton kind="edit" onClick={() => onEditRoom(r)}>
+                            Edit
+                          </ActionButton>
+                        )}
                         <ActionButton kind="view" nativeButton={false} render={<Link href={`/scheduler?roomId=${r.id}`} />}>
                           Timetable
                         </ActionButton>
-                        <ArchiveButton kind="ROOM" id={r.id} name={r.roomName} />
+                        {canEditRoom(r) && <ArchiveButton kind="ROOM" id={r.id} name={r.roomName} />}
                       </div>
                     </TableCell>
                   </TableRow>

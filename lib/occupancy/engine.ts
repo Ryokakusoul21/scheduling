@@ -7,6 +7,9 @@
 import { rangesOverlap, type DayOfWeek, type RoomType } from "@/lib/scheduler/types";
 import { formatRange } from "@/lib/scheduler/timetable";
 
+/** Room name shown for a class held online or asynchronously. */
+export const ONLINE_ROOM = "Online or asynchronous";
+
 const JS_DAYS: DayOfWeek[] = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 
 export function dayOfWeek(date: string): DayOfWeek {
@@ -53,7 +56,7 @@ export interface DatedAdjustment {
   scheduleId: string;
   /** Regular meeting date being replaced. */
   date: string;
-  kind: "MOVED" | "CANCELLED" | "MAKE_UP";
+  kind: "MOVED" | "CANCELLED" | "MAKE_UP" | "ONLINE";
   /** New date when a session moves to another day (moves and make-up sessions). */
   newDate?: string | null;
   roomId?: string | null;
@@ -69,6 +72,7 @@ export interface Session {
   sectionId: string;
   subjectId: string;
   facultyId: string;
+  /** Empty for a session held online or asynchronously. */
   roomId: string;
   component: "LECTURE" | "LABORATORY";
   startMin: number;
@@ -83,7 +87,8 @@ const key = (scheduleId: string, date: string) => `${scheduleId}|${date}`;
 
 /**
  * Expands weekly classes into dated sessions between `from` and `to` (inclusive).
- * Holidays cancel every class that day; cancelled adjustments drop a session; moved ones replace it.
+ * Holidays cancel every class that day; cancelled adjustments drop a session; moved ones replace it; online
+ * ones keep the faculty member and section busy but free the room.
  */
 export function expandSessions(
   classes: WeeklyClass[],
@@ -104,7 +109,7 @@ export function expandSessions(
     sectionId: c.sectionId,
     subjectId: c.subjectId,
     facultyId: a.facultyId ?? c.facultyId,
-    roomId: a.roomId ?? c.roomId,
+    roomId: a.kind === "ONLINE" ? "" : (a.roomId ?? c.roomId),
     component: c.component,
     startMin: a.startMin ?? c.startMin,
     endMin: a.endMin ?? c.endMin,
@@ -156,7 +161,7 @@ export interface Occupant {
 }
 
 export function sessionOccupant(s: Session, label: string): Occupant {
-  return { kind: "CLASS", refId: s.scheduleId, date: s.date, startMin: s.startMin, endMin: s.endMin, roomId: s.roomId, facultyIds: [s.facultyId], sectionIds: [s.sectionId], label };
+  return { kind: "CLASS", refId: s.scheduleId, date: s.date, startMin: s.startMin, endMin: s.endMin, roomId: s.roomId || null, facultyIds: [s.facultyId], sectionIds: [s.sectionId], label };
 }
 
 export interface Probe {

@@ -10,7 +10,7 @@ export default async function WorkloadPage() {
   const scope = await getScope();
   const staff = scope.role !== "FACULTY";
   const view = await workloadView(scope, { history: 50 });
-  const range = `${view.limits.minimum} to ${view.limits.maximum} ${view.limits.measure === "HOURS" ? "weekly hours" : "units"}`;
+  const range = `${view.limits.minimum} to ${view.limits.maximum} ${view.limits.measure === "HOURS" ? "weekly hours" : "units"}${view.limits.partTimeMinimum !== view.limits.minimum || view.limits.partTimeMaximum !== view.limits.maximum ? ` (part-time ${view.limits.partTimeMinimum} to ${view.limits.partTimeMaximum})` : ""}`;
 
   return (
     <div className="space-y-4">
@@ -18,7 +18,7 @@ export default async function WorkloadPage() {
         title={staff ? "Faculty Workload" : "My Teaching Load"}
         description={
           staff
-            ? `Teaching loads in the active terms against the allowed ${range}. Every schedule change rechecks all loads and ${view.limits.mode === "AUTOMATIC" ? "applies fixes right away" : "proposes fixes for approval"}.`
+            ? `Teaching loads in the active terms against the allowed ${range}. Every schedule change rechecks all loads and proposes fixes that apply only after Head of Department approval.`
             : `Your teaching load in the active terms against the allowed ${range}. You are notified whenever it changes.`
         }
         actions={<LiveRefresh />}
@@ -26,7 +26,10 @@ export default async function WorkloadPage() {
       <WorkloadBoard
         staff={staff}
         measure={view.limits.measure}
-        mode={view.limits.mode}
+        tolerance={view.limits.tolerance}
+        summary={view.summary}
+        history={view.history}
+        preview={view.preview}
         status={view.status ? { checkedAt: view.status.checkedAt, trigger: view.status.trigger } : null}
         flags={view.flags}
         rows={view.rows}

@@ -165,7 +165,7 @@ export function TermsManager({
         open={!!dialog.state}
         onOpenChange={(o) => !o && dialog.close()}
         title={target?.term ? `Edit ${termLabel(target.term.type)}` : isCollege ? "Add semester" : "Add quarter"}
-        description={`A.Y. ${year.name} · ${LEVELS[level].label}${target?.programId ? ` · ${programs.find((p) => p.id === target.programId)?.code}` : ""}`}
+        description={`Academic Year ${year.name} · ${LEVELS[level].label}${target?.programId ? ` · ${programs.find((p) => p.id === target.programId)?.code}` : ""}`}
         fields={fields}
         values={{
           academicYearId: year.id,

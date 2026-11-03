@@ -38,12 +38,13 @@ export function AvailabilityForm({ reports, linked }: { reports: ReportRow[]; li
   const [pending, startTransition] = useTransition();
   const today = new Date().toLocaleDateString("en-CA");
   const [form, setForm] = useState({ start: today, end: today, startMin: "", endMin: "", reason: "" });
+  const [partial, setPartial] = useState(false);
   const [impact, setImpact] = useState<{ items: ImpactItem[]; hours: number; loadNote: string } | null>(null);
   const edit = (patch: Partial<typeof form>) => {
     setForm((f) => ({ ...f, ...patch }));
     setImpact(null);
   };
-  const input = () => ({ start: form.start, end: form.end, reason: form.reason || "Preview", startMin: form.startMin ? Number(form.startMin) : null, endMin: form.endMin ? Number(form.endMin) : null });
+  const input = () => ({ start: form.start, end: form.end, reason: form.reason || "Preview", startMin: partial && form.startMin ? Number(form.startMin) : null, endMin: partial && form.endMin ? Number(form.endMin) : null });
 
   function preview() {
     startTransition(async () => {
@@ -76,7 +77,12 @@ export function AvailabilityForm({ reports, linked }: { reports: ReportRow[]; li
       <Card className="h-fit">
         <CardHeader><CardTitle className="text-base">New report</CardTitle></CardHeader>
         <CardContent>
-          <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
+          <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+            <div role="radiogroup" aria-label="Duration" className="flex rounded-lg border bg-muted/40 p-1 sm:col-span-2">
+              {([[false, "Whole day"], [true, "Specific hours"]] as const).map(([on, label]) => (
+                <button key={label} type="button" role="radio" aria-checked={partial === on} onClick={() => { setPartial(on); setImpact(null); }} className="flex-1 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring aria-checked:bg-card aria-checked:text-foreground aria-checked:shadow-sm">{label}</button>
+              ))}
+            </div>
             <Field>
               <FieldLabel htmlFor="u-start">From date</FieldLabel>
               <Input id="u-start" type="date" min={today} value={form.start} onChange={(e) => edit({ start: e.target.value, end: e.target.value > form.end ? e.target.value : form.end })} />
@@ -85,19 +91,23 @@ export function AvailabilityForm({ reports, linked }: { reports: ReportRow[]; li
               <FieldLabel htmlFor="u-end">To date</FieldLabel>
               <Input id="u-end" type="date" min={form.start} value={form.end} onChange={(e) => edit({ end: e.target.value })} />
             </Field>
-            <Field>
-              <FieldLabel htmlFor="u-from">From time</FieldLabel>
-              <NativeSelect id="u-from" value={form.startMin} onChange={(e) => edit({ startMin: e.target.value })} options={TIMES} placeholder="Whole day" />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="u-to">To time</FieldLabel>
-              <NativeSelect id="u-to" value={form.endMin} onChange={(e) => edit({ endMin: e.target.value })} options={TIMES} placeholder="Whole day" />
-            </Field>
+            {partial && (
+              <>
+                <Field>
+                  <FieldLabel htmlFor="u-from">From time</FieldLabel>
+                  <NativeSelect id="u-from" value={form.startMin} onChange={(e) => edit({ startMin: e.target.value })} options={TIMES} placeholder="Start of day" />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="u-to">To time</FieldLabel>
+                  <NativeSelect id="u-to" value={form.endMin} onChange={(e) => edit({ endMin: e.target.value })} options={TIMES} placeholder="End of day" />
+                </Field>
+              </>
+            )}
             <Field className="sm:col-span-2">
               <FieldLabel htmlFor="u-reason">Reason</FieldLabel>
               <Input id="u-reason" value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} placeholder="Seminar, medical appointment, official travel" required minLength={3} />
             </Field>
-            <Button type="button" variant="outline" disabled={pending} onClick={preview}>
+            <Button type="button" variant="outline" className="sm:col-span-1" disabled={pending} onClick={preview}>
               <Eye className="size-4" /> See how this affects me
             </Button>
             <Button type="submit" disabled={pending}>
@@ -131,7 +141,7 @@ export function AvailabilityForm({ reports, linked }: { reports: ReportRow[]; li
         <CardContent className="space-y-2">
           {reports.length === 0 && <p className="text-sm text-muted-foreground">You have not reported any unavailability.</p>}
           {reports.map((r) => (
-            <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm">
+            <div key={r.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border border-l-4 p-3 text-sm ${r.status === "APPLIED" ? "border-l-emerald-500" : r.status === "PENDING" ? "border-l-amber-500" : "border-l-muted-foreground/40"}`}>
               <div className="min-w-0">
                 <p className="font-medium">
                   {r.start === r.end ? r.start : `${r.start} to ${r.end}`}

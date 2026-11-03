@@ -142,6 +142,26 @@ export interface SubjectNeed {
   scheduledMin: number;
 }
 
+export interface HourProgress {
+  requiredMin: number;
+  scheduledMin: number;
+  remainingMin: number;
+  complete: boolean;
+  overPlotted: boolean;
+}
+
+/** Pure split-session accounting used by the queue, saves, and submission validation. */
+export function scheduledHours(requiredMin: number, sessions: { startMin: number; endMin: number }[]): HourProgress {
+  const scheduledMin = sessions.reduce((sum, session) => sum + Math.max(0, session.endMin - session.startMin), 0);
+  return {
+    requiredMin,
+    scheduledMin,
+    remainingMin: Math.max(0, requiredMin - scheduledMin),
+    complete: scheduledMin === requiredMin,
+    overPlotted: scheduledMin > requiredMin,
+  };
+}
+
 /**
  * Weekly minutes still to be placed per subject/component for a section,
  * given the subject's lecture/lab hours and the classes already scheduled.
@@ -149,7 +169,8 @@ export interface SubjectNeed {
 export function remainingNeeds(
   section: { id: string },
   subjects: { id: string; lectureHours: number; labHours: number }[],
-  entries: { sectionId: string; subjectId: string; component: string; startMin: number; endMin: number }[]
+  entries: { sectionId: string; subjectId: string; component: string; startMin: number; endMin: number }[],
+  approved?: { subjectId: string; component: "LECTURE" | "LABORATORY" }[]
 ): SubjectNeed[] {
   const out: SubjectNeed[] = [];
   for (const subject of subjects) {
@@ -158,12 +179,12 @@ export function remainingNeeds(
       ["LABORATORY", subject.labHours],
     ] as const) {
       if (hours <= 0) continue;
-      const scheduledMin = entries
-        .filter((e) => e.sectionId === section.id && e.subjectId === subject.id && e.component === component)
-        .reduce((sum, e) => sum + (e.endMin - e.startMin), 0);
+      if (approved && !approved.some((item) => item.subjectId === subject.id && item.component === component)) continue;
+      const sessions = entries.filter((e) => e.sectionId === section.id && e.subjectId === subject.id && e.component === component);
       const requiredMin = Math.round(hours * 60);
-      if (scheduledMin < requiredMin) {
-        out.push({ subjectId: subject.id, sectionId: section.id, component, requiredMin, scheduledMin });
+      const progress = scheduledHours(requiredMin, sessions);
+      if (!progress.complete && !progress.overPlotted) {
+        out.push({ subjectId: subject.id, sectionId: section.id, component, requiredMin, scheduledMin: progress.scheduledMin });
       }
     }
   }

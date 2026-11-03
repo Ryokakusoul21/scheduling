@@ -110,3 +110,50 @@ export function collapseLanes(items: TimedItem[], maxLanes: number) {
   flush();
   return { shown, overflow };
 }
+
+/** Who and where an event occupies; used for grouping, coloring, and conflict checks. */
+export interface EventResources {
+  roomId?: string;
+  facultyId?: string;
+  sectionId?: string;
+}
+
+export interface ConflictItem extends EventResources {
+  id: string;
+  date: string;
+  startMin: number;
+  endMin: number;
+}
+
+/** Ids of timed items that share a room, faculty member, or section with another item at an overlapping time on the same date. */
+export function findConflicts(items: ConflictItem[]) {
+  const result = new Map<string, Set<"ROOM" | "FACULTY" | "SECTION">>();
+  const mark = (id: string, why: "ROOM" | "FACULTY" | "SECTION") => (result.get(id) ?? result.set(id, new Set()).get(id)!).add(why);
+  const sorted = [...items].sort((a, b) => a.date.localeCompare(b.date) || a.startMin - b.startMin);
+  // Sweep: compare each item only with earlier items on the same date that are still running.
+  let active: ConflictItem[] = [];
+  for (const b of sorted) {
+    active = active.filter((a) => a.date === b.date && a.endMin > b.startMin);
+    for (const a of active) {
+      for (const [key, why] of [["roomId", "ROOM"], ["facultyId", "FACULTY"], ["sectionId", "SECTION"]] as const) {
+        if (a[key] && a[key] === b[key]) { mark(a.id, why); mark(b.id, why); }
+      }
+    }
+    active.push(b);
+  }
+  return result;
+}
+
+export const CONFLICT_LABELS = { ROOM: "same room", FACULTY: "same faculty member", SECTION: "same section" } as const;
+
+/** Palette for "Color by" values other than type; each entry pairs a cell style with a legend dot. */
+export const VALUE_PALETTE = [
+  { cell: "border-sky-500/50 bg-sky-500/10 text-sky-900 dark:text-sky-200", dot: "bg-sky-500" },
+  { cell: "border-fuchsia-500/50 bg-fuchsia-500/10 text-fuchsia-900 dark:text-fuchsia-200", dot: "bg-fuchsia-500" },
+  { cell: "border-lime-600/50 bg-lime-500/15 text-lime-900 dark:text-lime-200", dot: "bg-lime-600" },
+  { cell: "border-orange-500/50 bg-orange-500/10 text-orange-900 dark:text-orange-200", dot: "bg-orange-500" },
+  { cell: "border-teal-500/50 bg-teal-500/10 text-teal-900 dark:text-teal-200", dot: "bg-teal-500" },
+  { cell: "border-indigo-500/50 bg-indigo-500/10 text-indigo-900 dark:text-indigo-200", dot: "bg-indigo-500" },
+  { cell: "border-pink-500/50 bg-pink-500/10 text-pink-900 dark:text-pink-200", dot: "bg-pink-500" },
+  { cell: "border-yellow-500/50 bg-yellow-500/15 text-yellow-900 dark:text-yellow-200", dot: "bg-yellow-500" },
+] as const;

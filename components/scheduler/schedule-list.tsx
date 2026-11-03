@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { WarningOctagon, Warning, CaretUp, CaretDown } from "@phosphor-icons/react/ssr";
+import { useEffect, useMemo, useState } from "react";
+import { CaretUp, CaretDown } from "@phosphor-icons/react/ssr";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { DAY_LONG, WEEK_DAYS, formatRange, type Severity } from "@/lib/scheduler/timetable";
 import { cn } from "@/lib/utils";
+import { ConflictTag } from "@/components/ux/conflict";
 import { EmptyState } from "@/components/ux/states";
 import type { SchedulerEntry } from "./types";
 
@@ -25,15 +26,25 @@ export function ScheduleList({
   entries,
   info,
   conflictIndex,
+  highlightId,
   onOpen,
 }: {
   entries: SchedulerEntry[];
   info: (e: SchedulerEntry) => RowInfo;
   conflictIndex: Map<string, { severity: Severity; messages: string[] }>;
+  highlightId?: string | null;
   onOpen: (e: SchedulerEntry) => void;
 }) {
   const { ref: rovingRef, onKeyDown: onRovingKeyDown, onFocus: onRovingFocus } = useRovingFocus<HTMLTableSectionElement>();
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "day", dir: 1 });
+
+  // Bring a row picked from the warnings panel into view and focus it.
+  useEffect(() => {
+    if (!highlightId) return;
+    const row = document.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(highlightId)}"]`);
+    row?.scrollIntoView({ block: "center", behavior: "smooth" });
+    row?.focus({ preventScroll: true });
+  }, [highlightId]);
 
   const rows = useMemo(() => {
     const value = (e: SchedulerEntry): string | number => {
@@ -104,14 +115,14 @@ export function ScheduleList({
                 aria-label={`${i.subject} ${i.section}, ${DAY_LONG[e.dayOfWeek]} ${formatRange(e.startMin, e.endMin)}${c ? `, ${c.severity}` : ""}. Press Enter to edit.`}
                 className={cn(
                   "cursor-pointer",
-                  c?.severity === "conflict" && "bg-red-500/[0.07] hover:bg-red-500/10",
-                  c?.severity === "warning" && "bg-amber-500/[0.06]"
+                  c?.severity === "conflict" && "border-l-4 border-l-red-600 bg-red-500/[0.07] hover:bg-red-500/10",
+                  c?.severity === "warning" && "border-l-4 border-l-amber-500 bg-amber-500/[0.06]",
+                  highlightId === e.id && "ring-2 ring-inset ring-primary"
                 )}
               >
                 <TableCell className="whitespace-nowrap">
                   <span className="flex items-center gap-1.5">
-                    {c?.severity === "conflict" && <WarningOctagon className="size-4 text-red-600" weight="fill" aria-hidden />}
-                    {c?.severity === "warning" && <Warning className="size-4 text-amber-600" weight="fill" aria-hidden />}
+                    {c && <ConflictTag severity={c.severity} />}
                     <span className="font-medium">{DAY_LONG[e.dayOfWeek]}</span> {formatRange(e.startMin, e.endMin)}
                   </span>
                 </TableCell>

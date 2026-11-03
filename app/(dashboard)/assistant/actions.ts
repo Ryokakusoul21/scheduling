@@ -41,6 +41,10 @@ export async function sendAssistantMessageAction(
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid message" };
   const message = parsed.data;
 
+  // Limits how fast one account can use the model so the key cannot be drained or probed.
+  const recent = await prisma.aIMessage.count({ where: { role: "user", createdAt: { gt: new Date(Date.now() - 60_000) }, conversation: { userId: user.id } } });
+  if (recent >= 8) return { ok: false, error: "You are sending messages too quickly. Please wait a minute and try again." };
+
   const conversation =
     (await latestConversation(user.id)) ??
     (await prisma.aIConversation.create({

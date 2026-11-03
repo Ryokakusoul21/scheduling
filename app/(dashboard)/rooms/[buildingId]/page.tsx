@@ -16,9 +16,9 @@ export default async function BuildingPage({ params, searchParams }: { params: P
   const scope = await requireScope(...STAFF_ROLES);
   const [{ buildingId }, { q }] = await Promise.all([params, searchParams]);
   const [[building], floors, { departments, programs }, termLabel] = await Promise.all([
-    loadBuildings({ id: buildingId }),
+    loadBuildings(scope, { id: buildingId }),
     // Every floor of every building, so a room can be moved elsewhere.
-    prisma.floor.findMany({ orderBy: [{ building: { sortOrder: "asc" } }, { number: "asc" }], select: { id: true, name: true, building: { select: { name: true } } } }),
+    prisma.floor.findMany({ where: scope.isAdmin ? {} : { rooms: { some: { departmentId: scope.manageDepartmentId } } }, orderBy: [{ building: { sortOrder: "asc" } }, { number: "asc" }], select: { id: true, name: true, building: { select: { name: true } } } }),
     roomFormOptions(scope),
     activeTermLabel(),
   ]);
@@ -32,6 +32,7 @@ export default async function BuildingPage({ params, searchParams }: { params: P
         allFloors={floors.map((f) => ({ value: f.id, label: `${f.building.name} — ${f.name}` }))}
         initialQuery={q ?? ""}
         isAdmin={scope.isAdmin}
+        ownDepartmentId={scope.departmentId}
         termLabel={termLabel}
         departments={departments}
         programs={programs}

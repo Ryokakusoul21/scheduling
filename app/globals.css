@@ -41,6 +41,14 @@
   --color-card: var(--card);
   --color-gold-foreground: var(--gold-foreground);
   --color-gold: var(--gold);
+  --color-brand-navy: var(--brand-navy);
+  --color-brand-blue: var(--brand-blue);
+  --color-brand-gold: var(--brand-gold);
+  --color-brand-link: var(--brand-link);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -71,6 +79,16 @@
   --ring: oklch(0.62 0.19 259);
   --gold: oklch(0.62 0.19 259);
   --gold-foreground: oklch(0.98 0.01 240);
+  /* Institution brand colors from the seal, used by the sign-in pages. */
+  --brand-navy: #0b1f4d;
+  --brand-blue: #1d4ed8;
+  --brand-gold: #f5b700;
+  --brand-link: #1d4ed8;
+  /* Status colors; each passes WCAG AA as text on cards and on its own 10 percent tint. */
+  --success: #047857;
+  --warning: #b45309;
+  --danger: #b91c1c;
+  --info: #1d4ed8;
   --chart-1: oklch(0.62 0.19 259);
   --chart-2: oklch(0.62 0.19 300);
   --chart-3: oklch(0.6 0.12 220);
@@ -108,6 +126,11 @@
   --ring: oklch(0.68 0.18 259);
   --gold: oklch(0.68 0.18 259);
   --gold-foreground: oklch(0.16 0.03 264);
+  --brand-link: #93b4ff;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --info: #93b4ff;
   --chart-1: oklch(0.68 0.18 259);
   --chart-2: oklch(0.68 0.18 300);
   --chart-3: oklch(0.6 0.1 220);

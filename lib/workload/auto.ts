@@ -1,12 +1,11 @@
 import "server-only";
 import { after } from "next/server";
-import type { FixMode } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { getWorkloadSettings, type WorkloadSettings } from "@/lib/settings";
 import { weeklyDoubleBooking } from "@/lib/scheduler/term-conflicts";
 import { notifyFaculty, notifyManagers } from "@/lib/notify";
+import { syncAssignmentsForMove } from "@/lib/subjects/assignments";
 import { loadWorkload } from "./load";
-import { explain, loadReport, optimize, type Flag, type Move } from "./optimizer";
+import { basisOf, explain, loadReport, optimize, type Flag, type Move } from "./optimizer";
 
 /** Latest result of the continuous workload check, kept for the dashboard and Faculty Workload page. */
 export const SETTING_WORKLOAD_STATUS = "workloadStatus";
@@ -14,11 +13,11 @@ export const SETTING_WORKLOAD_STATUS = "workloadStatus";
 export interface WorkloadStatus {
   checkedAt: string;
   trigger: string;
-  mode: WorkloadSettings["mode"];
-  applied: number;
   proposed: number;
   flags: Flag[];
 }
+
+export type WorkloadData = Awaited<ReturnType<typeof loadWorkload>>;
 
 let chain: Promise<unknown> = Promise.resolve();
 
@@ -45,11 +44,21 @@ export async function getWorkloadStatus(): Promise<WorkloadStatus | null> {
   return (row?.value as WorkloadStatus | undefined) ?? null;
 }
 
-async function activeTermIds() {
+export async function activeTermIds() {
   return (await prisma.semester.findMany({ where: { isActive: true }, select: { id: true } })).map((t) => t.id);
 }
 
+/** Faculty whose loads a department proposal depends on: the department's own plus everyone its rows touch. */
+export function proposalFaculty(data: WorkloadData, departmentId: string | null, rows: { fromFacultyId: string; toFacultyId: string }[]) {
+  return new Set([...data.faculty.filter((f) => !!departmentId && f.departmentId === departmentId).map((f) => f.id), ...rows.flatMap((r) => [r.fromFacultyId, r.toFacultyId])]);
+}
+
+export const proposalBasis = (data: WorkloadData, departmentId: string | null, rows: { fromFacultyId: string; toFacultyId: string }[]) =>
+  basisOf([...data.assignments, ...data.unassigned], proposalFaculty(data, departmentId, rows), data.limits);
+
+/** Checks every load and proposes fixes for Head of Department approval; nothing is ever applied here. */
 async function check(trigger: string, actorId: string | null): Promise<WorkloadStatus> {
+  void actorId;
   const termIds = await activeTermIds();
   const data = await loadWorkload(termIds, null);
   const before = loadReport(data.faculty, data.assignments, data.limits);
@@ -58,33 +67,25 @@ async function check(trigger: string, actorId: string | null): Promise<WorkloadS
     unassigned: data.unassigned,
     inactiveNames: data.inactiveNames,
   });
-
-  let applied = 0;
-  let proposed = 0;
-  if (data.limits.mode === "AUTOMATIC") {
-    const result = await applyMoves(moves, { mode: "AUTOMATIC", trigger, actorId });
-    applied = result.applied.length;
-    flags.push(...result.skipped.map((s) => ({ kind: "NOT_APPLIED" as const, facultyId: null, label: s.label, explanation: s.reason })));
-    await prisma.workloadProposal.updateMany({ where: { automatic: true, status: "PENDING" }, data: { status: "SUPERSEDED" } });
-  } else {
-    proposed = await syncProposals(moves, explain(before, afterRows, moves), termIds[0], data.faculty, trigger);
-  }
+  const proposed = await syncProposals(data, moves, explain(before, afterRows, moves), termIds[0], trigger);
 
   const previous = await getWorkloadStatus();
-  const status: WorkloadStatus = { checkedAt: new Date().toISOString(), trigger, mode: data.limits.mode, applied, proposed, flags };
+  const status: WorkloadStatus = { checkedAt: new Date().toISOString(), trigger, proposed, flags };
   await prisma.systemSetting.upsert({
     where: { key: SETTING_WORKLOAD_STATUS },
     update: { value: status as never },
     create: { key: SETTING_WORKLOAD_STATUS, value: status as never },
   });
 
-  // Tell managers only about newly appearing items that need a person.
+  // Tell each department's Head (and the Administrator) about newly appearing items that need a person.
   const seen = new Set((previous?.flags ?? []).map((f) => f.explanation));
-  const fresh = flags.filter((f) => f.kind !== "UNDERLOADED" && !seen.has(f.explanation));
-  if (fresh.length) {
-    await notifyManagers(null, {
+  const deptOf = new Map(data.faculty.map((f) => [f.id, f.departmentId]));
+  const fresh = flags.filter((f) => !seen.has(f.explanation));
+  for (const dept of new Set(fresh.map((f) => (f.facultyId ? deptOf.get(f.facultyId) ?? null : null)))) {
+    const own = fresh.filter((f) => (f.facultyId ? deptOf.get(f.facultyId) ?? null : null) === dept);
+    await notifyManagers(dept, {
       title: "Workload needs manual attention",
-      message: `${fresh.length} teaching load issue(s) could not be fixed automatically. ${fresh[0].explanation}`,
+      message: `${own.length} teaching load issue(s) have no automatic fix. ${own[0].explanation}`,
       link: "/workload",
       type: "WARNING",
     });
@@ -92,100 +93,73 @@ async function check(trigger: string, actorId: string | null): Promise<WorkloadS
   return status;
 }
 
-/** One proposal per department (cross-department moves go to the Administrator), replaced only when the moves change. */
-async function syncProposals(moves: Move[], explanation: string, semesterId: string | undefined, faculty: { id: string; departmentId: string | null }[], trigger: string) {
-  const pending = await prisma.workloadProposal.findMany({ where: { automatic: true, status: "PENDING" } });
-  const signature = (ms: Move[]) => ms.map((m) => `${m.key}>${m.toFacultyId}`).sort().join(",");
-  if (signature(pending.flatMap((p) => p.items as unknown as Move[])) === signature(moves)) return pending.length;
-
-  await prisma.workloadProposal.updateMany({ where: { automatic: true, status: "PENDING" }, data: { status: "SUPERSEDED" } });
-  if (moves.length === 0 || !semesterId) return 0;
-
-  const deptOf = new Map(faculty.map((f) => [f.id, f.departmentId]));
-  const groups = new Map<string, Move[]>();
-  for (const m of moves) {
-    const from = deptOf.get(m.fromFacultyId) ?? null;
-    const dept = from && from === deptOf.get(m.toFacultyId) ? from : "";
-    groups.set(dept, [...(groups.get(dept) ?? []), m]);
+/**
+ * One pending proposal per giving department. A pending proposal is kept while the loads it was built on are
+ * unchanged (so a Head of Department's edits survive), and superseded and rebuilt as soon as they change.
+ */
+async function syncProposals(data: WorkloadData, moves: Move[], explanation: string, semesterId: string | undefined, trigger: string) {
+  const pending = await prisma.workloadProposal.findMany({ where: { kind: "WORKLOAD", status: "PENDING" }, include: { rows: true } });
+  const kept = new Set<string>();
+  for (const p of pending) {
+    if (p.basis && p.basis === proposalBasis(data, p.departmentId, p.rows)) kept.add(p.departmentId ?? "");
+    else await prisma.workloadProposal.update({ where: { id: p.id }, data: { status: "SUPERSEDED", version: { increment: 1 } } });
   }
+  if (!semesterId) return kept.size;
+
+  const groups = new Map<string, Move[]>();
+  for (const m of moves) groups.set(m.fromDepartmentId ?? "", [...(groups.get(m.fromDepartmentId ?? "") ?? []), m]);
+  const names = new Map((await prisma.department.findMany({ select: { id: true, name: true } })).map((d) => [d.id, d.name]));
   for (const [dept, items] of groups) {
+    if (kept.has(dept)) continue;
+    const departmentId = dept || null;
     await prisma.workloadProposal.create({
       data: {
         semesterId,
-        departmentId: dept || null,
+        departmentId,
         automatic: true,
-        items: items as never,
+        items: [],
+        basis: proposalBasis(data, departmentId, items),
         explanation: `Found automatically after: ${trigger}. ${explanation}`,
         createdById: "system",
+        rows: { create: items.map((m) => ({ key: m.key, move: m as never, fromFacultyId: m.fromFacultyId, toFacultyId: m.toFacultyId, fromDepartmentId: m.fromDepartmentId, toDepartmentId: m.toDepartmentId })) },
       },
     });
-    await notifyManagers(dept || null, {
-      title: "Workload fixes awaiting approval",
-      message: `${items.length} teaching load reassignment(s) were proposed after: ${trigger}. Approve them in Faculty Workload.`,
-      link: "/workload",
-    });
+    const message = `${items.length} teaching load reassignment(s) were proposed after: ${trigger}. Review them in Faculty Workload.`;
+    await notifyManagers(departmentId, { title: "Workload fixes awaiting approval", message, link: "/workload" });
+    // Receiving departments of cross-department rows must approve their side too.
+    for (const other of new Set(items.map((m) => m.toDepartmentId).filter((d): d is string => !!d && d !== departmentId))) {
+      await notifyManagers(other, { title: "Workload fixes need your approval", message: `${names.get(departmentId ?? "") ?? "Another department"} proposed giving classes to your faculty. Review them in Faculty Workload.`, link: "/workload" });
+    }
   }
-  return groups.size;
+  return kept.size + [...groups.keys()].filter((d) => !kept.has(d)).length;
 }
 
-/** Current load of one faculty member in the active terms, in the configured measure. */
-async function currentLoad(facultyId: string, measure: WorkloadSettings["measure"], termIds: string[]) {
-  const rows = await prisma.schedule.findMany({
-    where: { facultyId, semesterId: { in: termIds }, status: { not: "ARCHIVED" } },
-    select: { startMin: true, endMin: true, sectionId: true, subjectId: true, subject: { select: { units: true } } },
-  });
-  if (measure === "HOURS") return Math.round((rows.reduce((s, r) => s + r.endMin - r.startMin, 0) / 60) * 10) / 10;
-  return [...new Map(rows.map((r) => [`${r.sectionId}|${r.subjectId}`, r.subject.units])).values()].reduce((s, u) => s + u, 0);
-}
+type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 /**
- * Applies moves one by one, each re-validated against the live timetable: the class must still belong to
- * the original faculty member and the new one must stay free at every meeting. Every applied move is
- * logged with both loads before and after, and both faculty members are notified.
+ * Applies validated moves inside the caller's transaction: scheduled classes change teacher, unscheduled
+ * assignments change hands, and every move is logged. Throws when a class changed underneath.
  */
-export async function applyMoves(moves: Move[], ctx: { mode: FixMode; trigger: string; actorId: string | null; proposalId?: string }) {
-  const { measure } = await getWorkloadSettings();
-  const termIds = await activeTermIds();
-  const unit = measure === "HOURS" ? "hours" : "units";
-  const applied: string[] = [];
-  const skipped: { label: string; reason: string }[] = [];
-
+export async function applyMoves(tx: Tx, moves: Move[], ctx: { measure: string; actorId: string; proposalId: string }) {
   for (const m of moves) {
-    const meetings = await prisma.schedule.findMany({ where: { id: { in: m.scheduleIds } } });
-    if (meetings.length !== m.scheduleIds.length || meetings.some((s) => s.facultyId !== m.fromFacultyId)) {
-      skipped.push({ label: m.label, reason: `${m.label} changed since the fix was computed, so it was left as is.` });
-      continue;
-    }
-    const clash = (await Promise.all(meetings.map((s) => weeklyDoubleBooking({ ...s, facultyId: m.toFacultyId }, s.id)))).find(Boolean);
-    if (clash) {
-      skipped.push({ label: m.label, reason: `${m.label} was not moved because it would create a conflict. ${clash}` });
-      continue;
-    }
-
-    const [fromBefore, toBefore] = await Promise.all([currentLoad(m.fromFacultyId, measure, termIds), currentLoad(m.toFacultyId, measure, termIds)]);
-    const fix = await prisma.$transaction(async (tx) => {
+    if (m.scheduleIds.length) {
       const { count } = await tx.schedule.updateMany({ where: { id: { in: m.scheduleIds }, facultyId: m.fromFacultyId }, data: { facultyId: m.toFacultyId } });
-      if (count !== m.scheduleIds.length) throw new Error("changed");
-      return tx.workloadFix.create({
-        data: {
-          mode: ctx.mode, proposalId: ctx.proposalId, trigger: ctx.trigger, assignmentKey: m.key, scheduleIds: m.scheduleIds, label: m.label,
-          fromFacultyId: m.fromFacultyId, toFacultyId: m.toFacultyId, measure, amount: m.amount,
-          fromBefore, fromAfter: Math.round((fromBefore - m.amount) * 10) / 10, toBefore, toAfter: Math.round((toBefore + m.amount) * 10) / 10,
-          reason: m.reason, appliedById: ctx.actorId,
-        },
-      });
-    }).catch(() => null);
-    if (!fix) {
-      skipped.push({ label: m.label, reason: `${m.label} changed while the fix was applied, so it was left as is.` });
-      continue;
+      if (count !== m.scheduleIds.length) throw new Error("STALE");
+      const classes = await tx.schedule.findMany({ where: { id: { in: m.scheduleIds } }, select: { semesterId: true, sectionId: true, subjectId: true } });
+      await syncAssignmentsForMove(tx, classes, m.fromFacultyId, m.toFacultyId);
+    } else if (m.assignmentId) {
+      const { count } = await tx.subjectAssignment.updateMany({ where: { id: m.assignmentId, status: "ACTIVE", facultyId: m.fromFacultyId }, data: { facultyId: m.toFacultyId } });
+      if (count !== 1) throw new Error("STALE");
     }
-    applied.push(fix.id);
-    const names = await prisma.faculty.findMany({ where: { id: { in: [m.fromFacultyId, m.toFacultyId] } }, select: { id: true, fullName: true } });
-    const name = (id: string) => names.find((n) => n.id === id)?.fullName ?? "a colleague";
-    await notifyFaculty([m.fromFacultyId], { title: "Your teaching load changed", message: `${m.label} moved to ${name(m.toFacultyId)}. Your load is now ${fix.fromAfter} ${unit}. ${m.reason}`, link: "/workload" });
-    await notifyFaculty([m.toFacultyId], { title: "Your teaching load changed", message: `You now teach ${m.label} (from ${name(m.fromFacultyId)}). Your load is now ${fix.toAfter} ${unit}. ${m.reason}`, link: "/workload" });
+    await tx.workloadFix.create({
+      data: {
+        mode: "APPROVED", proposalId: ctx.proposalId, trigger: "Approved proposal", assignmentKey: m.key, scheduleIds: m.scheduleIds, label: m.label,
+        fromFacultyId: m.fromFacultyId, toFacultyId: m.toFacultyId, measure: ctx.measure, amount: m.amount,
+        fromBefore: m.fromBefore, fromAfter: m.fromAfter, toBefore: m.toBefore, toAfter: m.toAfter, reason: m.reason, appliedById: ctx.actorId,
+        departmentId: m.fromDepartmentId,
+      },
+    });
   }
-  return { applied, skipped };
 }
 
 /** Returns the class to the original faculty member if that is still conflict free; the pair is never re-proposed. */
@@ -201,13 +175,19 @@ export async function undoFix(fixId: string, userId: string): Promise<string | n
   const clash = (await Promise.all(meetings.map((s) => weeklyDoubleBooking({ ...s, facultyId: fix.fromFacultyId }, s.id)))).find(Boolean);
   if (clash) return `Undoing would create a conflict. ${clash}`;
 
-  await prisma.$transaction([
-    prisma.schedule.updateMany({ where: { id: { in: fix.scheduleIds } }, data: { facultyId: fix.fromFacultyId } }),
-    prisma.workloadFix.update({ where: { id: fixId }, data: { undoneAt: new Date(), undoneById: userId } }),
-  ]);
+  const plannedId = fix.assignmentKey.startsWith("plan|") ? fix.assignmentKey.slice(5) : null;
+  const moved = await prisma.$transaction(async (tx) => {
+    // An unscheduled subject goes back by handing its assignment back.
+    if (plannedId && (await tx.subjectAssignment.updateMany({ where: { id: plannedId, status: "ACTIVE", facultyId: fix.toFacultyId }, data: { facultyId: fix.fromFacultyId } })).count !== 1) return false;
+    await tx.schedule.updateMany({ where: { id: { in: fix.scheduleIds } }, data: { facultyId: fix.fromFacultyId } });
+    await tx.workloadFix.update({ where: { id: fixId }, data: { undoneAt: new Date(), undoneById: userId } });
+    await syncAssignmentsForMove(tx, meetings, fix.toFacultyId, fix.fromFacultyId);
+    return true;
+  });
+  if (!moved) return "The subject assignment has changed since this fix, so it cannot be undone automatically.";
   await notifyFaculty([fix.fromFacultyId, fix.toFacultyId], {
     title: "Teaching load change undone",
-    message: `${fix.label} is back with ${original.fullName}. The automatic fix was undone and will not be repeated.`,
+    message: `${fix.label} is back with ${original.fullName}. The fix was undone and will not be proposed again.`,
     link: "/workload",
   });
   queueWorkloadCheck(`A workload fix was undone (${fix.label})`, userId);

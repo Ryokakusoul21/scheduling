@@ -27,6 +27,7 @@ export const SUBJECT_COLUMNS: ImportColumn[] = [
   { key: "yearLevel", header: "Year Level", example: "Second", help: "College only: First to Fifth" },
   { key: "gradeLevel", header: "Grade Level", example: "", help: "Basic education only: Kindergarten or Grade 1 to Grade 12" },
   { key: "description", header: "Description", example: "", help: "Optional" },
+  { key: "assignedFaculty", header: "Assigned Faculty", example: "", help: "Optional: faculty email or employee ID; assigned for every section in the active term" },
 ];
 
 export const ROOM_COLUMNS: ImportColumn[] = [
@@ -89,11 +90,14 @@ export interface SubjectRow {
   yearLevel: YearLevel | null;
   gradeLevel: GradeLevel | null;
   description: string | null;
+  facultyId: string | null;
 }
 
 export interface SubjectLookups {
   programs: { code: string; level: string }[];
   existingCodes: string[];
+  /** Active faculty, matched by email or employee ID for the optional Assigned Faculty column. */
+  faculty?: { id: string; email: string; employeeId: string }[];
 }
 
 function num(value: string, label: string, errors: string[], min: number, max: number) {
@@ -134,11 +138,13 @@ export function validateSubjects(records: Record<string, string>[], lookups: Sub
     if (r.gradeLevel && !gradeLevel) errors.push(`Unknown grade level "${r.gradeLevel}".`);
     if (gradeLevel && level && levelForGrade(gradeLevel) !== level) errors.push(`${r.gradeLevel} is not part of ${r.level}.`);
     if (level && level !== "COLLEGE" && !gradeLevel) errors.push("Basic education subjects need a grade level.");
+    const assigned = r.assignedFaculty ? (lookups.faculty ?? []).find((f) => norm(f.email) === norm(r.assignedFaculty) || norm(f.employeeId) === norm(r.assignedFaculty)) : null;
+    if (r.assignedFaculty && !assigned) errors.push(`No active faculty member has the email or employee ID "${r.assignedFaculty}".`);
 
     const warnings = requiredRoomType && labHours > 0 && !requiredRoomType.endsWith("LABORATORY") ? ["Has laboratory hours but does not require a laboratory room."] : [];
     const data: SubjectRow | null = errors.length
       ? null
-      : { code, name: r.name, units, lectureHours, labHours, requiredRoomType: requiredRoomType!, level: level!, programCode: program?.code ?? null, yearLevel, gradeLevel, description: r.description || null };
+      : { code, name: r.name, units, lectureHours, labHours, requiredRoomType: requiredRoomType!, level: level!, programCode: program?.code ?? null, yearLevel, gradeLevel, description: r.description || null, facultyId: assigned?.id ?? null };
     return { row: i + 2, data, errors, warnings };
   });
 }

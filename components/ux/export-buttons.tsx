@@ -12,7 +12,7 @@ import { activitiesDoc, downloadReportCsv, printReport, timetableDoc, type Activ
  */
 export function ExportButtons<T>({ filename, rows, columns }: { filename: string; rows: T[]; columns: Column<T>[] }) {
   return (
-    <div className="flex gap-2 print:hidden">
+    <div className="flex flex-wrap gap-2 print:hidden">
       <Button size="sm" variant="outline" onClick={() => downloadText(`${filename}.csv`, toCsv(rows, columns))} disabled={rows.length === 0}>
         <FileXls className="size-4" /> Spreadsheet
       </Button>
@@ -64,7 +64,14 @@ export function TimetableReportButtons({ title, term, rows, filename }: { title:
 }
 
 /** Report buttons for school events, holidays, and class suspensions. */
-export function ActivitiesReportButtons({ title, term, rows, filename }: { title: string; term: string; rows: ActivityRow[]; filename: string }) {
+export function ActivitiesReportButtons({ title, term, rows, filename, official = false, department = "All Departments" }: { title: string; term: string; rows: ActivityRow[]; filename: string; official?: boolean; department?: string }) {
+  if (official) return <ReportButtons doc={{
+    title, term, filename, officialActivities: true, department, rows: [...rows].sort((a,b)=>a.startDate.localeCompare(b.startDate)),
+    columns: [
+      { header: "DATE", value: (r) => r.startDate === r.endDate ? new Date(`${r.startDate}T00:00:00Z`).toLocaleDateString("en-PH", { dateStyle: "long", timeZone: "UTC" }) : `${new Date(`${r.startDate}T00:00:00Z`).toLocaleDateString("en-PH", { dateStyle: "long", timeZone: "UTC" })} to ${new Date(`${r.endDate}T00:00:00Z`).toLocaleDateString("en-PH", { dateStyle: "long", timeZone: "UTC" })}` },
+      { header: "ACTIVITIES", value: (r) => r.title },
+    ],
+  }} />;
   return <ReportButtons doc={activitiesDoc(title, term, rows, filename)} />;
 }
 

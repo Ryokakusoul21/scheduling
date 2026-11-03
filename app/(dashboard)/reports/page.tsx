@@ -1,33 +1,35 @@
 import { prisma } from "@/lib/db/prisma";
-import { requireRole } from "@/lib/auth/session";
+import { requireScope } from "@/lib/permissions/scope";
+import { departmentWhere } from "@/lib/permissions/department";
 import { isoDate } from "@/lib/occupancy/engine";
 import { ScheduleReportTable } from "./report-table";
 
 export const metadata = { title: "Schedule Reports · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
 
 export default async function ReportsPage() {
-  await requireRole("ADMINISTRATOR", "HEAD_OF_DEPARTMENT");
+  // A Head of Department's report covers their own department only.
+  const scope = await requireScope("ADMINISTRATOR", "HEAD_OF_DEPARTMENT");
 
   const [schedules, semesters, sections, faculty, rooms, departments, activities] = await Promise.all([
     prisma.schedule.findMany({
-      where: { status: { not: "ARCHIVED" } },
+      where: { status: { not: "ARCHIVED" }, ...departmentWhere.schedule(scope) },
       include: {
         semester: { include: { academicYear: true } },
         subject: true,
-        section: { include: { program: { select: { departmentId: true } } } },
+        section: true,
         faculty: true,
         room: true,
       },
       orderBy: [{ dayOfWeek: "asc" }, { startMin: "asc" }],
     }),
     prisma.semester.findMany({ include: { academicYear: true }, orderBy: { startDate: "desc" } }),
-    prisma.section.findMany({ orderBy: { name: "asc" } }),
-    prisma.faculty.findMany({ orderBy: { fullName: "asc" } }),
-    prisma.room.findMany({ orderBy: { roomName: "asc" } }),
-    prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.section.findMany({ where: departmentWhere.section(scope), orderBy: { name: "asc" } }),
+    prisma.faculty.findMany({ where: departmentWhere.faculty(scope), orderBy: { fullName: "asc" } }),
+    prisma.room.findMany({ where: departmentWhere.room(scope), orderBy: { roomName: "asc" } }),
+    prisma.department.findMany({ where: departmentWhere.department(scope), orderBy: { name: "asc" }, select: { id: true, name: true } }),
     // Only approved activities belong in an official report.
     prisma.activity.findMany({
-      where: { status: "APPROVED" },
+      where: { status: "APPROVED", ...departmentWhere.activity(scope) },
       include: { department: { select: { name: true } }, room: { select: { roomName: true } } },
       orderBy: [{ startDate: "asc" }, { startMin: "asc" }],
     }),
@@ -52,7 +54,7 @@ export default async function ReportsPage() {
           subjectLabel: `${s.subject.code} — ${s.subject.name}`,
           sectionLabel: s.section.name,
           sectionId: s.sectionId,
-          departmentId: s.section.program?.departmentId ?? null,
+          departmentId: s.section.departmentId ?? null,
           level: s.section.level,
           facultyLabel: s.faculty.fullName,
           facultyId: s.facultyId,

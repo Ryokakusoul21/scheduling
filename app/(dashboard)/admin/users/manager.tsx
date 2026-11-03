@@ -11,7 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel, FieldError } from "@/components/ui/field";
-import { createUserAction, updateUserAction, resetPasswordAction, approveUserAction } from "./actions";
+import { ProgramAssignments, type AssignmentRow, type ProgramOption } from "./program-assignments";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import { createUserAction, updateUserAction, resetPasswordAction, approveUserAction, removeUserAvatarAction } from "./actions";
 
 interface Row {
   id: string;
@@ -20,7 +22,11 @@ interface Row {
   role: string;
   status: string;
   facultyId: string | null;
+  image: string | null;
   createdAt: string;
+  /** Programs of the head's own department that can be assigned, and the current assignments. */
+  programOptions?: ProgramOption[];
+  assignments?: AssignmentRow[];
 }
 
 /** Links an account to a faculty record so Faculty and Head of Department users see their own classes. */
@@ -44,6 +50,7 @@ export function UsersManager({ users, faculty }: { users: Row[]; faculty: { valu
   const [createOpen, setCreateOpen] = useState(false);
   const [editRow, setEditRow] = useState<Row | null>(null);
   const [resetRow, setResetRow] = useState<Row | null>(null);
+  const [programRow, setProgramRow] = useState<Row | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function handleCreate(formData: FormData) {
@@ -79,6 +86,14 @@ export function UsersManager({ users, faculty }: { users: Row[]; faculty: { valu
         toast.success("Password reset.");
         setResetRow(null);
       } else setError(res.error ?? "Something went wrong.");
+    });
+  }
+
+  function handleRemovePhoto(id: string) {
+    startTransition(async () => {
+      const res = await removeUserAvatarAction(id);
+      if (res.ok) toast.success("Profile photo removed.");
+      else toast.error(res.error ?? "Could not remove the photo.");
     });
   }
 
@@ -145,7 +160,12 @@ export function UsersManager({ users, faculty }: { users: Row[]; faculty: { valu
           <TableBody>
             {users.map((u) => (
               <TableRow key={u.id}>
-                <TableCell className="font-medium">{u.name}</TableCell>
+                <TableCell className="font-medium">
+                  <div className="flex items-center gap-2.5">
+                    <UserAvatar name={u.name} image={u.image} small className="size-8" />
+                    {u.name}
+                  </div>
+                </TableCell>
                 <TableCell>{u.email}</TableCell>
                 <TableCell><Badge variant="secondary">{ROLE_LABELS[u.role as keyof typeof ROLE_LABELS] ?? u.role}</Badge></TableCell>
                 <TableCell><Badge variant={u.status === "ACTIVE" ? "default" : u.status === "PENDING" ? "secondary" : "destructive"}>{u.status}</Badge></TableCell>
@@ -160,6 +180,16 @@ export function UsersManager({ users, faculty }: { users: Row[]; faculty: { valu
                     <ActionButton kind="edit" onClick={() => setEditRow(u)}>
                       Edit
                     </ActionButton>
+                    {u.role === "HEAD_OF_DEPARTMENT" && (
+                      <ActionButton kind="edit" onClick={() => setProgramRow(u)}>
+                        Programs
+                      </ActionButton>
+                    )}
+                    {u.image && (
+                      <ActionButton kind="reset" onClick={() => handleRemovePhoto(u.id)}>
+                        Remove Photo
+                      </ActionButton>
+                    )}
                     <ActionButton kind="reset" onClick={() => setResetRow(u)}>
                       Reset Password
                     </ActionButton>
@@ -206,6 +236,17 @@ export function UsersManager({ users, faculty }: { users: Row[]; faculty: { valu
             </form>
           </DialogContent>
         </Dialog>
+      )}
+
+      {programRow && (
+        <ProgramAssignments
+          userId={programRow.id}
+          name={programRow.name}
+          // Read the live row so the list refreshes after each change.
+          options={users.find((u) => u.id === programRow.id)?.programOptions ?? []}
+          rows={users.find((u) => u.id === programRow.id)?.assignments ?? []}
+          onClose={() => setProgramRow(null)}
+        />
       )}
 
       {resetRow && (

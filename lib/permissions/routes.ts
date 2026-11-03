@@ -6,7 +6,8 @@
 import { ADMIN_ROLES, STAFF_ROLES, TEACHING_ROLES, type AppRole } from "./roles";
 
 export const ROUTE_ROLES: { prefix: string; roles: AppRole[] }[] = [
-  { prefix: "/admin", roles: ADMIN_ROLES },
+  { prefix: "/calendar/proposals", roles: ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT"] },
+    { prefix: "/admin", roles: ADMIN_ROLES },
   { prefix: "/academic-years", roles: ADMIN_ROLES },
   { prefix: "/programs", roles: STAFF_ROLES },
   { prefix: "/subjects", roles: STAFF_ROLES },
@@ -20,6 +21,7 @@ export const ROUTE_ROLES: { prefix: string; roles: AppRole[] }[] = [
   { prefix: "/adjustments", roles: STAFF_ROLES },
   { prefix: "/constraints", roles: STAFF_ROLES },
   { prefix: "/availability", roles: TEACHING_ROLES },
+  { prefix: "/my-subjects", roles: TEACHING_ROLES },
 ];
 
 /** Roles allowed on a path, or null if any signed-in user may open it. */

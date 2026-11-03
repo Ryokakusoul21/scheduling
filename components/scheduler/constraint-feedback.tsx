@@ -79,7 +79,7 @@ export function useOverridePrompt() {
 }
 
 /** Runs every active constraint over a term and lists hard violations first. */
-export function ConstraintReportPanel({ termId, onJump }: { termId: string; onJump: (id: string) => void }) {
+export function ConstraintReportPanel({ termId, onJump, onCount }: { termId: string; onJump: (id: string) => void; onCount?: (count: number) => void }) {
   const [report, setReport] = useState<{ termId: string; violations: Violation[] } | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -91,6 +91,7 @@ export function ConstraintReportPanel({ termId, onJump }: { termId: string; onJu
     setLoading(false);
     if (!res.ok) return setError(res.error);
     setReport({ termId, violations: res.data });
+    onCount?.(res.data.length);
   }
 
   const current = report?.termId === termId ? report.violations : null;

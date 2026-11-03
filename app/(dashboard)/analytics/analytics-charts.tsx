@@ -57,9 +57,9 @@ export function AnalyticsCharts(props: {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <NativeSelect aria-label="Semester" value={filters.term} onChange={(e) => go({ term: e.target.value })} options={[{ value: "", label: "All active terms" }, ...filters.terms]} className="w-72" />
+        <NativeSelect aria-label="Semester" value={filters.term} onChange={(e) => go({ term: e.target.value })} options={[{ value: "", label: "All active terms" }, ...filters.terms]} className="w-full sm:w-72" />
         {filters.departments.length > 0 && (
-          <NativeSelect aria-label="Department" value={filters.department} onChange={(e) => go({ department: e.target.value })} options={[{ value: "", label: "All departments" }, ...filters.departments]} className="w-72" />
+          <NativeSelect aria-label="Department" value={filters.department} onChange={(e) => go({ department: e.target.value })} options={[{ value: "", label: "All departments" }, ...filters.departments]} className="w-full sm:w-72" />
         )}
         {filters.departments.length === 0 && <span className="text-sm text-muted-foreground">{filters.departmentName}</span>}
       </div>

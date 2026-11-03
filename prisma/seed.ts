@@ -20,6 +20,8 @@ import { DEFAULT_COLLEGE_PROGRAMS, DEFAULT_SHS_STRANDS } from "../lib/academics/
 import { placeCollegeClasses } from "./sample-timetable";
 import { addSampleHistory } from "./sample-history";
 import { addArchiveAndApprovalSamples } from "./sample-archive-activities";
+import { addScopeAndExamSamples } from "./sample-scope";
+import { addBookingSamples } from "./sample-bookings";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -83,6 +85,7 @@ async function main() {
     { code: "CHTM", name: "College of Hospitality and Tourism Management" },
     { code: "CTE", name: "College of Teacher Education" },
     { code: "CAS", name: "College of Arts and Sciences" },
+    { code: "GENED", name: "General Education Department" },
     { code: "BED", name: "Basic Education Department" },
   ];
   const dept: Record<string, string> = {};
@@ -103,7 +106,7 @@ async function main() {
   // -------------------------------------------------------------------
   // Academic years and terms
   // -------------------------------------------------------------------
-  await prisma.academicYear.create({
+  const previousAy = await prisma.academicYear.create({
     data: { name: `${ayYear - 1}-${ayYear}`, startDate: date(ymd(ayYear - 1, 8, 1)), endDate: date(ymd(ayYear, 6, 30)) },
   });
   const ay = await prisma.academicYear.create({
@@ -115,6 +118,7 @@ async function main() {
   const firstSem = await term("COLLEGE", "FIRST", "First Semester", ymd(ayYear, 8, 3), ymd(ayYear, 12, 18), inFirstSemester);
   const secondSem = await term("COLLEGE", "SECOND", "Second Semester", ymd(ayYear + 1, 1, 11), ymd(ayYear + 1, 5, 21), !inFirstSemester);
   await term("COLLEGE", "SUMMER", "Summer", ymd(ayYear + 1, 6, 1), ymd(ayYear + 1, 6, 30));
+  const previousSecondSem = await prisma.semester.create({ data: { academicYearId: previousAy.id, level: "COLLEGE", type: "SECOND", name: "Second Semester", startDate: date(ymd(ayYear, 1, 8)), endDate: date(ymd(ayYear, 5, 20)) } });
   const collegeTerm = inFirstSemester ? firstSem : secondSem;
 
   const quarters = [
@@ -254,26 +258,29 @@ async function main() {
         gradeLevel: s.grade,
         programId: s.program ? program[s.program] : null,
         semesterId: s.level === "COLLEGE" ? collegeTerm.id : null,
+        departmentId: s.level === "COLLEGE" && s.program ? dept[DEFAULT_COLLEGE_PROGRAMS.find((p) => p.code === s.program)?.department ?? "CCS"] : dept.BED,
         studentCount: s.count,
         sortOrder: i,
       },
     });
     section[s.name] = { id: row.id, count: s.count };
   }
+  // Same display name in an older term demonstrates that term filtering prevents mixed grids and totals.
+  await prisma.section.create({ data: { name: "Information Technology 1-B", level: "COLLEGE", yearLevel: "FIRST", programId: program.BSIT, departmentId: dept.CCS, semesterId: previousSecondSem.id, studentCount: 35, sortOrder: 99 } });
 
   // -------------------------------------------------------------------
   // Subjects
   // -------------------------------------------------------------------
-  type SubjectDef = { code: string; name: string; units: number; lecture: number; lab: number; room: RoomType; level?: AcademicLevel; program?: string; year?: YearLevel; grade?: GradeLevel };
+  type SubjectDef = { code: string; name: string; units: number; lecture: number; lab: number; room: RoomType; level?: AcademicLevel; program?: string; year?: YearLevel; grade?: GradeLevel; semester?: "FIRST" | "SECOND" | "SUMMER" };
   const subjectDefs: SubjectDef[] = [
-    { code: "GE101", name: "Mathematics in the Modern World", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", year: "FIRST" },
-    { code: "GE102", name: "Purposive Communication", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", year: "FIRST" },
-    { code: "GE103", name: "Readings in Philippine History", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", year: "FIRST" },
-    { code: "GE104", name: "Understanding the Self", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", year: "FIRST" },
+    { code: "GE101", name: "Mathematics in the Modern World", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", year: "FIRST", semester: "FIRST" },
+    { code: "GE102", name: "Purposive Communication", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", year: "FIRST", semester: "SECOND" },
+    { code: "GE103", name: "Readings in Philippine History", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", year: "FIRST", semester: "FIRST" },
+    { code: "GE104", name: "Understanding the Self", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", year: "FIRST", semester: "SECOND" },
     { code: "GRANBY100", name: "Granby Values", units: 1, lecture: 1, lab: 0, room: "LECTURE_ROOM" },
-    { code: "IT101", name: "Introduction to Computing", units: 3, lecture: 2, lab: 1, room: "COMPUTER_LABORATORY", program: "BSIT", year: "FIRST" },
+    { code: "IT101", name: "Introduction to Computing", units: 3, lecture: 2, lab: 1, room: "COMPUTER_LABORATORY", program: "BSIT", year: "FIRST", semester: "FIRST" },
     { code: "IT102", name: "Computer Programming 1", units: 3, lecture: 2, lab: 1, room: "COMPUTER_LABORATORY", program: "BSIT", year: "FIRST" },
-    { code: "IT103", name: "Computer Programming 2", units: 3, lecture: 2, lab: 1, room: "COMPUTER_LABORATORY", program: "BSIT", year: "FIRST" },
+    { code: "IT103", name: "Computer Programming 2", units: 3, lecture: 2, lab: 1, room: "COMPUTER_LABORATORY", program: "BSIT", year: "FIRST", semester: "SUMMER" },
     { code: "IT201", name: "Data Structures and Algorithms", units: 3, lecture: 2, lab: 1, room: "COMPUTER_LABORATORY", program: "BSIT", year: "SECOND" },
     { code: "IT202", name: "Database Management Systems", units: 3, lecture: 2, lab: 1, room: "COMPUTER_LABORATORY", program: "BSIT", year: "SECOND" },
     { code: "IT203", name: "Networking 1", units: 3, lecture: 2, lab: 1, room: "COMPUTER_LABORATORY", program: "BSIT", year: "SECOND" },
@@ -327,10 +334,26 @@ async function main() {
       data: {
         code: s.code, name: s.name, units: s.units, lectureHours: s.lecture, labHours: s.lab, requiredRoomType: s.room,
         level: s.level ?? "COLLEGE", programId: s.program ? program[s.program] : null, yearLevel: s.year, gradeLevel: s.grade, sortOrder: i,
+        departmentId: s.level && s.level !== "COLLEGE" ? dept.BED : s.program ? dept[DEFAULT_COLLEGE_PROGRAMS.find((p) => p.code === s.program)?.department ?? "CCS"] : dept.GENED,
+        category: s.program ? "MAJOR" : "MINOR", semester: s.semester ?? (s.level ? null : "FIRST"),
+        sharedPrograms: !s.program && (!s.level || s.level === "COLLEGE") ? { connect: [{ id: program.BSIT }, { id: program.BSCS }] } : s.code === "IT101" ? { connect: [{ id: program.BSIT }, { id: program.BSCS }] } : undefined,
       },
     });
     subject[s.code] = { ...s, id: row.id };
   }
+  // Every college section gets its curriculum, so the Unscheduled list and the section cards count the same classes.
+  // Information Technology 1-A also keeps GE103 as its partly scheduled demo.
+  const curriculum = collegeSections.flatMap((def) => {
+    const codes = [...new Set([...(def.subjects ?? []), ...(def.name === "Information Technology 1-A" ? ["GE103"] : [])])];
+    return codes.flatMap((code) => {
+      const item = subject[code];
+      return [
+        ...(item.lecture > 0 ? [{ sectionId: section[def.name].id, subjectId: item.id, component: "LECTURE" as const }] : []),
+        ...(item.lab > 0 ? [{ sectionId: section[def.name].id, subjectId: item.id, component: "LABORATORY" as const }] : []),
+      ];
+    });
+  });
+  await prisma.sectionClassPlaceholder.createMany({ data: curriculum });
 
   // -------------------------------------------------------------------
   // Faculty (honorifics omitted; the position field carries the rank)
@@ -343,7 +366,7 @@ async function main() {
     { id: "F-005", name: "Carla Dizon", email: "dizon@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Data Structures", maxHours: 24, levels: ["COLLEGE"] },
     { id: "F-006", name: "Noel Villanueva", email: "villanueva@granby.edu.ph", dept: "CCS", position: "Assistant Professor", specialization: "Information Security", maxHours: 21, levels: ["COLLEGE"] },
     { id: "F-007", name: "Grace Mercado", email: "mercado@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Systems Analysis", maxHours: 24, levels: ["COLLEGE"] },
-    { id: "F-008", name: "Daniel Ramos", email: "ramos@granby.edu.ph", dept: "CAS", position: "Professor", specialization: "Mathematics", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
+    { id: "F-008", name: "Daniel Ramos", email: "ramos@granby.edu.ph", dept: "GENED", position: "Professor", specialization: "Mathematics", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
     { id: "F-009", name: "Ella Fernandez", email: "fernandez@granby.edu.ph", dept: "CAS", position: "Assistant Professor", specialization: "Communication", maxHours: 21, levels: ["COLLEGE", "SENIOR_HIGH"] },
     { id: "F-010", name: "Victor Aquino", email: "aquino@granby.edu.ph", dept: "CAS", position: "Instructor", specialization: "History", maxHours: 24, levels: ["COLLEGE"] },
     { id: "F-011", name: "Sonia Bautista", email: "bautista@granby.edu.ph", dept: "CAS", position: "Instructor", specialization: "Chemistry", maxHours: 21, levels: ["COLLEGE", "SENIOR_HIGH"] },
@@ -363,6 +386,8 @@ async function main() {
   ];
   // Ana Santos teaches only Friday mornings, which the scheduler and the automatic adjustments respect.
   const fridayMorningOnly = new Set(["F-001"]);
+  // Part-time faculty keep one day off.
+  const partTimeDayOff: Record<string, DayOfWeek> = { "F-010": "WEDNESDAY", "F-018": "SATURDAY", "T-006": "FRIDAY" };
   const faculty: Record<string, { id: string; windows: { day: DayOfWeek; start: number; end: number }[] }> = {};
   for (const f of facultyDefs) {
     const windows = WEEKDAYS.map((d) => ({ day: d, start: 7 * 60, end: d === "FRIDAY" && fridayMorningOnly.has(f.id) ? 12 * 60 : 18 * 60 }));
@@ -370,6 +395,7 @@ async function main() {
       data: {
         employeeId: f.id, fullName: f.name, email: f.email, departmentId: dept[f.dept], position: f.position,
         specialization: f.specialization, maxHours: f.maxHours, teachingLevels: f.levels,
+        employmentType: partTimeDayOff[f.id] ? "PART_TIME" : "FULL_TIME", dayOff: partTimeDayOff[f.id] ?? null,
         availability: { create: windows.map((w) => ({ dayOfWeek: w.day, startMin: w.start, endMin: w.end })) },
       },
     });
@@ -428,6 +454,10 @@ async function main() {
     collegeSections.map((s) => ({ id: section[s.name].id, name: s.name, count: s.count, subjects: s.subjects ?? [] }))
   );
 
+  // Subject assignments: each scheduled college class's teacher, per section; unscheduled subjects stay unassigned.
+  const taught = await prisma.schedule.findMany({ where: { semesterId: collegeTerm.id }, distinct: ["sectionId", "subjectId"], select: { sectionId: true, subjectId: true, facultyId: true } });
+  await prisma.subjectAssignment.createMany({ data: taught.map((t) => ({ ...t, semesterId: collegeTerm.id })) });
+
   // -------------------------------------------------------------------
   // Demo accounts: one per role; Head of Department and Faculty are linked to faculty records
   // -------------------------------------------------------------------
@@ -436,6 +466,9 @@ async function main() {
     { email: "administrator@granby.edu.ph", name: "Cecilia Robles", role: "ADMINISTRATOR" as const },
     { email: "head.computing@granby.edu.ph", name: "Liza Cruz", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["F-003"].id },
     { email: "head.basiceducation@granby.edu.ph", name: "Rhea Manalo", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["T-003"].id },
+    { email: "head.generaleducation@granby.edu.ph", name: "Daniel Ramos", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["F-008"].id },
+    { email: "head.business@granby.edu.ph", name: "Ricardo Lim", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["F-012"].id },
+    { email: "acting.head@granby.edu.ph", name: "Joy Salazar", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["F-017"].id },
     { email: "faculty@granby.edu.ph", name: "Ana Santos", role: "FACULTY" as const, facultyId: faculty["F-001"].id },
     { email: "dizon@granby.edu.ph", name: "Carla Dizon", role: "FACULTY" as const, facultyId: faculty["F-005"].id },
     // Underloaded on purpose (3 hours) so the Faculty dashboard shows a load below the minimum.
@@ -447,7 +480,42 @@ async function main() {
       await prisma.user.create({ data: { ...u, status: "ACTIVE", emailVerified: new Date(), termsAcceptedAt: new Date(), passwordHash } })
     ).id;
   }
+  await prisma.user.create({
+    data: {
+      email: "archived.user@granby.edu.ph", name: "Archived Sample User", role: "FACULTY", status: "INACTIVE",
+      archivedAt: new Date(), archiveReason: "Sample account for permission tests", emailVerified: new Date(), termsAcceptedAt: new Date(), passwordHash,
+    },
+  });
 
+  const permanentAssignments = [
+    ["head.computing@granby.edu.ph", dept.CCS],
+    ["head.basiceducation@granby.edu.ph", dept.BED],
+    ["head.generaleducation@granby.edu.ph", dept.GENED],
+    ["head.business@granby.edu.ph", dept.CBA],
+    ["acting.head@granby.edu.ph", dept.CBA],
+  ] as const;
+  await prisma.userDepartmentAssignment.createMany({
+    data: permanentAssignments.map(([email, departmentId]) => ({ userId: user[email], departmentId })),
+  });
+  await prisma.userDepartmentAssignment.create({
+    data: {
+      userId: user["acting.head@granby.edu.ph"], departmentId: dept.CCS, acting: true,
+      startsAt: new Date("2026-06-01T00:00:00Z"), endsAt: new Date("2027-05-31T23:59:59Z"),
+    },
+  });
+
+  // One automatic class-schedule proposal and one ordinary request keep the Administrator Review Center populated.
+  const automaticReview = await prisma.schedule.findFirst({ where: { semesterId: collegeTerm.id, section: { departmentId: dept.CCS } }, orderBy: { createdAt: "asc" } });
+  if (automaticReview) {
+    await prisma.schedule.update({ where: { id: automaticReview.id }, data: { status: "REVIEW", generatedBy: "AI", notes: "Automatically generated conflict-free placement submitted by the Head of Department for Administrator review." } });
+    await prisma.scheduleRequest.create({
+      data: {
+        type: "CHANGE_ROOM", status: "PENDING", scheduleId: automaticReview.id, requestedById: user["faculty@granby.edu.ph"],
+        reason: "Request a room nearer the computer laboratory for the next class transition.", details: { reason: "Reduce travel time between consecutive classes." },
+      },
+    });
+    await prisma.notification.create({ data: { userId: user["administrator@granby.edu.ph"], type: "INFO", title: "Automatic class schedule awaiting review", message: "The College of Computer Studies submitted an automatically generated class schedule proposal.", link: "/admin/review-center?queue=class-schedules" } });
+  }
   // Demo students (view-only portal at /student); fictional names and numbers.
   const studentDefs = [
     { email: "student.stem@granby.edu.ph", name: "Paolo Reyes", studentNumber: "136512090001", section: "Grade 11 - Newton" },
@@ -499,7 +567,6 @@ async function main() {
     data: [
       { type: "SCHOOL_EVENT", title: "Faculty General Assembly", description: "Audio-Visual Room. All faculty members are expected to attend.", startDate: date(fromToday(1)), endDate: date(fromToday(1)), startMin: 16 * 60, endMin: 17 * 60 + 30, sectionIds: [] },
       { type: "SCHOOL_EVENT", title: "Foundation Week", description: "Exhibits, sports festival, and the Granby Values recognition rites.", startDate: date(fromToday(14)), endDate: date(fromToday(18)), sectionIds: [] },
-      { type: "SCHOOL_EVENT", title: "Midterm Examination Day", description: "College midterm examinations.", startDate: date(examDay), endDate: date(examDay), sectionIds: [] },
     ],
   });
   await prisma.roomBooking.create({
@@ -556,6 +623,7 @@ async function main() {
     }
   }
   await prisma.enrollmentRecord.createMany({ data: records });
+  await prisma.enrollmentRecord.create({ data: { level: "COLLEGE", programId: program.BSIT, yearLevel: "FIRST", academicYear: `${ayYear}-${ayYear + 1}`, termType: collegeTerm.type, enrolled: 106 } });
 
   // -------------------------------------------------------------------
   // System settings
@@ -563,7 +631,8 @@ async function main() {
   await prisma.systemSetting.createMany({
     data: [
       { key: "institution", value: { name: "GRANBY COLLEGES OF SCIENCE & TECHNOLOGY", location: "Naic, Cavite, Philippines" } },
-      { key: "workload", value: { measure: "HOURS", minimum: 12, maximum: 24 } },
+      { key: "workload", value: { measure: "HOURS", minimum: 12, maximum: 24, partTimeMinimum: 12, partTimeMaximum: 24, maxUnits: 30, tolerance: 6, crossDepartment: "BOTH_HEADS" } },
+      { key: "booking", value: { bufferMinutes: 10, openMin: 420, closeMin: 1260, urgentCapPerUser: 4, urgentCapPerDepartment: 12 } },
     ],
   });
 
@@ -587,6 +656,10 @@ async function main() {
 
   // Archived records and department activity submissions for the Archive and Activity Approvals pages.
   await addArchiveAndApprovalSamples(prisma, passwordHash);
+
+  // Program-scoped heads, examination windows, and examination approval states.
+  await addScopeAndExamSamples(prisma);
+  await addBookingSamples(prisma);
 
   console.log(`Seed complete: ${placed} college class meetings placed in ${collegeTerm.name} ${ay.name}.`);
   console.log(`Demo login password for every demo account: ${DEV_PASSWORD}`);

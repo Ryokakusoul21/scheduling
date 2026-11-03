@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Plus } from "@phosphor-icons/react/ssr";
+import { BookOpen, Lock, Plus } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +32,7 @@ export interface SubjectRow {
   yearLevel: string;
   gradeLevel: string;
   classes: number;
+  editable: boolean;
 }
 
 const ROOM_TYPES = [
@@ -148,11 +149,11 @@ export function SubjectsList({
                   data-roving=""
                   tabIndex={-1}
                   onClick={(e) => {
-                    if ((e.target as HTMLElement).closest("button")) return;
+                    if ((e.target as HTMLElement).closest("button") || !s.editable) return;
                     dialog.openEdit(s);
                   }}
-                  aria-label={`${s.code} ${s.name}, ${s.units} units. Press Enter to edit.`}
-                  className={cn("cursor-pointer", isDragging && "bg-card shadow-lg")}
+                  aria-label={`${s.code} ${s.name}, ${s.units} units.${s.editable ? " Press Enter to edit." : ""}`}
+                  className={cn(s.editable ? "cursor-pointer" : "bg-muted/40", isDragging && "bg-card shadow-lg")}
                 >
                   <TableCell>
                     <DragHandle {...handleProps} />
@@ -171,12 +172,16 @@ export function SubjectsList({
                     <Badge variant="outline">{ROOM_TYPES.find((r) => r.value === s.requiredRoomType)?.label ?? s.requiredRoomType}</Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
-                      <ActionButton kind="edit" onClick={() => dialog.openEdit(s)}>
-                        Edit
-                      </ActionButton>
-                      <ArchiveButton kind="SUBJECT" id={s.id} name={s.code} />
-                    </div>
+                    {s.editable ? (
+                      <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
+                        <ActionButton kind="edit" onClick={() => dialog.openEdit(s)}>
+                          Edit
+                        </ActionButton>
+                        <ArchiveButton kind="SUBJECT" id={s.id} name={s.code} />
+                      </div>
+                    ) : (
+                      <span className="flex items-center justify-end gap-1 text-sm text-muted-foreground"><Lock className="size-3.5" aria-hidden /> Read-only</span>
+                    )}
                   </TableCell>
                 </TableRow>
               )}

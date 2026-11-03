@@ -4,10 +4,16 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
+import { setBreadcrumbDirty } from "@/components/ux/breadcrumbs";
 
 /** Goes back in history (or to the fallback page) and warns first when there are unsaved changes. */
 export function BackButton({ fallback, dirty = false }: { fallback: string; dirty?: boolean }) {
   const router = useRouter();
+
+  useEffect(() => {
+    setBreadcrumbDirty(dirty);
+    return () => setBreadcrumbDirty(false);
+  }, [dirty]);
 
   // The browser shows its own leave-page warning for reloads, tab closes, and typed addresses.
   useEffect(() => {

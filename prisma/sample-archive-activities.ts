@@ -26,8 +26,10 @@ export async function addArchiveAndApprovalSamples(db: PrismaClient, passwordHas
   const account = { status: "ACTIVE" as const, emailVerified: new Date(), termsAcceptedAt: new Date(), passwordHash };
 
   // Two more Heads of Department so submissions come from several departments.
-  await db.user.create({ data: { ...account, email: "head.business@granby.edu.ph", name: "Ricardo Lim", role: "HEAD_OF_DEPARTMENT", facultyId: await facultyId("F-012") } });
-  await db.user.create({ data: { ...account, email: "head.artsciences@granby.edu.ph", name: "Daniel Ramos", role: "HEAD_OF_DEPARTMENT", facultyId: await facultyId("F-008") } });
+  // The main seed may already have created these accounts.
+  for (const [email, name, employeeId] of [["head.business@granby.edu.ph", "Ricardo Lim", "F-012"]] as const) {
+    if (!(await db.user.findUnique({ where: { email } }))) await db.user.create({ data: { ...account, email, name, role: "HEAD_OF_DEPARTMENT", facultyId: await facultyId(employeeId) } });
+  }
 
   // -------------------------------------------------------------------
   // Archived records (new ones, so the seeded timetable stays complete)
@@ -80,7 +82,7 @@ export async function addArchiveAndApprovalSamples(db: PrismaClient, passwordHas
     CCS: await userId("head.computing@granby.edu.ph"),
     BED: await userId("head.basiceducation@granby.edu.ph"),
     CBA: await userId("head.business@granby.edu.ph"),
-    CAS: await userId("head.artsciences@granby.edu.ph"),
+    CAS: await userId("head.generaleducation@granby.edu.ph"),
   };
   type Submission = {
     dept: keyof typeof heads; title: string; description: string; start: string; end?: string; from?: number; to?: number;

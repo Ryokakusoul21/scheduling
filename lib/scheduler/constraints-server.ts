@@ -11,17 +11,17 @@ export async function activeRules(): Promise<ConstraintRule[]> {
   return rows.map((r) => ({ id: r.id, kind: r.kind, name: r.name, params: r.params, departmentId: r.departmentId }));
 }
 
-async function loadContext(): Promise<ConstraintContext> {
+export async function loadContext(): Promise<ConstraintContext> {
   const [rooms, sections, subjects, faculty, programs] = await Promise.all([
     prisma.room.findMany({ select: { id: true, roomName: true, capacity: true, isGeneralShared: true, programs: { select: { id: true } } } }),
-    prisma.section.findMany({ select: { id: true, name: true, studentCount: true, programId: true, program: { select: { departmentId: true } } } }),
+    prisma.section.findMany({ select: { id: true, name: true, studentCount: true, programId: true, departmentId: true } }),
     prisma.subject.findMany({ select: { id: true, code: true, name: true } }),
     prisma.faculty.findMany({ select: { id: true, fullName: true } }),
     prisma.program.findMany({ select: { id: true, name: true } }),
   ]);
   return {
     rooms: new Map(rooms.map((r) => [r.id, { name: r.roomName, capacity: r.capacity, isGeneralShared: r.isGeneralShared, programIds: r.programs.map((p) => p.id) }])),
-    sections: new Map(sections.map((s) => [s.id, { name: s.name, studentCount: s.studentCount, programId: s.programId, departmentId: s.program?.departmentId ?? null }])),
+    sections: new Map(sections.map((s) => [s.id, { name: s.name, studentCount: s.studentCount, programId: s.programId, departmentId: s.departmentId ?? null }])),
     subjects: new Map(subjects.map((s) => [s.id, { code: s.code, name: s.name }])),
     faculty: new Map(faculty.map((f) => [f.id, { name: f.fullName }])),
     programNames: new Map(programs.map((p) => [p.id, p.name])),

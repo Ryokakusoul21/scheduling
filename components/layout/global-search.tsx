@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MagnifyingGlass as Search, CircleNotch as Loader2, BookOpen, UserSquare as UserSquare2, Buildings as Building2, Stack as Layers } from "@phosphor-icons/react/ssr";
 import { globalSearchAction, type SearchResult } from "./search-actions";
+import { Kbd } from "@/components/ux/kbd";
 
 const GROUP_ICONS: Record<SearchResult["group"], typeof BookOpen> = {
   Subjects: BookOpen,
@@ -96,11 +97,14 @@ export function GlobalSearch() {
         value={query}
         onChange={(e) => handleChange(e.target.value)}
         onFocus={() => query.trim().length >= 2 && setOpen(true)}
-        placeholder="Search subject, faculty, room, section…  ( / )"
+        placeholder="Search subject, faculty, room, section…"
+        aria-keyshortcuts="/"
         className="h-10 w-full rounded-xl border border-transparent bg-muted/70 pl-10 pr-9 text-sm text-foreground outline-none ring-1 ring-inset ring-black/[0.04] transition-all placeholder:text-muted-foreground/70 hover:bg-muted focus-visible:border-primary/30 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 dark:ring-white/[0.04]"
       />
-      {pending && (
+      {pending ? (
         <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+      ) : (
+        !query && <Kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs" aria-hidden>/</Kbd>
       )}
 
       {open && query.trim().length >= 2 && (
@@ -110,7 +114,7 @@ export function GlobalSearch() {
           )}
           {Object.entries(grouped).map(([group, items]) => (
             <div key={group} className="mb-1 last:mb-0">
-              <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {group}
               </p>
               {items.map((r) => {

@@ -78,9 +78,9 @@ export function ForecastBoard(props: {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <NativeSelect aria-label="Forecast term" value={props.target} onChange={(e) => go({ target: e.target.value })} options={props.targets} className="w-64" />
+        <NativeSelect aria-label="Forecast term" value={props.target} onChange={(e) => go({ target: e.target.value })} options={props.targets} className="w-full sm:w-64" />
         {props.departments.length > 0 && (
-          <NativeSelect aria-label="Department" value={props.department} onChange={(e) => go({ department: e.target.value })} options={[{ value: "", label: "All departments" }, ...props.departments]} className="w-72" />
+          <NativeSelect aria-label="Department" value={props.department} onChange={(e) => go({ department: e.target.value })} options={[{ value: "", label: "All departments" }, ...props.departments]} className="w-full sm:w-72" />
         )}
         {props.aiEnabled && !props.narrative && (
           <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/forecast?${new URLSearchParams({ target: props.target, department: props.department, explain: "1" })}`} />}>
@@ -114,7 +114,7 @@ export function ForecastBoard(props: {
         <Card>
           <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base">Enrollment history and forecast</CardTitle>
-            <NativeSelect aria-label="Program" value={selected.key} onChange={(e) => setFocus(e.target.value)} options={props.series.map((s) => ({ value: s.key, label: s.name }))} className="w-80" />
+            <NativeSelect aria-label="Program" value={selected.key} onChange={(e) => setFocus(e.target.value)} options={props.series.map((s) => ({ value: s.key, label: s.name }))} className="w-full sm:w-80" />
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>

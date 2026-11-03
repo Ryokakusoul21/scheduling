@@ -1,7 +1,7 @@
 import "server-only";
 import type { AdjustmentCause } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { notifyFaculty } from "@/lib/notify";
+import { notifyFaculty, notifyFacultyEach } from "@/lib/notify";
 import { formatRange } from "@/lib/scheduler/timetable";
 import {
   addDays,
@@ -33,7 +33,8 @@ export interface PlanItem {
   departmentId: string | null;
   before: Placement;
   after: Placement | null;
-  kind: "MOVED" | "CANCELLED";
+  /** ONLINE keeps the time and faculty member but meets without a room. */
+  kind: "MOVED" | "CANCELLED" | "ONLINE";
   reason: string;
 }
 
@@ -180,35 +181,51 @@ export async function findMakeUpOptions(scheduleId: string, date: string, after:
 
 const when = (p: Placement) => `${p.date}, ${formatRange(p.startMin, p.endMin)} in ${p.roomName}`;
 
+type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+/** Writes the plan as one undoable batch inside the caller's transaction. Returns the batch id. */
+export async function writePlan(tx: Tx, plan: Pick<AdjustmentPlan, "items">, cause: AdjustmentCause, summary: string, userId: string, departmentId: string | null = null) {
+  const b = await tx.adjustmentBatch.create({ data: { cause, summary, createdById: userId, departmentId } });
+  await tx.scheduleAdjustment.createMany({
+    data: plan.items.map((i) => ({
+      batchId: b.id,
+      scheduleId: i.scheduleId,
+      kind: i.kind,
+      date: new Date(`${i.before.date}T00:00:00Z`),
+      newDate: i.after && i.after.date !== i.before.date ? new Date(`${i.after.date}T00:00:00Z`) : null,
+      roomId: i.after && i.kind !== "ONLINE" && i.after.roomId !== i.before.roomId ? i.after.roomId : null,
+      facultyId: i.after && i.after.facultyId !== i.before.facultyId ? i.after.facultyId : null,
+      startMin: i.after && i.after.startMin !== i.before.startMin ? i.after.startMin : null,
+      endMin: i.after && i.after.endMin !== i.before.endMin ? i.after.endMin : null,
+      reason: i.reason,
+      departmentId: i.departmentId,
+    })),
+  });
+  return b.id;
+}
+
 /** Saves the plan as one undoable batch and notifies every affected faculty member. Returns the batch id. */
 export async function applyPlan(plan: AdjustmentPlan, cause: AdjustmentCause, summary: string, userId: string) {
-  const batch = await prisma.$transaction(async (tx) => {
-    const b = await tx.adjustmentBatch.create({ data: { cause, summary, createdById: userId } });
-    await tx.scheduleAdjustment.createMany({
-      data: plan.items.map((i) => ({
-        batchId: b.id,
-        scheduleId: i.scheduleId,
-        kind: i.kind,
-        date: new Date(`${i.before.date}T00:00:00Z`),
-        newDate: i.after && i.after.date !== i.before.date ? new Date(`${i.after.date}T00:00:00Z`) : null,
-        roomId: i.after && i.after.roomId !== i.before.roomId ? i.after.roomId : null,
-        facultyId: i.after && i.after.facultyId !== i.before.facultyId ? i.after.facultyId : null,
-        startMin: i.after && i.after.startMin !== i.before.startMin ? i.after.startMin : null,
-        endMin: i.after && i.after.endMin !== i.before.endMin ? i.after.endMin : null,
-        reason: i.reason,
-      })),
-    });
-    return b;
-  });
+  const batchId = await prisma.$transaction((tx) => writePlan(tx, plan, cause, summary, userId));
+  await notifyPlan(plan);
+  return batchId;
+}
 
-  for (const i of plan.items) {
-    const message = i.after
-      ? `${i.label} on ${when(i.before)} now meets ${when(i.after)}${i.after.facultyId !== i.before.facultyId ? ` with ${i.after.facultyName}` : ""}. ${i.reason}`
-      : `${i.label} on ${when(i.before)} is cancelled. ${i.reason}`;
-    const ids = [i.before.facultyId, ...(i.after ? [i.after.facultyId] : [])];
-    await notifyFaculty(ids, { title: i.after ? "Class rescheduled" : "Class cancelled", message, link: "/calendar", type: "WARNING" });
-  }
-  return batch.id;
+/** Tells every faculty member in the plan where their class went. */
+export async function notifyPlan(plan: Pick<AdjustmentPlan, "items">) {
+  await notifyFacultyEach(
+    plan.items.map((i) => ({
+      facultyIds: [i.before.facultyId, ...(i.after ? [i.after.facultyId] : [])],
+      msg: {
+        title: i.after ? "Class rescheduled" : "Class cancelled",
+        message: i.after
+          ? `${i.label} on ${when(i.before)} now meets ${when(i.after)}${i.after.facultyId !== i.before.facultyId ? ` with ${i.after.facultyName}` : ""}. ${i.reason}`
+          : `${i.label} on ${when(i.before)} is cancelled. ${i.reason}`,
+        link: "/calendar",
+        type: "WARNING" as const,
+      },
+    }))
+  );
 }
 
 /** Saves a chosen make-up session into an existing batch after checking it is still free. */
@@ -233,6 +250,29 @@ export async function addMakeUp(batchId: string, scheduleId: string, date: strin
 }
 
 /**
+ * Why the given adjustments of a batch cannot go back to their original meetings (empty when they all can).
+ * `ignoreRefIds` are occupants being removed at the same time.
+ */
+export async function undoProblems(batchId: string, adjustments: { scheduleId: string; date: Date; kind: string }[], ignoreRefIds: string[] = []) {
+  const restored = adjustments.filter((a) => a.kind !== "MAKE_UP");
+  if (!restored.length) return [];
+  const dates = restored.map((a) => isoDate(a.date)).sort();
+  const p = await loadPlan(dates[0], dates[dates.length - 1], { excludeBatchId: batchId });
+  const problems: string[] = [];
+  for (const a of restored) {
+    const s = p.sessions.find((x) => x.scheduleId === a.scheduleId && x.date === isoDate(a.date));
+    if (!s) continue;
+    const clashes = findClashes(
+      p.ctx.occupants,
+      { date: s.date, startMin: s.startMin, endMin: s.endMin, roomId: s.roomId, facultyIds: [s.facultyId], sectionIds: [s.sectionId] },
+      (o) => ignoreRefIds.includes(o.refId) || (o.kind === "CLASS" && o.refId === s.scheduleId)
+    );
+    problems.push(...clashes.map((c) => `${p.label(s)} cannot return to its original slot: ${describeClash(c)}`));
+  }
+  return problems;
+}
+
+/**
  * Reverts every adjustment in a batch after confirming the original meetings are still free.
  * `ignoreRefIds` are occupants being removed at the same time (for example the booking being cancelled).
  */
@@ -240,24 +280,8 @@ export async function undoBatch(batchId: string, ignoreRefIds: string[] = []): P
   const batch = await prisma.adjustmentBatch.findUnique({ where: { id: batchId }, include: { adjustments: true } });
   if (!batch) return "This change no longer exists.";
   if (batch.undoneAt) return "This change was already undone.";
-
-  const restored = batch.adjustments.filter((a) => a.kind !== "MAKE_UP");
-  if (restored.length) {
-    const dates = restored.map((a) => isoDate(a.date)).sort();
-    const p = await loadPlan(dates[0], dates[dates.length - 1], { excludeBatchId: batchId });
-    const problems: string[] = [];
-    for (const a of restored) {
-      const s = p.sessions.find((x) => x.scheduleId === a.scheduleId && x.date === isoDate(a.date));
-      if (!s) continue;
-      const clashes = findClashes(
-        p.ctx.occupants,
-        { date: s.date, startMin: s.startMin, endMin: s.endMin, roomId: s.roomId, facultyIds: [s.facultyId], sectionIds: [s.sectionId] },
-        (o) => ignoreRefIds.includes(o.refId) || (o.kind === "CLASS" && o.refId === s.scheduleId)
-      );
-      problems.push(...clashes.map((c) => `${p.label(s)} cannot return to its original slot: ${describeClash(c)}`));
-    }
-    if (problems.length) return problems.join(" ");
-  }
+  const problems = await undoProblems(batchId, batch.adjustments, ignoreRefIds);
+  if (problems.length) return problems.join(" ");
 
   await prisma.adjustmentBatch.update({ where: { id: batchId }, data: { undoneAt: new Date() } });
   const schedules = await prisma.schedule.findMany({

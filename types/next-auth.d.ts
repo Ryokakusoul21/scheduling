@@ -8,6 +8,7 @@ declare module "next-auth" {
     status: UserStatus;
     sessionVersion: number;
     remember: boolean;
+    sessionId?: string;
   }
 
   interface Session {
@@ -15,6 +16,8 @@ declare module "next-auth" {
       id: string;
       role: Role;
       status: UserStatus;
+      /** Row in UserSession for this browser; absent on sign-ins that predate session tracking. */
+      sessionId?: string;
     } & DefaultSession["user"];
   }
 }
@@ -26,6 +29,8 @@ declare module "@auth/core/jwt" {
     status: UserStatus;
     sessionVersion: number;
     remember?: boolean;
+    /** UserSession id. */
+    sid?: string;
     /** Unix seconds when the user signed in (for absolute session expiry). */
     loginAt?: number;
   }

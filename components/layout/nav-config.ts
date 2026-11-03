@@ -7,6 +7,7 @@ import {
   ClipboardText as ClipboardList,
   CalendarBlank as CalendarDays,
   BookOpen,
+  Books,
   Stack as Layers,
   Users,
   UserSquare as UserSquare2,
@@ -19,7 +20,6 @@ import {
   Gear as Settings,
   Robot as Bot,
   UsersThree,
-  Exam,
   DoorOpen,
   ArrowsClockwise,
   Gauge,
@@ -57,7 +57,6 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Scheduler", href: "/scheduler", icon: CalendarClock, shortcut: "g s" },
       { label: "Calendar of Activities", href: "/calendar", icon: CalendarCheck, shortcut: "g c" },
-      { label: "Examinations", href: "/examinations", icon: Exam, shortcut: "g x" },
       { label: "Room Booking", href: "/bookings", icon: DoorOpen, shortcut: "g b" },
       { label: "Schedule Adjustments", href: "/adjustments", icon: ArrowsClockwise, roles: STAFF },
       { label: "Scheduling Constraints", href: "/constraints", icon: ShieldCheck, roles: STAFF },
@@ -69,14 +68,15 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "My Teaching",
     items: [
       { label: "My Teaching Load", href: "/workload", icon: Gauge, roles: ["FACULTY"] },
+      { label: "My Assigned Subjects", href: "/my-subjects", icon: Books, roles: TEACHING_ROLES },
       { label: "Report Unavailability", href: "/availability", icon: UserMinus, roles: TEACHING_ROLES },
     ],
   },
   {
     label: "Academic Setup",
     items: [
-      { label: "Academic Years & Terms", href: "/academic-years", icon: CalendarDays, roles: ADMIN, shortcut: "g y" },
-      { label: "Programs & Strands", href: "/programs", icon: Layers, roles: STAFF, shortcut: "g p" },
+      { label: "Academic Years and Terms", href: "/academic-years", icon: CalendarDays, roles: ADMIN, shortcut: "g y" },
+      { label: "Programs and Strands", href: "/programs", icon: Layers, roles: STAFF, shortcut: "g p" },
       { label: "Subjects", href: "/subjects", icon: BookOpen, roles: STAFF, shortcut: "g u" },
       { label: "Sections", href: "/sections", icon: UsersThree, roles: STAFF, shortcut: "g e" },
       { label: "Faculty", href: "/faculty", icon: UserSquare2, roles: STAFF, shortcut: "g f" },
@@ -85,7 +85,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Reports & Analytics",
+    label: "Reports and Analytics",
     items: [
       { label: "Timetable Analytics", href: "/analytics", icon: BarChart3, roles: STAFF },
       { label: "Faculty Workload", href: "/workload", icon: Gauge, roles: STAFF },
@@ -96,6 +96,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Administration",
     items: [
+      { label: "Administrator Review Center", href: "/admin/review-center", icon: ShieldCheck, roles: ADMIN },
       { label: "User Management", href: "/admin/users", icon: Users, roles: ADMIN },
       { label: "Audit Logs", href: "/admin/audit-logs", icon: History, roles: ADMIN },
       { label: "System Settings", href: "/admin/settings", icon: Settings, roles: ADMIN },
