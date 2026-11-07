@@ -35,7 +35,7 @@ function FacultyLinkField({ id, options, value }: { id: string; options: { value
     <Field>
       <FieldLabel htmlFor={id}>Linked faculty record</FieldLabel>
       <select name="facultyId" id={id} defaultValue={value ?? ""} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
-        <option value="">None (Administrator accounts)</option>
+        <option value="">None (Registrar accounts)</option>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </Field>

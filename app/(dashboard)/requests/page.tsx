@@ -10,14 +10,14 @@ import { activeTermIds } from "@/lib/workload/auto";
 import { projectionWarning } from "@/lib/workload/projection";
 import type { CrossDepartmentDetails } from "@/lib/requests/cross-department";
 
-export const metadata = { title: "Schedule Requests · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Schedule Requests · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function RequestsPage() {
   const scope = await getScope();
   const isStaff = STAFF_ROLES.includes(scope.role);
   const own = scope.manageDepartmentId;
 
-  // The Administrator sees every request; a Head of Department their own, their department's, and requests
+  // The Registrar sees every request; a Head of Department their own, their department's, and requests
   // aimed at their department; faculty only their own.
   const where = scope.isAdmin
     ? {}

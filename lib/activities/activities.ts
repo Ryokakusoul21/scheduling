@@ -9,7 +9,7 @@ import { formatLongDate } from "@/lib/calendar";
 import type { ActivityListItem, ActivityStatus } from "./status";
 
 /**
- * Which activities a person sees: the Administrator everything; a Head of Department every status of their
+ * Which activities a person sees: the Registrar everything; a Head of Department every status of their
  * own department's activities plus approved institution-wide ones; everyone else approved activities of
  * their own department and of the whole school. Other departments' activities stay hidden.
  */
@@ -48,7 +48,7 @@ export async function listActivities(where: Prisma.ActivityWhereInput, opts: { c
     participants: a.participants ?? "",
     status: a.status as ActivityStatus,
     reviewNote: a.reviewNote ?? "",
-    submittedBy: (a.createdById && submitters.get(a.createdById)) || "Administrator",
+    submittedBy: (a.createdById && submitters.get(a.createdById)) || "Registrar",
     submittedAt: a.createdAt.toISOString(),
     conflicts: conflicts.get(a.id) ?? [],
   }));

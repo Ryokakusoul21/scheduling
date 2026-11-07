@@ -77,7 +77,7 @@ async function check(trigger: string, actorId: string | null): Promise<WorkloadS
     create: { key: SETTING_WORKLOAD_STATUS, value: status as never },
   });
 
-  // Tell each department's Head (and the Administrator) about newly appearing items that need a person.
+  // Tell each department's Head (and the Registrar) about newly appearing items that need a person.
   const seen = new Set((previous?.flags ?? []).map((f) => f.explanation));
   const deptOf = new Map(data.faculty.map((f) => [f.id, f.departmentId]));
   const fresh = flags.filter((f) => !seen.has(f.explanation));

@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarBlank, CaretDown, Copy, DotsThree, Export, Eye, FilePdf, FileXls, PencilSimple, XCircle } from "@phosphor-icons/react/ssr";
+import { CalendarBlank, CaretDown, CheckCircle, Copy, DotsThree, Export, Eye, FilePdf, FileXls, FunnelSimple, PencilSimple, XCircle } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -53,7 +53,7 @@ const exportRows = (rows: BookingRow[], name = "room-bookings.csv") => downloadT
 const ROW_GRID = "grid gap-2 lg:items-start lg:gap-4";
 
 /** Upcoming and past bookings with filters, priority and status, moved-class details, and row actions. */
-export function BookingsList({ bookings, showBookedBy, highlightId, pending, onCancel, onDuplicate, onOpen, onFindRoom }: {
+export function BookingsList({ bookings, showBookedBy, highlightId, pending, onCancel, onDuplicate, onOpen, onApprove, onFindRoom }: {
   bookings: BookingRow[];
   showBookedBy: boolean;
   highlightId: string | null;
@@ -61,12 +61,14 @@ export function BookingsList({ bookings, showBookedBy, highlightId, pending, onC
   onCancel: (id: string, restore: boolean) => void;
   onDuplicate: (b: BookingRow) => void;
   onOpen: (b: BookingRow) => void;
+  onApprove: (id: string) => void;
   onFindRoom: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("upcoming");
   const [cancelling, setCancelling] = useState<BookingRow | null>(null);
   const [restore, setRestore] = useState(true);
   const [editing, setEditing] = useState<BookingRow | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({ status: "", room: "", priority: "", from: "", to: "" });
   const set = (k: keyof typeof filters, v: string) => setFilters((f) => ({ ...f, [k]: v }));
 
@@ -81,11 +83,17 @@ export function BookingsList({ bookings, showBookedBy, highlightId, pending, onC
   const rooms = [...new Map(bookings.map((b) => [b.roomId, b.roomName])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const columns = cn(ROW_GRID, showBookedBy ? "lg:grid-cols-[12rem_minmax(0,0.8fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_8rem_8rem_2.5rem]" : "lg:grid-cols-[12rem_minmax(0,0.8fr)_minmax(0,1.4fr)_8rem_8rem_2.5rem]");
   const anyFilter = Object.values(filters).some(Boolean);
+  const waiting = bookings.filter((b) => b.canApprove);
 
   return (
     <section aria-labelledby="bookings-title" className="print-area space-y-4 rounded-xl border bg-card p-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="bookings-title" className="text-base font-semibold">{showBookedBy ? "All bookings" : "My bookings"}</h2>
+        <div className="flex items-center gap-2 print:hidden">
+        <Button variant="outline" className="h-9" aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)}>
+          <FunnelSimple className="size-4" /> Filters
+          {anyFilter && <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{Object.values(filters).filter(Boolean).length}</span>}
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="outline" className="h-9 print:hidden" />}>
             <Export className="size-4" /> Export <CaretDown className="size-3.5" />
@@ -95,9 +103,31 @@ export function BookingsList({ bookings, showBookedBy, highlightId, pending, onC
             <DropdownMenuItem onClick={() => window.print()}><FilePdf className="size-4" /> PDF</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </header>
       <PrintHeader title="Room Bookings" subtitle={tab === "upcoming" ? "Upcoming" : "Past"} />
 
+      {waiting.length > 0 && (
+        <section aria-label="Urgent overrides awaiting your approval" className="space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3 print:hidden">
+          <p className="text-sm font-semibold">{waiting.length} urgent {waiting.length === 1 ? "override awaits" : "overrides await"} your approval</p>
+          <ul className="space-y-1.5">
+            {waiting.slice(0, 3).map((b) => (
+              <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-card p-2 text-[13px]">
+                <span className="min-w-0">
+                  <span className="font-medium">{b.purpose}</span> · {b.roomName}, {b.dateLabel}, {formatRange(b.startMin, b.endMin)} · {b.bookedBy}{b.reason && ` · ${b.reason}`}
+                </span>
+                <span className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => onOpen(b)}>Review</Button>
+                  <Button size="sm" disabled={pending} onClick={() => onApprove(b.id)}><CheckCircle className="size-4" /> Approve</Button>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {waiting.length > 3 && <p className="text-xs text-muted-foreground">{waiting.length - 3} more are in the list below.</p>}
+        </section>
+      )}
+
+      {showFilters && (
       <div className="flex flex-wrap items-end gap-2 print:hidden" aria-label="Filter bookings">
         <NativeSelect aria-label="Status" value={filters.status} onChange={(e) => set("status", e.target.value)} options={[{ value: "", label: "Any status" }, ...statuses.map((s) => ({ value: s, label: s }))]} className="h-9 w-40" />
         <NativeSelect aria-label="Room" value={filters.room} onChange={(e) => set("room", e.target.value)} options={[{ value: "", label: "Any room" }, ...rooms.map(([value, label]) => ({ value, label }))]} className="h-9 w-40" />
@@ -106,6 +136,7 @@ export function BookingsList({ bookings, showBookedBy, highlightId, pending, onC
         <label className="text-xs text-muted-foreground">To <Input type="date" value={filters.to} onChange={(e) => set("to", e.target.value)} className="h-9 w-40" /></label>
         {anyFilter && <Button variant="ghost" size="sm" onClick={() => setFilters({ status: "", room: "", priority: "", from: "", to: "" })}>Clear filters</Button>}
       </div>
+      )}
 
       <div role="tablist" aria-label="Bookings" className="flex gap-1 border-b print:hidden">
         {([["upcoming", "Upcoming", upcoming.length], ["past", "Past", past.length]] as const).map(([value, label, count]) => (
@@ -120,7 +151,7 @@ export function BookingsList({ bookings, showBookedBy, highlightId, pending, onC
       <div id="bookings-panel" role="tabpanel" aria-labelledby={`bookings-tab-${tab}`}>
         {rows.length === 0 ? (
           anyFilter ? <EmptyState icon={CalendarBlank} title="No bookings match these filters" className="py-8" />
-            : tab === "upcoming" ? <EmptyState icon={CalendarBlank} title="No upcoming bookings" action={<Button onClick={onFindRoom}>Find a room</Button>} className="py-8" />
+            : tab === "upcoming" ? <EmptyState icon={CalendarBlank} title="No upcoming bookings" description="Rooms you book appear here." action={<Button onClick={onFindRoom}>Book a room</Button>} className="py-8" />
               : <EmptyState icon={CalendarBlank} title="No past bookings" description="Bookings from the last 30 days appear here." className="py-8" />
         ) : (
           <>

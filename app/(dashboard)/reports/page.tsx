@@ -4,11 +4,11 @@ import { departmentWhere } from "@/lib/permissions/department";
 import { isoDate } from "@/lib/occupancy/engine";
 import { ScheduleReportTable } from "./report-table";
 
-export const metadata = { title: "Schedule Reports · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Schedule Reports · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function ReportsPage() {
   // A Head of Department's report covers their own department only.
-  const scope = await requireScope("ADMINISTRATOR", "HEAD_OF_DEPARTMENT");
+  const scope = await requireScope("SUPER_ADMINISTRATOR", "REGISTRAR", "HEAD_OF_DEPARTMENT");
 
   const [schedules, semesters, sections, faculty, rooms, departments, activities] = await Promise.all([
     prisma.schedule.findMany({
@@ -40,7 +40,7 @@ export default async function ReportsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Schedule Reports</h1>
         <p className="text-sm text-muted-foreground">
-          GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY — Class Schedule Report
+          GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY — Class Schedule Report
         </p>
       </div>
 

@@ -80,7 +80,7 @@ export type PreviewLoads = Record<string, { name: string; load: number; minimum:
 
 /**
  * Everything the workload screens show for the viewer: loads across the active terms (own load for Faculty,
- * own department for a Head of Department, everyone for the Administrator), the balance summary, the latest
+ * own department for a Head of Department, everyone for the Registrar), the balance summary, the latest
  * check, open proposals and their history, and the fix log.
  */
 export async function workloadView(scope: Scope, opts: { history?: number } = {}) {
@@ -100,7 +100,7 @@ export async function workloadView(scope: Scope, opts: { history?: number } = {}
   const department = scope.isAdmin || scope.role === "FACULTY" ? null : scope.manageDepartmentId;
   const visible = scope.role === "FACULTY" ? faculty.filter((f) => f.id === scope.facultyId) : faculty.filter((f) => !department || scope.departmentIds.includes(f.departmentId ?? ""));
   const visibleIds = new Set(visible.map((f) => f.id));
-  const deptName = (id: string | null) => departments.find((d) => d.id === id)?.name ?? "the Administrator";
+  const deptName = (id: string | null) => departments.find((d) => d.id === id)?.name ?? "the Registrar";
   const facultyName = new Map(faculty.map((f) => [f.id, f.name]));
 
   const actor = { isAdmin: scope.isAdmin, departmentIds: scope.departmentIds };

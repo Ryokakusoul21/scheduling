@@ -7,7 +7,7 @@ export default function RequestsError({ reset }: { error: Error; reset: () => vo
   return (
     <ErrorState
       title="Requests could not be loaded"
-      description="Something went wrong while loading Schedule Requests. Try again, and tell the Administrator if it keeps happening."
+      description="Something went wrong while loading Schedule Requests. Try again, and tell the Registrar if it keeps happening."
       action={<Button onClick={reset}>Try again</Button>}
     />
   );

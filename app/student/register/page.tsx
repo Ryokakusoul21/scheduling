@@ -6,7 +6,7 @@ import { StudentRegisterForm } from "@/components/auth/student-register-form";
 import { homePath } from "@/lib/permissions/roles";
 import { registrableSections } from "@/lib/students/sections";
 
-export const metadata = { title: "Student Registration · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Student Registration · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function StudentRegisterPage() {
   const session = await auth();

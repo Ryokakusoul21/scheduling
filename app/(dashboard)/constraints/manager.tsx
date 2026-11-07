@@ -134,7 +134,7 @@ export function ConstraintsManager({
       <div className="space-y-6">
         <PageHeader
           title="Scheduling Constraints"
-          description="Rules the scheduler follows when building timetables. School-wide rules set by the Administrator are read-only."
+          description="Rules the scheduler follows when building timetables. School-wide rules set by the Registrar are read-only."
           actions={
             <Button className="h-9" onClick={() => add(tab)}>
               <Plus className="size-4" /> Add constraint

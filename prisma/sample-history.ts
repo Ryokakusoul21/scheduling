@@ -108,7 +108,7 @@ export async function addSampleHistory(db: PrismaClient) {
     console.log(`Previous semester: ${placed} class meetings placed.`);
   }
 
-  const bookers = (await db.user.findMany({ where: { role: { in: ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT"] } }, select: { id: true } })).map((u) => u.id);
+  const bookers = (await db.user.findMany({ where: { role: { in: ["SUPER_ADMINISTRATOR", "REGISTRAR", "HEAD_OF_DEPARTMENT"] } }, select: { id: true } })).map((u) => u.id);
   const yesterday = addDays(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }), -1);
   const pastPrevious = await pastBookings(db, previous, isoDate(previous.startDate), [isoDate(previous.endDate), yesterday].sort()[0], 10, bookers, rand);
   const pastCurrent = await pastBookings(db, current, isoDate(current.startDate), [isoDate(current.endDate), yesterday].sort()[0], 12, bookers, rand);

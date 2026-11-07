@@ -53,7 +53,7 @@ export function unresolved(issue: Issue, cause: Cause, input: ResolverInput): Un
         link: { href: "/faculty", label: "Open Faculty" },
       };
     case "NOT_EDITABLE":
-      return { issue, reason: "This involves classes you can view but not change.", actions: ["Ask the department that owns them, or the Administrator."] };
+      return { issue, reason: "This involves classes you can view but not change.", actions: ["Ask the department that owns them, or the Registrar."] };
     case "LIMIT":
       return { issue, reason: "The search stopped at its time limit before reaching this issue.", actions: ["Run again for fewer sections, or for this issue only."] };
     default:

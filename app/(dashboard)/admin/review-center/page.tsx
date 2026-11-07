@@ -8,7 +8,7 @@ import { EXAM_TYPE_LABELS } from "@/lib/examinations/types";
 import { formatRange } from "@/lib/scheduler/timetable";
 import { ReviewInbox, type ReviewRow } from "./review-inbox";
 
-export const metadata = { title: "Administrator Review Center · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Registrar Review Center · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 const QUEUES = [
   ["room-bookings", "Room Booking Requests"], ["adjustments", "Schedule Adjustments"], ["schedule-requests", "Schedule Requests"],
@@ -19,7 +19,7 @@ const fmt = (date: Date) => date.toLocaleDateString("en-PH", { year: "numeric", 
 const words = (value: string) => value.toLowerCase().replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 
 export default async function ReviewCenterPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  await requireScope("ADMINISTRATOR");
+  await requireScope("SUPER_ADMINISTRATOR", "REGISTRAR");
   const query = await searchParams;
   const active = QUEUES.some(([key]) => key === query.queue) ? query.queue! : "class-schedules";
   const [departments, schedules, bookings, adjustments, requests, activities, examRows, workload] = await Promise.all([
@@ -63,7 +63,7 @@ export default async function ReviewCenterPage({ searchParams }: { searchParams:
   if (query.date) rows = rows.filter((row) => row.date.includes(query.date!));
 
   return <div className="space-y-4">
-    <PageHeader title="Administrator Review Center" description="Review proposals and requests from every department. Approvals make schedules official; corrections, rejections, and requested changes require an audited reason." />
+    <PageHeader title="Registrar Review Center" description="Review proposals and requests from every department. Approvals make schedules official; corrections, rejections, and requested changes require an audited reason." />
     <form className="grid gap-2 rounded-lg border bg-card p-3 sm:grid-cols-2 lg:grid-cols-6">
       <input type="hidden" name="queue" value={active} />
       <select name="department" defaultValue={query.department ?? ""} className="h-9 rounded-md border bg-background px-2 text-sm"><option value="">All departments</option>{departments.map((item) => <option key={item.id}>{item.name}</option>)}</select>

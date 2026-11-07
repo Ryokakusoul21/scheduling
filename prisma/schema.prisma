@@ -11,7 +11,8 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 enum Role {
-  ADMINISTRATOR
+  SUPER_ADMINISTRATOR
+  REGISTRAR
   HEAD_OF_DEPARTMENT
   FACULTY
   STUDENT
@@ -836,6 +837,8 @@ model Schedule {
   generatedBy  String? // "AI" or a userId
   score        Float?
   notes        String?
+  /// Marked "do not move": an urgent booking cannot displace this class unless the Registrar confirms.
+  doNotMove    Boolean        @default(false)
   /// Ownership snapshot used for scope-safe reads and exports.
   departmentId String?
 
@@ -1162,7 +1165,7 @@ model ScheduleAdjustment {
 }
 
 // ---------------------------------------------------------------------------
-// Workload optimization and enrollment forecasting
+// Workload optimization
 // ---------------------------------------------------------------------------
 
 /// Suggested faculty reassignments waiting for Head of Department or Administrator approval.
@@ -1259,20 +1262,6 @@ model WorkloadFix {
 
   @@index([appliedAt])
   @@index([departmentId])
-}
-
-/// Historical enrollment per program (or per level when there is no program) and term.
-model EnrollmentRecord {
-  id           String        @id @default(cuid())
-  level        AcademicLevel
-  programId    String?
-  academicYear String
-  termType     SemesterType
-  enrolled     Int
-  /// Optional cohort year used by section generation; older aggregate history remains null.
-  yearLevel    YearLevel?
-
-  @@index([level, programId])
 }
 
 model ScheduleRequest {

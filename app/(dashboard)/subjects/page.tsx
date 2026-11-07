@@ -17,7 +17,7 @@ import { STATUS_FILTERS, type StatusFilter } from "@/lib/subjects/status";
 import type { SubjectRequestDetails } from "@/lib/subjects/request-rules";
 import type { SubjectRequestInfo } from "./types";
 
-export const metadata = { title: "Subjects · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Subjects · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function SubjectsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const scope = await requireScope(...STAFF_ROLES);
@@ -159,7 +159,7 @@ export default async function SubjectsPage({ searchParams }: { searchParams: Pro
             yearLevel: s.yearLevel ?? "",
             gradeLevel: s.gradeLevel ?? "",
             classes: s._count.schedules,
-            // General Education subjects are shared; only the Administrator edits them.
+            // General Education subjects are shared; only the Registrar edits them.
             editable: scope.isAdmin || s.departmentId === scope.departmentId,
           }))}
         />

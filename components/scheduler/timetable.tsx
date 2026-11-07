@@ -40,6 +40,8 @@ export interface BlockInfo {
   ghost?: boolean;
   contextual?: boolean;
   pinned?: boolean;
+  /** Protected from urgent room bookings; shown with a lock but still draggable. */
+  doNotMove?: boolean;
   override?: string;
   /** Part of a Resolve issues proposal being previewed. */
   proposed?: boolean;
@@ -388,6 +390,7 @@ const Block = memo(function Block({
       <span className="flex items-center gap-1 font-semibold">
         {info.ghost && <Lock className="size-3.5 shrink-0" weight="fill" />}
         {info.pinned && <PushPin className="size-3.5 shrink-0 text-primary" weight="fill" />}
+        {info.doNotMove && <Lock className="size-3.5 shrink-0 text-primary" weight="fill" aria-label="Do not move for urgent bookings" />}
         <span className="truncate">{info.title}</span>
         {conflict && <ConflictTag severity={conflict.severity} className="ml-auto" />}
         {statusLabel && <span className="ml-auto shrink-0 rounded bg-black/10 px-1 text-[9px] font-medium uppercase dark:bg-white/15">{statusLabel}</span>}

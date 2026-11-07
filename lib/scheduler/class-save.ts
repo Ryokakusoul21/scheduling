@@ -30,17 +30,18 @@ export interface ClassData {
   endMin: number;
   status?: ScheduleStatus;
   notes?: string;
+  doNotMove?: boolean;
 }
 
 export function toEntry(s: Omit<SchedulerEntry, "notes"> & { notes: string | null }): SchedulerEntry {
   return {
     id: s.id, semesterId: s.semesterId, sectionId: s.sectionId, subjectId: s.subjectId, facultyId: s.facultyId, roomId: s.roomId,
-    component: s.component, dayOfWeek: s.dayOfWeek, startMin: s.startMin, endMin: s.endMin, status: s.status, notes: s.notes,
+    component: s.component, dayOfWeek: s.dayOfWeek, startMin: s.startMin, endMin: s.endMin, status: s.status, notes: s.notes, doNotMove: s.doNotMove,
   };
 }
 
 /**
- * Status after an edit. Administrator edits apply directly (no approval). A Head of
+ * Status after an edit. Registrar edits apply directly (no approval). A Head of
  * Department's new classes start as drafts and a change to a published class goes back to
  * review until it is approved and published.
  */

@@ -19,6 +19,13 @@ export async function requireUser() {
   return session.user;
 }
 
+/** Guard for actions any signed-in account may run on its own records (for example, reading notifications). */
+export async function requireAccount() {
+  const session = await currentSession();
+  if (!session?.user) unauthorized();
+  return session.user;
+}
+
 /** Guard for the student portal: signed-in students only. */
 export async function requireStudent() {
   const session = await currentSession();

@@ -1,12 +1,15 @@
 import { Suspense } from "react";
 import { requireUser } from "@/lib/auth/session";
 import { Sidebar } from "@/components/layout/sidebar";
+import { MobileNav } from "@/components/layout/mobile-nav";
+import { ROLE_LABELS } from "@/lib/permissions/roles";
 import { Topbar } from "@/components/layout/topbar";
 import { allowedHrefsForRole } from "@/components/layout/nav-config";
 import { ShortcutProvider } from "@/components/ux/shortcuts";
 import { prisma } from "@/lib/db/prisma";
 import type { AppRole } from "@/lib/permissions/roles";
 import { AppBreadcrumbs } from "@/components/ux/breadcrumbs";
+import { SectionTabs } from "@/components/layout/section-tabs";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -26,7 +29,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         Skip to content
       </a>
       <div className="fixed inset-0 flex overflow-clip bg-background print:static print:block print:overflow-visible">
-        <Sidebar role={role} />
+        <Sidebar role={role} name={account?.name ?? user.name ?? user.email ?? "User"} image={account?.image} />
         <div className="flex min-w-0 flex-1 flex-col overflow-clip print:block print:overflow-visible">
           <Topbar
             name={account?.name ?? user.name ?? user.email ?? "User"}
@@ -35,14 +38,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
             role={role}
             unreadNotifications={unread}
           />
-          <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto p-3 outline-none print:overflow-visible print:p-0 lg:[&:has([data-viewport-lock])]:overflow-hidden md:p-4">
+          <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto p-3 pb-28 outline-none md:pb-4 print:overflow-visible print:p-0 lg:[&:has([data-viewport-lock])]:overflow-hidden md:p-4">
             <div className="space-y-3 lg:has-[[data-viewport-lock]]:h-full">
               <Suspense fallback={<div className="h-5" aria-hidden />}><AppBreadcrumbs role={role} departmentName={account?.faculty?.department?.name} /></Suspense>
+              <SectionTabs role={role} />
               {children}
             </div>
           </main>
         </div>
       </div>
+      <MobileNav role={role} name={account?.name ?? user.name ?? user.email ?? "User"} image={account?.image} roleLabel={ROLE_LABELS[role]} />
     </ShortcutProvider>
   );
 }

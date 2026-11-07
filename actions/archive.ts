@@ -42,8 +42,9 @@ async function departmentOf(kind: ArchiveKind, id: string) {
 }
 
 async function allowed(scope: Scope, kind: ArchiveKind, id: string) {
-  // Accounts and faculty records are the Administrator's; other records follow the department rules of their pages.
-  if (kind === "USER" || kind === "FACULTY") return scope.isAdmin;
+  // Accounts are the Super Administrator's, faculty records the Registrar's; other records follow their pages' department rules.
+  if (kind === "USER") return scope.role === "SUPER_ADMINISTRATOR";
+  if (kind === "FACULTY") return scope.isAdmin;
   const departmentId = await departmentOf(kind, id);
   if (kind === "SUBJECT") return canManageSubject(scope, { departmentId });
   if (kind === "SECTION") return canManageSection(scope, { departmentId });
@@ -51,8 +52,8 @@ async function allowed(scope: Scope, kind: ArchiveKind, id: string) {
 }
 
 const REFUSED: Partial<Record<ArchiveKind, string>> = {
-  USER: "Only the Administrator can archive user accounts.",
-  FACULTY: "Only the Administrator can edit faculty records.",
+  USER: "Only the Super Administrator can archive user accounts.",
+  FACULTY: "Only the Registrar can edit faculty records.",
 };
 
 /** Archives a record instead of deleting it; warns first when classes this term still use it. */

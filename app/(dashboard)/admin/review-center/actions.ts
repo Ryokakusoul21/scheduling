@@ -20,7 +20,7 @@ const inputSchema = z.object({
 type Result = { ok: true; count: number } | { ok: false; error: string };
 
 export async function bulkReviewAction(input: z.input<typeof inputSchema>): Promise<Result> {
-  const scope = await requireScope("ADMINISTRATOR");
+  const scope = await requireScope("SUPER_ADMINISTRATOR", "REGISTRAR");
   const parsed = inputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the review decision." };
   const { kind, ids, decision, reason } = parsed.data;

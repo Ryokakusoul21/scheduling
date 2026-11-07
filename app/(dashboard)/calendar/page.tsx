@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { getScope } from "@/lib/permissions/scope";
 import { loadPlan } from "@/lib/occupancy/load";
@@ -12,12 +11,12 @@ import { ACTIVITY_STATUS_LABELS } from "@/lib/activities/status";
 import { PageHeader } from "@/components/ux/states";
 import { ActivitiesReportButtons } from "@/components/ux/export-buttons";
 import { activeTermLabel } from "@/lib/academics/term-label";
-import { cn } from "@/lib/utils";
 import { CalendarBoard, type CalendarEvent } from "./calendar-board";
 import { ActivitiesTable } from "./activities-table";
 import { ApprovalsBoard } from "./approvals-board";
+import { CalendarTabs } from "./calendar-tabs";
 
-export const metadata = { title: "Calendar of Activities · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Calendar of Activities · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 const VIEWS: CalendarView[] = ["month", "week", "day"];
 type Tab = "calendar" | "table" | "approvals";
@@ -47,24 +46,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   };
   const canSubmit = scope.isAdmin || scope.role === "HEAD_OF_DEPARTMENT";
 
-  const nav = (
-    <nav aria-label="Calendar of Activities sections" className="flex gap-1 border-b">
-      {tabs.map((t) => (
-        <Link
-          key={t}
-          href={`/calendar?tab=${t}`}
-          aria-current={tab === t ? "page" : undefined}
-          className={cn("-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium", tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}
-        >
-          {t === "calendar" ? "Calendar" : t === "table" ? "Table" : "Activity Approvals"}
-          {t === "approvals" && pendingCount > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[11px] font-semibold text-white">{pendingCount}</span>}
-        </Link>
-      ))}
-      {(scope.isAdmin || scope.role === "HEAD_OF_DEPARTMENT") && (
-        <Link href="/calendar/proposals" className="-mb-px flex items-center border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">Semester Proposals</Link>
-      )}
-    </nav>
-  );
+  const nav = <CalendarTabs active={tab} isAdmin={scope.isAdmin} showProposals={scope.isAdmin || scope.role === "HEAD_OF_DEPARTMENT"} pendingCount={pendingCount} />;
 
   if (tab !== "calendar") {
     const items =
@@ -88,7 +70,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const date = /^\d{4}-\d{2}-\d{2}$/.test(params.date ?? "") ? params.date! : today;
   const { from, to } = calendarRange(view, date);
 
-  // Which classes to show: own, own department, or everything (Administrator).
+  // Which classes to show: own, own department, or everything (Registrar).
   const options = scope.isAdmin ? ["all", "mine"] : scope.role === "HEAD_OF_DEPARTMENT" ? ["department", "mine"] : ["mine"];
   const classScope = options.includes(params.scope ?? "") ? params.scope! : options[0];
 
@@ -97,7 +79,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const [plan, exams, bookings, activities] = await Promise.all([
     loadPlan(from, to),
     prisma.examination.findMany({
-      // Only approved examinations are visible, except to the Administrator and the owning Head of Department.
+      // Only approved examinations are visible, except to the Registrar and the owning Head of Department.
       where: {
         date: { gte: fromDate, lte: toDate },
         ...(scope.isAdmin ? {} : scope.role === "HEAD_OF_DEPARTMENT" ? { OR: [{ status: "PUBLISHED" as const }, departmentWhere.examination(scope)] } : { status: "PUBLISHED" as const }),
@@ -109,7 +91,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       where: { status: "CONFIRMED", date: { gte: fromDate, lte: toDate }, room: departmentWhere.room(scope) },
       include: { room: { select: { roomName: true } }, bookedBy: { select: { name: true } } },
     }),
-    // Rejected submissions never reach the calendar; pending ones show only to the Administrator and their department.
+    // Rejected submissions never reach the calendar; pending ones show only to the Registrar and their department.
     listActivities({ AND: [visibleActivities(scope), { status: { not: "REJECTED" } }, { startDate: { lte: toDate } }, { endDate: { gte: fromDate } }] }),
   ]);
 

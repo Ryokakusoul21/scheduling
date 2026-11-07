@@ -57,7 +57,7 @@ function sheetHtml(source: SheetSource) {
     .filter(([, v]) => v).map(([k, v]) => `<tr><td class="k">${k}</td><td><b>: ${esc(v)}</b></td></tr>`).join("");
 
   return `<section class="sheet">
-    <div class="head"><img src="${location.origin}/branding/logo.jpg" alt="" width="64" height="64"><div><b>GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY</b>${source.departmentName ? `<div class="dept">${esc(source.departmentName)}</div>` : ""}<div>Naic, Cavite, Philippines</div></div></div>
+    <div class="head"><img src="${location.origin}/branding/logo.jpg" alt="" width="64" height="64"><div><b>GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY</b>${source.departmentName ? `<div class="dept">${esc(source.departmentName)}</div>` : ""}<div>Naic, Cavite, Philippines</div></div></div>
     <div class="title"><b>SCHEDULE OF CLASSES</b><div>${esc(source.termLabel)}</div></div>
     <table class="info">${details}</table>
     <table class="grid"><thead><tr><th colspan="2">TIME</th>${DAYS.map(([, l]) => `<th>${l}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>
@@ -129,7 +129,7 @@ export function SectionSheet({ source, className }: { source: SheetSource; class
       <header className="flex items-center justify-center gap-4 border-b-2 border-black pb-3 text-center">
         <Image src="/branding/logo.jpg" alt="" width={56} height={56} className="size-14 rounded-full object-cover" />
         <div className="leading-tight">
-          <p className="text-sm font-bold">GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY</p>
+          <p className="text-sm font-bold">GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY</p>
           {source.departmentName && <p className="text-lg font-bold">{source.departmentName}</p>}
           <p className="text-xs">Naic, Cavite, Philippines</p>
         </div>

@@ -1,4 +1,4 @@
-/** Comparisons and weekly series for the Administrator analytics (pure; tests/analytics.test.ts). */
+/** Comparisons and weekly series for the Registrar analytics (pure; tests/analytics.test.ts). */
 import { addDays } from "@/lib/occupancy/engine";
 import { startOfWeek } from "@/lib/calendar";
 
@@ -11,7 +11,8 @@ export interface Change {
 }
 
 export function countChange(current: number, previous: number | null, upIsGood = true): Change {
-  const value = previous === null || previous === 0 ? null : Math.round(((current - previous) / previous) * 1000) / 10;
+  // Growth from a previous term under a quarter of today's size says little, so no change is shown.
+  const value = previous === null || previous === 0 || previous < current / 4 ? null : Math.round(((current - previous) / previous) * 1000) / 10;
   return { value, unit: "percent", upIsGood };
 }
 

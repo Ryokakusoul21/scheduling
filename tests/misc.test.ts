@@ -3,7 +3,7 @@ import { rankFaculty, rankRooms } from "@/lib/scheduler/suggest";
 import { ANY_YEAR, GENERAL, flowHref, isComplete, parseFlow } from "@/lib/academics/flow";
 import { LEVELS, levelForGrade, stageLabel, termTypesFor } from "@/lib/academics/levels";
 import { canAccessPath, rolesForPath } from "@/lib/permissions/routes";
-import { NAV_GROUPS, filterNavForRole } from "@/components/layout/nav-config";
+import { NAV_GROUPS, allowedHrefsForRole, tabsForPath } from "@/components/layout/nav-config";
 import { ROLES } from "@/lib/permissions/roles";
 import { eventToKey } from "@/lib/keyboard";
 import { buildBreadcrumbs } from "@/lib/navigation/breadcrumbs";
@@ -79,7 +79,8 @@ describe("card-flow URL state", () => {
 describe("RBAC route guards", () => {
   it("restricts admin and setup pages", () => {
     expect(canAccessPath("/admin/users", "HEAD_OF_DEPARTMENT")).toBe(false);
-    expect(canAccessPath("/admin/users", "ADMINISTRATOR")).toBe(true);
+    expect(canAccessPath("/admin/users", "SUPER_ADMINISTRATOR")).toBe(true);
+    expect(canAccessPath("/admin/users", "REGISTRAR")).toBe(false);
     expect(canAccessPath("/rooms", "FACULTY")).toBe(false);
     expect(canAccessPath("/rooms/anything", "HEAD_OF_DEPARTMENT")).toBe(true);
     expect(canAccessPath("/bookings", "FACULTY")).toBe(true);
@@ -87,12 +88,22 @@ describe("RBAC route guards", () => {
     expect(rolesForPath("/scheduler")).toBeNull();
   });
 
-  it("matches the sidebar: a role can open a page exactly when its sidebar links to it", () => {
+  it("matches the menu: a role can open a page exactly when its sidebar or tab bar links to it", () => {
     const hrefs = [...new Set(NAV_GROUPS.flatMap((g) => g.items.map((i) => i.href)))];
     for (const role of ROLES) {
-      const visible = filterNavForRole(role).flatMap((g) => g.items.map((i) => i.href));
+      const visible = allowedHrefsForRole(role);
       for (const href of hrefs) expect(canAccessPath(href, role), `${role} ${href}`).toBe(visible.includes(href));
     }
+  });
+
+  it("shows tabs only where a role can open more than one page of a group", () => {
+    expect(tabsForPath("/rooms/abc", "REGISTRAR")?.map((t) => t.href)).toContain("/academic-years");
+    expect(tabsForPath("/rooms", "HEAD_OF_DEPARTMENT")?.map((t) => t.href)).not.toContain("/academic-years");
+    expect(tabsForPath("/requests", "FACULTY")).toBeNull();
+    expect(tabsForPath("/workload", "FACULTY")?.map((t) => t.href)).toEqual(["/workload", "/my-subjects", "/availability"]);
+    expect(tabsForPath("/workload", "HEAD_OF_DEPARTMENT")?.map((t) => t.href)).toEqual(["/analytics", "/workload", "/reports"]);
+    expect(tabsForPath("/dashboard", "REGISTRAR")).toBeNull();
+    expect(tabsForPath("/rooms", "STUDENT")).toBeNull();
   });
 });
 
@@ -118,8 +129,8 @@ describe("keyboard shortcuts", () => {
 
 describe("application breadcrumbs", () => {
   it("builds deep review queue paths from a direct link", () => {
-    const items = buildBreadcrumbs("/admin/review-center", new URLSearchParams("queue=room-bookings"), "ADMINISTRATOR");
-    expect(items.map((item) => item.label)).toEqual(["Dashboard", "Administrator Review Center", "Room Booking Requests"]);
+    const items = buildBreadcrumbs("/admin/review-center", new URLSearchParams("queue=room-bookings"), "REGISTRAR");
+    expect(items.map((item) => item.label)).toEqual(["Dashboard", "Registrar Review Center", "Room Booking Requests"]);
     expect(items.at(-1)?.href).toBeUndefined();
   });
 

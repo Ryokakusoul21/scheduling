@@ -34,6 +34,7 @@ const classSchema = z
     endMin: z.number().int().min(0).max(24 * 60),
     status: STATUS.optional(),
     notes: z.string().max(500).optional(),
+    doNotMove: z.boolean().optional(),
     source: z.enum(["CURRICULUM_QUEUE"]).optional(),
   })
   .refine((d) => d.endMin > d.startMin, { message: "End time must be after start time", path: ["endMin"] });
@@ -84,7 +85,7 @@ export async function saveClassAction(input: ClassInput, overrideSoft = false): 
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid class details." };
   const queueProblem = await validateCurriculumQueue(scope, parsed.data);
   if (queueProblem) { await logBlocked(scope, "create an ad-hoc class outside the approved curriculum queue", "Schedule"); return { ok: false, error: queueProblem }; }
-  if (scope.isAdmin && !parsed.data.notes?.trim()) return { ok: false, error: "Explain the reason for this Administrator correction in Notes." };
+  if (scope.isAdmin && !parsed.data.notes?.trim()) return { ok: false, error: "Explain the reason for this Registrar correction in Notes." };
   const { source: _source, ...classData } = parsed.data;
   return saveScoped(scope, classData, overrideSoft, parsed.data.id ? "Edited class schedule" : "Created class schedule");
 }
@@ -146,7 +147,7 @@ export async function publishClassesAction(ids: string[]): Promise<Result<{ coun
   return { ok: true, data: { count } };
 }
 
-/** Sends a department's draft timetable to the Administrator as one review batch; unbalanced loads need an override reason. */
+/** Sends a department's draft timetable to the Registrar as one review batch; unbalanced loads need an override reason. */
 export async function submitClassesAction(ids: string[], overrideReason?: string): Promise<Result<{ count: number }> | { ok: false; error: string; imbalance: string[] }> {
   const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const parsed = z.array(z.string().min(1)).min(1).max(2000).safeParse(ids);
@@ -186,7 +187,7 @@ export async function submitClassesAction(ids: string[], overrideReason?: string
   await prisma.auditLog.create({
     data: {
       userId: scope.userId, role: scope.role, departmentId: scope.departmentId, entity: "Schedule",
-      action: `Submitted ${count} class schedule(s) for Administrator review${off.length ? ` with a workload override (${off.length} faculty out of range)` : ""}`,
+      action: `Submitted ${count} class schedule(s) for Registrar review${off.length ? ` with a workload override (${off.length} faculty out of range)` : ""}`,
       ...(off.length ? { reason, oldValue: { outOfRange: off.map((r) => ({ name: r.name, load: r.load, minimum: r.minimum, maximum: r.maximum, status: r.status })) } } : {}),
     },
   });

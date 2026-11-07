@@ -22,7 +22,7 @@ const PATHS = {
   building: "/rooms",
 } as const;
 
-/** True when every record belongs to the Head of Department's department; buildings are the Administrator's. */
+/** True when every record belongs to the Head of Department's department; buildings are the Registrar's. */
 async function allOwned(scope: Scope, entity: z.infer<typeof schema>["entity"], ids: string[]) {
   if (entity === "subject") {
     const subjects = await prisma.subject.findMany({ where: { id: { in: ids } }, select: { departmentId: true } });
@@ -45,10 +45,10 @@ export async function reorderAction(entity: z.infer<typeof schema>["entity"], id
   const scope = await requireScope(...STAFF_ROLES);
   const parsed = schema.safeParse({ entity, ids });
   if (!parsed.success) return { ok: false, error: "Invalid reorder request." };
-  // Program and strand order belongs to the Administrator; a Head of Department only reads it.
+  // Program and strand order belongs to the Registrar; a Head of Department only reads it.
   if (parsed.data.entity === "program" && !scope.isAdmin) {
     await logBlocked(scope, "reorder programs", "program");
-    return { ok: false, error: "Programs and strands are managed by the Administrator." };
+    return { ok: false, error: "Programs and strands are managed by the Registrar." };
   }
   if (!scope.isAdmin && !(await allOwned(scope, parsed.data.entity, parsed.data.ids))) {
     await logBlocked(scope, `reorder ${parsed.data.entity} records outside the department`, parsed.data.entity);

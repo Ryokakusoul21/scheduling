@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { AnalyticsCharts } from "./analytics-charts";
 import { OverrideReport } from "@/components/bookings/override-report";
 
-export const metadata = { title: "Timetable Analytics · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Timetable Analytics · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 /** Weekly hours a room can be used when it has no availability windows: Monday to Saturday, 7:00 AM to 7:00 PM. */
 const DEFAULT_ROOM_HOURS = 6 * 12;
@@ -20,7 +20,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const scope = await requireScope(...STAFF_ROLES);
   const params = await searchParams;
 
-  // The Administrator also gets the school-wide overview that used to sit on the dashboard.
+  // The Registrar also gets the school-wide overview that used to sit on the dashboard.
   const overview = scope.isAdmin && params.view === "overview";
   const current = overview ? "overview" : "";
   const tabs = scope.isAdmin && (
@@ -54,7 +54,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   ]);
   const selectedTerm = terms.find((t) => t.id === params.term);
   const termIds = selectedTerm ? [selectedTerm.id] : terms.filter((t) => t.isActive).map((t) => t.id);
-  // A Head of Department always sees their own department; the Administrator may pick one or see all.
+  // A Head of Department always sees their own department; the Registrar may pick one or see all.
   const departmentId = scope.isAdmin ? (departments.some((d) => d.id === params.department) ? params.department! : null) : scope.manageDepartmentId;
 
   const [schedules, rooms, faculty] = await Promise.all([

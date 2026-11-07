@@ -128,7 +128,7 @@ export function TwoFactorCard({ enabled, recoveryLeft }: { enabled: boolean; rec
   }
 
   function download() {
-    const text = `GRANBY COLLEGES OF SCIENCE & TECHNOLOGY recovery codes\nEach code works once.\n\n${codes.join("\n")}\n`;
+    const text = `GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY recovery codes\nEach code works once.\n\n${codes.join("\n")}\n`;
     const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
     Object.assign(document.createElement("a"), { href: url, download: "recovery-codes.txt" }).click();
     URL.revokeObjectURL(url);

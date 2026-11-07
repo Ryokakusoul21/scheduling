@@ -40,7 +40,7 @@ async function validate(input: Input) {
 }
 
 export async function assignProgramAction(input: Input) {
-  const admin = await requireRole("ADMINISTRATOR");
+  const admin = await requireRole("SUPER_ADMINISTRATOR");
   const v = await validate(input);
   if (!v.data) return { ok: false, error: v.error };
   const { userId, programId, isActing, startDate, endDate } = v.data;
@@ -57,7 +57,7 @@ export async function assignProgramAction(input: Input) {
 }
 
 export async function updateProgramAssignmentAction(id: string, input: Omit<Input, "userId" | "programId">) {
-  const admin = await requireRole("ADMINISTRATOR");
+  const admin = await requireRole("SUPER_ADMINISTRATOR");
   const old = await prisma.headProgramAssignment.findUnique({ where: { id } });
   if (!old) return { ok: false, error: "This assignment no longer exists." };
   const v = await validate({ ...input, userId: old.userId, programId: old.programId });
@@ -74,7 +74,7 @@ export async function updateProgramAssignmentAction(id: string, input: Omit<Inpu
 }
 
 export async function removeProgramAssignmentAction(id: string) {
-  const admin = await requireRole("ADMINISTRATOR");
+  const admin = await requireRole("SUPER_ADMINISTRATOR");
   const old = await prisma.headProgramAssignment.findUnique({ where: { id }, include: { program: { select: { code: true } } } });
   if (!old) return { ok: false, error: "This assignment no longer exists." };
   await prisma.headProgramAssignment.delete({ where: { id } });

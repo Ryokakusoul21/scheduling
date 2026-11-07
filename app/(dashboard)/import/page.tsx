@@ -3,7 +3,7 @@ import { requireScope } from "@/lib/permissions/scope";
 import { PageHeader } from "@/components/ux/states";
 import { ImportWorkspace } from "./import-workspace";
 
-export const metadata = { title: "Bulk Data Import · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Bulk Data Import · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function ImportPage({ searchParams }: { searchParams: Promise<{ kind?: string }> }) {
   await requireScope(...STAFF_ROLES);

@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getScope } from "@/lib/permissions/scope";
-import { PRIORITIES, URGENT_REASONS } from "@/lib/bookings/plan";
+import { MAX_REPEATS, PRIORITIES, URGENT_REASONS, weeklyDates } from "@/lib/bookings/plan";
 import {
   bookingTimeline, cancelBooking, createBooking, editBookingDetails, respondAcknowledgement, reviewOverride, searchRooms, shortenBooking,
   type RoomOption,
@@ -30,11 +30,15 @@ const slotSchema = z
   })
   .refine((d) => d.endMin > d.startMin, { message: "End time must be after start time" });
 
-const searchSchema = slotSchema.and(z.object({ roomType: z.enum(ROOM_TYPES).optional() }));
+// A chosen room replaces the room type filter: the result is that one room, free or not.
+const searchSchema = slotSchema.and(z.object({ roomType: z.enum(ROOM_TYPES).optional(), roomId: z.string().min(1).optional() }));
 const bookSchema = slotSchema.and(z.object({
   roomId: z.string().min(1),
   urgentReason: z.enum(REASONS).optional().nullable(),
   reasonDetail: z.string().trim().max(300).optional().nullable(),
+  repeatUntil: date.optional().nullable(),
+  // The placement picked for each displaced class (class id to placement key).
+  choices: z.record(z.string(), z.string().max(120)).optional(),
 }));
 
 function today() {
@@ -57,16 +61,29 @@ export async function findRoomsAction(input: z.input<typeof searchSchema>): Prom
 }
 
 /** Books the room; overrides displace classes and lower bookings, or wait for the owning department's approval. */
-export async function bookRoomAction(input: z.input<typeof bookSchema>): Promise<Result<{ bookingId: string; status: string; items: PlanItem[]; displaced: DisplacedBooking[] }>> {
+export async function bookRoomAction(input: z.input<typeof bookSchema>): Promise<Result<{ bookingId: string; status: string; items: PlanItem[]; displaced: DisplacedBooking[]; repeat?: { booked: number; skipped: { date: string; reason: string }[] } }>> {
   const scope = await getScope();
   const parsed = bookSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the booking details." };
   if (parsed.data.date < today()) return { ok: false, error: "Bookings must be for today or a later date." };
-  const result = await createBooking(scope, { ...parsed.data, urgentReason: parsed.data.urgentReason as never });
+  const { repeatUntil, ...slot } = parsed.data;
+  const later = repeatUntil ? weeklyDates(slot.date, repeatUntil) : [];
+  if (repeatUntil && slot.priority !== "REGULAR") return { ok: false, error: "Only Regular bookings can repeat weekly." };
+  if (repeatUntil && later.length === 0) return { ok: false, error: "Choose a repeat end date at least one week after the first booking." };
+  if (later.length > MAX_REPEATS) return { ok: false, error: `A repeat can run for up to ${MAX_REPEATS} more weeks.` };
+  const result = await createBooking(scope, { ...slot, urgentReason: slot.urgentReason as never });
   if (!result.ok) return result;
+  // Each later date is booked on its own as a Regular booking, so a taken room is skipped and never displaces anything.
+  const skipped: { date: string; reason: string }[] = [];
+  let booked = 0;
+  for (const d of later) {
+    const again = await createBooking(scope, { ...slot, date: d, urgentReason: null, choices: undefined });
+    if (again.ok) booked++;
+    else skipped.push({ date: d, reason: again.error });
+  }
   revalidate();
   const { bookingId, status, items, displaced } = result;
-  return { ok: true, data: { bookingId, status, items, displaced } };
+  return { ok: true, data: { bookingId, status, items, displaced, ...(repeatUntil ? { repeat: { booked, skipped } } : {}) } };
 }
 
 /** Cancels a booking; `restore` puts displaced classes and bookings back when their slots are still free. */

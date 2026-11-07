@@ -23,6 +23,8 @@ export interface ClassInfo {
   departmentName: string;
   /** Year or grade level of the section, for example "First Year". */
   stage: string;
+  /** Marked "do not move" by its department. */
+  fixed: boolean;
 }
 
 export interface LoadedPlan {
@@ -100,7 +102,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
   );
 
   const classInfo = new Map<string, ClassInfo>(
-    schedules.map((s) => [s.id, { subjectCode: s.subject.code, subjectName: s.subject.name, sectionName: s.section.name, departmentId: s.section.departmentId ?? null, departmentName: s.section.department?.name ?? "", stage: stageLabel(s.section) }])
+    schedules.map((s) => [s.id, { subjectCode: s.subject.code, subjectName: s.subject.name, sectionName: s.section.name, departmentId: s.section.departmentId ?? null, departmentName: s.section.department?.name ?? "", stage: stageLabel(s.section), fixed: s.doNotMove }])
   );
   const label = (s: Pick<Session, "scheduleId">) => {
     const c = classInfo.get(s.scheduleId);

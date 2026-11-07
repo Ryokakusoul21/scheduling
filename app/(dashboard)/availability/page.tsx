@@ -5,7 +5,7 @@ import { isoDate } from "@/lib/occupancy/engine";
 import { PageHeader } from "@/components/ux/states";
 import { AvailabilityForm, type ReportRow } from "./availability-form";
 
-export const metadata = { title: "Report Unavailability · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Report Unavailability · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function AvailabilityPage() {
   const scope = await requireScope(...TEACHING_ROLES);
@@ -28,7 +28,7 @@ export default async function AvailabilityPage() {
     <div className="space-y-4">
       <PageHeader
         title="Report Unavailability"
-        description="Tell your Head of Department and the Administrator when you cannot teach. They review it, and your classes are reassigned to a substitute or cancelled with make-up options."
+        description="Tell your Head of Department and the Registrar when you cannot teach. They review it, and your classes are reassigned to a substitute or cancelled with make-up options."
       />
       <AvailabilityForm reports={rows} linked={!!scope.facultyId} />
     </div>

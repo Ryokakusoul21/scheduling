@@ -27,16 +27,21 @@ const PAGE_LABELS: Record<string, string> = {
   "/import": "Bulk Data Import",
   "/analytics": "Timetable Analytics",
   "/workload": "Faculty Workload",
-  "/forecast": "Enrollment Forecast",
   "/reports": "Schedule Reports",
   "/notifications": "Notifications",
   "/profile": "Profile and Security",
-  "/admin/review-center": "Administrator Review Center",
+  "/admin/review-center": "Registrar Review Center",
   "/admin/users": "User Management",
   "/admin/users/archived": "Archived Records",
   "/admin/audit-logs": "Audit Logs",
   "/admin/settings": "System Settings",
   "/student": "Student Dashboard",
+  "/student/schedule": "My Schedule",
+  "/student/subjects": "Subjects",
+  "/student/rooms": "Rooms",
+  "/student/calendar": "Calendar of Activities",
+  "/student/notifications": "Notifications",
+  "/student/profile": "Profile",
 };
 
 const QUEUE_LABELS: Record<string, string> = {
@@ -76,7 +81,7 @@ function pageLabel(pathname: string) {
   return pathname.split("/").filter(Boolean).at(-1)?.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) ?? "Page";
 }
 
-/** Builds a role-safe trail from the current URL. Department context comes from the authenticated user unless the viewer is an Administrator. */
+/** Builds a role-safe trail from the current URL. Department context comes from the authenticated user unless the viewer is a Registrar. */
 export function buildBreadcrumbs(pathname: string, query: URLSearchParams, role: AppRole, ownDepartmentName?: string | null): BreadcrumbItem[] {
   const homeHref = role === "STUDENT" ? "/student" : "/dashboard";
   const homeLabel = role === "STUDENT" ? "Student Dashboard" : "Dashboard";
@@ -87,7 +92,7 @@ export function buildBreadcrumbs(pathname: string, query: URLSearchParams, role:
   const context: BreadcrumbItem[] = [];
   const level = query.get("level");
   if (level && LEVEL_LABELS[level]) context.push({ label: LEVEL_LABELS[level], href: `${pathname}?level=${encodeURIComponent(level)}` });
-  const department = role === "ADMINISTRATOR" ? query.get("department") : ownDepartmentName;
+  const department = (role === "SUPER_ADMINISTRATOR" || role === "REGISTRAR") ? query.get("department") : ownDepartmentName;
   if (department && CONTEXTUAL.has(pathname)) context.push({ label: department, href: pathname });
 
   if (pathname === "/admin/review-center" && query.get("queue")) {

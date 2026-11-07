@@ -26,6 +26,14 @@ export interface Placement {
   endMin: number;
 }
 
+/** One placement a person may choose for a displaced class. `key` is "ONLINE" or "date|roomId|startMin". */
+export interface PlanAlternative {
+  key: string;
+  placement: Placement;
+  kind: "MOVED" | "ONLINE";
+  reason: string;
+}
+
 /** One affected class meeting: where it was, where it goes (null when cancelled), and why. */
 export interface PlanItem {
   scheduleId: string;
@@ -36,6 +44,9 @@ export interface PlanItem {
   /** ONLINE keeps the time and faculty member but meets without a room. */
   kind: "MOVED" | "CANCELLED" | "ONLINE";
   reason: string;
+  /** Choices offered for an urgent booking (best first, online last) and the key of the one used. */
+  alternatives?: PlanAlternative[];
+  chosen?: string;
 }
 
 export interface AdjustmentPlan {

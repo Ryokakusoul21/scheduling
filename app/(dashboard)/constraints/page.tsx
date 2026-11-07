@@ -4,7 +4,7 @@ import { canManageDepartment, requireScope } from "@/lib/permissions/scope";
 import { departmentWhere } from "@/lib/permissions/department";
 import { ConstraintsManager } from "./manager";
 
-export const metadata = { title: "Scheduling Constraints · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Scheduling Constraints · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function ConstraintsPage() {
   const scope = await requireScope(...STAFF_ROLES);

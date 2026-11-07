@@ -306,23 +306,34 @@ function roomsByNearness(ctx: PlanContext, s: Session, avoidRoomId?: string) {
     );
 }
 
-/** Start times ordered by distance from the original start (nearest first). */
+const LUNCH = { start: 12 * 60, end: 13 * 60 };
+const LATE_END = 18 * 60;
+
+/** Start times ordered by distance from the original start (nearest first); times over lunch or ending late come last. */
 function nearbyStarts(s: Session, ctx: PlanContext) {
   const duration = s.endMin - s.startMin;
   const dayStart = ctx.dayStart ?? 7 * 60;
   const dayEnd = ctx.dayEnd ?? 19 * 60;
   const starts: number[] = [];
   for (let t = dayStart; t + duration <= dayEnd; t += 30) if (t !== s.startMin) starts.push(t);
-  return starts.sort((a, b) => Math.abs(a - s.startMin) - Math.abs(b - s.startMin) || a - b);
+  // A class that already runs over lunch or late is not penalized for staying that way.
+  const awkward = (t: number) => (t < LUNCH.end && t + duration > LUNCH.start) || t + duration > LATE_END;
+  const penalty = (t: number) => Number(awkward(t) && !awkward(s.startMin));
+  return starts.sort((a, b) => penalty(a) - penalty(b) || Math.abs(a - s.startMin) - Math.abs(b - s.startMin) || a - b);
+}
+
+/** Every suitable free room at the time, nearest first (empty when the faculty member or section is busy). */
+function freeRoomsAt(ctx: PlanContext, s: Session, date: string, startMin: number, facultyId: string, avoidRoomId?: string) {
+  const endMin = startMin + (s.endMin - s.startMin);
+  if (ctx.holidays.has(date) || !facultyCanTeach(ctx, facultyId, date, startMin, endMin)) return [];
+  if (!isFree(ctx, s, { date, startMin, endMin, facultyIds: [facultyId], sectionIds: [s.sectionId] })) return [];
+  return roomsByNearness(ctx, s, avoidRoomId).filter(
+    (r) => !blocked(ctx, "roomId", r.id, date, startMin, endMin) && isFree(ctx, s, { date, startMin, endMin, roomId: r.id })
+  );
 }
 
 function tryRooms(ctx: PlanContext, s: Session, date: string, startMin: number, facultyId: string, avoidRoomId?: string) {
-  const endMin = startMin + (s.endMin - s.startMin);
-  if (ctx.holidays.has(date) || !facultyCanTeach(ctx, facultyId, date, startMin, endMin)) return null;
-  if (!isFree(ctx, s, { date, startMin, endMin, facultyIds: [facultyId], sectionIds: [s.sectionId] })) return null;
-  return roomsByNearness(ctx, s, avoidRoomId).find(
-    (r) => !blocked(ctx, "roomId", r.id, date, startMin, endMin) && isFree(ctx, s, { date, startMin, endMin, roomId: r.id })
-  ) ?? null;
+  return freeRoomsAt(ctx, s, date, startMin, facultyId, avoidRoomId)[0] ?? null;
 }
 
 export interface RelocateOptions {
@@ -332,6 +343,8 @@ export interface RelocateOptions {
   avoidFacultyId?: string;
   /** Allow moving to another day of the same week when the same day is full. */
   allowOtherDays?: boolean;
+  /** How many days ahead another day may be tried (default 6, one week). */
+  lookAheadDays?: number;
 }
 
 /**
@@ -340,7 +353,6 @@ export interface RelocateOptions {
  * another time on the same day, then (optionally) another day that week.
  */
 export function relocate(s: Session, ctx: PlanContext, opts: RelocateOptions): Relocation | null {
-  const roomName = (id: string) => ctx.rooms.find((r) => r.id === id)?.name ?? "another room";
   const facultyName = (id: string) => ctx.faculty.get(id)?.name ?? "another faculty member";
   const roomOk = (id: string) =>
     id !== opts.avoidRoomId &&
@@ -365,35 +377,51 @@ export function relocate(s: Session, ctx: PlanContext, opts: RelocateOptions): R
     }
   }
 
-  // Same time, another room.
-  const room = tryRooms(ctx, s, s.date, s.startMin, facultyId, opts.avoidRoomId);
-  if (room) {
-    const r = { date: s.date, roomId: room.id, facultyId, startMin: s.startMin, endMin: s.endMin };
-    return { ...r, reason: `Moved to ${room.name}, the nearest free room with ${room.capacity} seats of the right type, at the same time.` };
-  }
+  const first = candidates(s, ctx, opts, facultyId).next();
+  return first.done ? null : first.value;
+}
 
-  // Same day, nearest free time.
+/** Workable placements in order of least disruption: same time in another room, same day, then later days. */
+function* candidates(s: Session, ctx: PlanContext, opts: RelocateOptions, facultyId: string): Generator<Relocation> {
+  const roomName = (id: string) => ctx.rooms.find((r) => r.id === id)?.name ?? "another room";
+  const length = s.endMin - s.startMin;
+  for (const room of freeRoomsAt(ctx, s, s.date, s.startMin, facultyId, opts.avoidRoomId)) {
+    yield { date: s.date, roomId: room.id, facultyId, startMin: s.startMin, endMin: s.endMin, reason: `Moved to ${room.name}, the nearest free room with ${room.capacity} seats of the right type, at the same time.` };
+  }
   for (const start of nearbyStarts(s, ctx)) {
-    const found = tryRooms(ctx, s, s.date, start, facultyId, opts.avoidRoomId);
-    if (found) {
-      const end = start + (s.endMin - s.startMin);
-      return { date: s.date, roomId: found.id, facultyId, startMin: start, endMin: end, reason: `Moved to ${formatRange(start, end)} in ${roomName(found.id)}, the nearest time when the room, faculty member, and section are all free.` };
+    for (const found of freeRoomsAt(ctx, s, s.date, start, facultyId, opts.avoidRoomId)) {
+      const end = start + length;
+      yield { date: s.date, roomId: found.id, facultyId, startMin: start, endMin: end, reason: `Moved to ${formatRange(start, end)} in ${roomName(found.id)}, the nearest time when the room, faculty member, and section are all free.` };
     }
   }
-
-  if (!opts.allowOtherDays) return null;
-  for (let offset = 1; offset <= 6; offset++) {
+  if (!opts.allowOtherDays) return;
+  for (let offset = 1; offset <= (opts.lookAheadDays ?? 6); offset++) {
     const date = addDays(s.date, offset);
     if (dayOfWeek(date) === "SUNDAY") continue;
     for (const start of [s.startMin, ...nearbyStarts(s, ctx)]) {
-      const found = tryRooms(ctx, s, date, start, facultyId, opts.avoidRoomId);
-      if (found) {
-        const end = start + (s.endMin - s.startMin);
-        return { date, roomId: found.id, facultyId, startMin: start, endMin: end, reason: `Moved to ${date}, ${formatRange(start, end)} in ${roomName(found.id)}; no free slot remained on the original day.` };
+      for (const found of freeRoomsAt(ctx, s, date, start, facultyId, opts.avoidRoomId)) {
+        const end = start + length;
+        yield { date, roomId: found.id, facultyId, startMin: start, endMin: end, reason: `Moved to ${date}, ${formatRange(start, end)} in ${roomName(found.id)}; no free slot remained on the original day.` };
       }
     }
   }
-  return null;
+}
+
+/**
+ * Up to `limit` different placements for one session, best first, so a person can choose. At most two share a time,
+ * so the choices differ in time as well as in room.
+ */
+export function relocateOptions(s: Session, ctx: PlanContext, opts: RelocateOptions, limit = 3): Relocation[] {
+  const out: Relocation[] = [];
+  const perTime = new Map<string, number>();
+  for (const r of candidates(s, ctx, opts, s.facultyId)) {
+    const k = `${r.date}|${r.startMin}`;
+    if ((perTime.get(k) ?? 0) >= 2) continue;
+    perTime.set(k, (perTime.get(k) ?? 0) + 1);
+    out.push(r);
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 /** Updates the context after a session is moved or cancelled so later relocations see the change. */

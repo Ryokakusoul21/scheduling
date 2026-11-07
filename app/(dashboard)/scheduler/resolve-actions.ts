@@ -184,7 +184,7 @@ export async function undoRepairAction(id: string): Promise<Result<{ entries: Re
   const proposal = await prisma.workloadProposal.findUnique({ where: { id } });
   if (!proposal || proposal.kind !== "SCHEDULE_REPAIR" || proposal.status !== "APPLIED") return { ok: false, error: "This change no longer exists." };
   if (proposal.undoneAt) return { ok: false, error: "This change was already undone." };
-  if (!scope.isAdmin && proposal.createdById !== scope.userId && !canManageDepartment(scope, proposal.departmentId)) return { ok: false, error: "Only the person who applied it or the Administrator can undo this." };
+  if (!scope.isAdmin && proposal.createdById !== scope.userId && !canManageDepartment(scope, proposal.departmentId)) return { ok: false, error: "Only the person who applied it or the Registrar can undo this." };
 
   const changes = proposal.items as unknown as Change[];
   const ids = changes.map((c) => (c.after ?? c.before)!.id);

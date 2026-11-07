@@ -37,15 +37,15 @@ function revalidate() {
 }
 
 /**
- * Administrator activities are approved at once. A Head of Department submits for their own department,
- * and every new submission or edit waits for the Administrator's approval again.
+ * Registrar activities are approved at once. A Head of Department submits for their own department,
+ * and every new submission or edit waits for the Registrar's approval again.
  */
 export async function saveActivityAction(input: ActivityInput, id?: string): Promise<Result> {
   const scope = await requireScope(...STAFF_ROLES);
   const parsed = activitySchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the activity details." };
   const d = parsed.data;
-  if (d.type === "HOLIDAY" && !scope.isAdmin) return { ok: false, error: "Only the Administrator can declare holidays." };
+  if (d.type === "HOLIDAY" && !scope.isAdmin) return { ok: false, error: "Only the Registrar can declare holidays." };
   if (!scope.isAdmin && !scope.departmentId) return { ok: false, error: "Your account is not linked to a department." };
   if (id) {
     const existing = await prisma.activity.findUnique({ where: { id } });
@@ -112,7 +112,7 @@ const DECISION_TEXT = { APPROVED: "approved", REJECTED: "rejected", CHANGES_REQU
 
 /** Approves, rejects, or returns one or more submitted activities and notifies each submitter. */
 export async function reviewActivitiesAction(input: z.input<typeof reviewSchema>): Promise<Result & { count?: number }> {
-  const scope = await requireScope("ADMINISTRATOR");
+  const scope = await requireScope("SUPER_ADMINISTRATOR", "REGISTRAR");
   const parsed = reviewSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid review." };
   const { ids, decision, note } = parsed.data;

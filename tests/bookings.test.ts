@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { expandSessions, sessionOccupant, type Occupant, type PlanContext, type RoomInfo, type WeeklyClass } from "@/lib/occupancy/engine";
 import {
-  approvalDepartment, capStatus, DEFAULT_BOOKING_SETTINGS, lockKeys, maxPriority, planBooking, restorableAfterShortening, statusLabel,
+  approvalDepartment, capStatus, DEFAULT_BOOKING_SETTINGS, lockKeys, maxPriority, planBooking, restorableAfterShortening, statusLabel, weeklyDates,
   type BookingMeta, type BookingRequest, type PlanSnapshot,
 } from "@/lib/bookings/plan";
 
@@ -102,7 +102,7 @@ describe("displacement", () => {
 
 describe("permissions, caps, and restore", () => {
   it("maps roles to the highest priority they may use", () => {
-    expect([maxPriority("FACULTY"), maxPriority("HEAD_OF_DEPARTMENT"), maxPriority("ADMINISTRATOR")]).toEqual(["REGULAR", "URGENT", "CRITICAL"]);
+    expect([maxPriority("FACULTY"), maxPriority("HEAD_OF_DEPARTMENT"), maxPriority("REGISTRAR")]).toEqual(["REGULAR", "URGENT", "CRITICAL"]);
   });
 
   it("needs the owning department's approval only for another department's room", () => {
@@ -132,5 +132,57 @@ describe("permissions, caps, and restore", () => {
     expect(statusLabel({ status: "CONFIRMED", priority: "URGENT", past: false })).toBe("Urgent - Confirmed");
     expect(statusLabel({ status: "CONFIRMED", priority: "REGULAR", past: true })).toBe("Completed");
     expect(statusLabel({ status: "AWAITING_APPROVAL", priority: "URGENT", past: false })).toBe("Awaiting approval");
+  });
+});
+
+describe("weekly repeats", () => {
+  it("lists the same weekday each week after the first date, up to the end date", () => {
+    expect(weeklyDates("2026-10-12", "2026-10-26")).toEqual(["2026-10-19", "2026-10-26"]);
+    expect(weeklyDates("2026-10-12", "2026-10-25")).toEqual(["2026-10-19"]);
+    expect(weeklyDates("2026-10-12", "2026-10-18")).toEqual([]);
+    expect(weeklyDates("2026-12-28", "2027-01-11")).toEqual(["2027-01-04", "2027-01-11"]);
+  });
+});
+
+describe("urgent override: choices, protected classes, and sensible times", () => {
+  it("offers the best placements first and online last, using the first by default", () => {
+    const [item] = planBooking(snapshot(), req({ priority: "URGENT" }), settings).items;
+    const keys = item.alternatives!.map((a) => a.key);
+    expect(keys.length).toBeGreaterThan(1);
+    expect(keys.at(-1)).toBe("ONLINE");
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(item.chosen).toBe(keys[0]);
+    expect(item.alternatives![0]).toMatchObject({ kind: "MOVED", placement: { roomId: "r2", startMin: 480 } });
+  });
+
+  it("applies the placement the person chose for a class", () => {
+    const first = planBooking(snapshot(), req({ priority: "URGENT" }), settings).items[0];
+    const other = first.alternatives![1];
+    const plan = planBooking(snapshot(), req({ priority: "URGENT" }), settings, { choices: { c1: other.key } });
+    expect(plan.items[0].chosen).toBe(other.key);
+    expect(plan.items[0].after).toEqual(other.placement);
+    const online = planBooking(snapshot(), req({ priority: "URGENT" }), settings, { choices: { c1: "ONLINE" } });
+    expect(online.items[0]).toMatchObject({ kind: "ONLINE", after: { roomId: "" } });
+    // A stale choice that is no longer offered falls back to the best placement.
+    expect(planBooking(snapshot(), req({ priority: "URGENT" }), settings, { choices: { c1: "gone" } }).items[0].chosen).toBe(first.chosen);
+  });
+
+  it("does not displace a class marked do not move unless the Registrar confirms", () => {
+    const snap = snapshot();
+    snap.classInfo.set("c1", { departmentId: "d1", fixed: true });
+    const blocked = planBooking(snap, req({ priority: "URGENT" }), settings);
+    expect(blocked.blockers[0]).toMatch(/do not move/);
+    expect(blocked.overridable).toBe(false);
+    const registrar = planBooking(snap, req({ priority: "URGENT" }), settings, { canMoveFixed: true });
+    expect(registrar.blockers).toHaveLength(0);
+    expect(registrar.items).toHaveLength(1);
+    expect(registrar.notes.join(" ")).toMatch(/1 protected class/);
+  });
+
+  it("moves a class to a time after lunch rather than into it when both are the same distance away", () => {
+    // r2 is held 8:00 to 11:30, so its first free starts are 12:00 and 12:30 (over lunch) and then 1:00 PM.
+    const snap = snapshot({ rooms: [room("r1"), room("r2")], bookings: [booking("b2", { roomId: "r2", startMin: 480, endMin: 690 })] });
+    const [item] = planBooking(snap, req({ priority: "URGENT" }), settings).items;
+    expect(item.after).toMatchObject({ roomId: "r2", startMin: 780 });
   });
 });

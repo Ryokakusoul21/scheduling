@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import type { Scope } from "@/lib/permissions/scope";
 import { workloadView } from "@/lib/workload/view";
 import { loadPlan } from "@/lib/occupancy/load";
+import { URGENT_REASONS } from "@/lib/bookings/plan";
 import { activeOverlapConflicts } from "@/lib/scheduler/term-conflicts";
 
 /** Request-scoped loaders so each dashboard widget can stream on its own without repeating queries. */
@@ -22,6 +23,26 @@ export const getActiveTerms = cache(() =>
     orderBy: [{ level: "asc" }],
   })
 );
+
+/** Classes moved by urgent bookings in the last seven days (undone bookings left out), with the reasons given. */
+export const getUrgentMoves = cache(async () => {
+  const since = new Date();
+  since.setDate(since.getDate() - 7);
+  const bookings = await prisma.roomBooking.findMany({
+    where: { priority: { in: ["URGENT", "CRITICAL"] }, batchId: { not: null }, batch: { is: { undoneAt: null } }, createdAt: { gte: since } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, purpose: true, urgentReason: true, room: { select: { roomName: true } }, batch: { select: { _count: { select: { adjustments: true } } } } },
+  });
+  const moved = bookings.map((b) => ({ purpose: b.purpose, room: b.room.roomName, moved: b.batch?._count.adjustments ?? 0, reason: URGENT_REASONS.find((r) => r.value === b.urgentReason)?.label ?? "Urgent need" })).filter((b) => b.moved > 0);
+  const reasons = new Map<string, number>();
+  for (const b of moved) reasons.set(b.reason, (reasons.get(b.reason) ?? 0) + 1);
+  return {
+    bookings: moved.length,
+    classes: moved.reduce((n, b) => n + b.moved, 0),
+    reasons: [...reasons.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count),
+    latest: moved.slice(0, 3),
+  };
+});
 
 export const getWorkload = cache((scope: Scope) => workloadView(scope, { history: 5 }));
 
@@ -47,7 +68,7 @@ export const getToday = cache(async () => {
   return { total: plan.sessions.length, upcoming };
 });
 
-/** School-wide counts behind the Administrator's key figures and Needs attention list. */
+/** School-wide counts behind the Registrar's key figures and Needs attention list. */
 export const getAdminCounts = cache(async () => {
   const termIds = (await getActiveTerms()).map((t) => t.id);
   const inActiveTerms = { semesterId: { in: termIds }, status: { not: "ARCHIVED" as const } };

@@ -5,10 +5,10 @@ import { countArchived } from "@/lib/archive/list";
 import { UsersManager } from "./manager";
 import { UserTabs } from "./user-tabs";
 
-export const metadata = { title: "User Management · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "User Management · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function UsersPage() {
-  await requireRole("ADMINISTRATOR");
+  await requireRole("SUPER_ADMINISTRATOR");
   const [users, faculty, archivedCount, programs] = await Promise.all([
     prisma.user.findMany({
       where: NOT_ARCHIVED,

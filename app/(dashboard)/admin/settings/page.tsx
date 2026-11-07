@@ -4,10 +4,10 @@ import { SettingsManager } from "./manager";
 import { SETTING_REQUIRE_APPROVAL } from "@/lib/auth/config";
 import { getBookingSettings, getWorkloadSettings } from "@/lib/settings";
 
-export const metadata = { title: "System Settings · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "System Settings · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function SettingsPage() {
-  await requireRole("ADMINISTRATOR");
+  await requireRole("SUPER_ADMINISTRATOR");
 
   const [institutionSetting, approvalSetting, workload, booking] = await Promise.all([
     prisma.systemSetting.findUnique({ where: { key: "institution" } }),
@@ -27,7 +27,7 @@ export default async function SettingsPage() {
 
       <SettingsManager
         institution={{
-          name: institution.name ?? "GRANBY COLLEGES OF SCIENCE & TECHNOLOGY",
+          name: institution.name ?? "GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY",
           location: institution.location ?? "Naic, Cavite",
         }}
         requireApproval={approvalSetting?.value === true}

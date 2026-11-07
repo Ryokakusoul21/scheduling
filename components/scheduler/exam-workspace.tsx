@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { DndContext, DragOverlay, KeyboardSensor, useDraggable, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragMoveEvent } from "@dnd-kit/core";
-import { ArrowLeft, CalendarBlank, CaretLeft, CaretRight, CheckCircle, DotsSixVertical, Lightning, Plus, Rows, SquaresFour, UploadSimple, UsersThree, Warning, WarningOctagon } from "@phosphor-icons/react/ssr";
+import { CalendarBlank, CaretLeft, CaretRight, CheckCircle, DotsSixVertical, Lightning, Plus, Rows, SquaresFour, UploadSimple, UsersThree, Warning, WarningOctagon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { NativeSelect } from "@/components/ux/native-select";
 import { EmptyState, SelectCard } from "@/components/ux/states";
-import { BackButton } from "@/components/ux/back-button";
+import { usePersisted } from "@/hooks/use-persisted";
 import { cn } from "@/lib/utils";
 import { EXAM_PERIODS, EXAM_TYPE_LABELS, type ExamType } from "@/lib/examinations/types";
 import { DEFAULT_EXAM_RULES, checkExaminations, hasHardConflict, type ExamIssue, type ExamSlot } from "@/lib/examinations/rules";
@@ -23,7 +23,7 @@ import type { DayOfWeek } from "@/lib/scheduler/types";
 import { moveExamAction, removeExamAction, saveExamAction, submitExamsAction, type ExamInput } from "@/app/(dashboard)/scheduler/exam-actions";
 import { Timetable, type BlockInfo, type DropPreview } from "./timetable";
 import { ScheduleList, type RowInfo } from "./schedule-list";
-import { FilterCard, FilterSelect, PanelTab, ScheduleHeader, ViewToggle, type Perspective } from "./schedule-chrome";
+import { ChecksHeading, ChecksRail, FilterCard, FilterSelect, PanelSection, ScheduleHeader, ViewToggle, type Perspective } from "./schedule-chrome";
 import { collision, gridKeyboardCoordinates } from "./dnd-grid";
 import type { SchedulerEntry } from "./types";
 
@@ -92,7 +92,7 @@ type Draft = { id?: string; sectionId: string; subjectId: string; roomId: string
 type Panel = "conflicts" | "todo" | "rules";
 const PERSPECTIVE_LABEL: Record<Perspective, string> = { section: "sections", faculty: "proctors", room: "rooms" };
 
-export function ExamWorkspace({ data, academicYearControl }: { data: ExamData; academicYearControl?: React.ReactNode }) {
+export function ExamWorkspace({ data, academicYearControl, modes }: { data: ExamData; academicYearControl?: React.ReactNode; modes?: React.ReactNode }) {
   const params = useSearchParams();
   const dndId = useId();
   const [pending, startTransition] = useTransition();
@@ -115,7 +115,8 @@ export function ExamWorkspace({ data, academicYearControl }: { data: ExamData; a
   const [sectionId, setSectionId] = useState(initial.section);
   const [proctorId, setProctorId] = useState(initial.proctor);
   const [roomId, setRoomId] = useState(initial.room);
-  const [panel, setPanel] = useState<Panel>("conflicts");
+  const [openPanels, setOpenPanels] = usePersisted<Partial<Record<Panel, boolean>>>("exam-panels", {});
+  const [panelHidden, setPanelHidden] = usePersisted("scheduler-panel-hidden", false);
   const [view, setView] = useState<"timetable" | "table">("timetable");
   const [perspective, setPerspective] = useState<Perspective>("section");
   const [filtersExpanded, setFiltersExpanded] = useState(true);
@@ -210,6 +211,10 @@ export function ExamWorkspace({ data, academicYearControl }: { data: ExamData; a
   }), [maps, colorIndex]);
 
   const focused = sectionId || proctorId || roomId;
+  // Sections with items start open until the person opens or closes them.
+  const isOpen = (key: Panel, count: number) => openPanels[key] ?? count > 0;
+  const togglePanel = (key: Panel, count: number) => setOpenPanels({ ...openPanels, [key]: !isOpen(key, count) });
+  const focusName = sectionId ? maps.section.get(sectionId)?.name : proctorId ? maps.faculty.get(proctorId)?.fullName : roomId ? maps.room.get(roomId)?.roomName : null;
   const rowInfo = useCallback((e: SchedulerEntry): RowInfo => ({
     subject: maps.subject.get(e.subjectId)?.code ?? "?", subjectName: maps.subject.get(e.subjectId)?.name ?? "",
     section: maps.section.get(e.sectionId)?.name ?? "?", faculty: maps.faculty.get(e.facultyId)?.fullName ?? "?", room: maps.room.get(e.roomId)?.roomName ?? "?",
@@ -304,19 +309,27 @@ export function ExamWorkspace({ data, academicYearControl }: { data: ExamData; a
     >
       <div className="flex flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
         <ScheduleHeader
-          trail="Dashboard › Examination Schedules ›"
+          trail={
+            <nav aria-label="Breadcrumb" className="flex items-center gap-1">
+              <Link href="/dashboard" onClick={(e) => { if ((draft || pending) && !confirm("Leave with unsaved changes?")) e.preventDefault(); }} className="hover:text-foreground">Dashboard</Link> ›
+              {focused ? <button type="button" onClick={() => { setSectionId(""); setProctorId(""); setRoomId(""); }} className="hover:text-foreground">Examination Schedules</button> : <span>Examination Schedules</span>} ›
+              {focusName && <><span className="font-medium text-foreground">{focusName}</span> ›</>}
+            </nav>
+          }
+          modes={modes}
           help="Each examination starts from its class schedule. Drag to change the date or time; hard conflicts block a save."
-          leading={focused ? <Button variant="outline" onClick={() => { setSectionId(""); setProctorId(""); setRoomId(""); }}><ArrowLeft className="size-4" /> Back</Button> : <BackButton fallback="/dashboard" dirty={!!draft || pending} />}
+          leading={<>
+            {academicYearControl}
+            <div className="min-w-40"><NativeSelect aria-label="Term" value={termId} onChange={(e) => { setTermId(e.target.value); setSectionId(""); }} options={data.terms.map((t) => ({ value: t.id, label: t.label }))} /></div>
+          </>}
         >
-          {academicYearControl}
-          <div className="min-w-40"><NativeSelect aria-label="Term" value={termId} onChange={(e) => { setTermId(e.target.value); setSectionId(""); }} options={data.terms.map((t) => ({ value: t.id, label: t.label }))} /></div>
           <div role="radiogroup" aria-label="View" className="inline-flex rounded-lg border bg-card p-0.5">
             <ViewToggle active={view === "timetable"} onClick={() => setView("timetable")} icon={SquaresFour} label="Timetable" />
             <ViewToggle active={view === "table"} onClick={() => setView("table")} icon={Rows} label="Table" />
           </div>
           {data.canEdit && <Button variant="outline" disabled title="Planned for the next step: places an examination for every class inside the approved window."><Lightning className="size-4" /> Auto-Schedule</Button>}
           {data.canSubmit && <Button variant="outline" disabled={!drafts.length} onClick={() => setSubmitOpen(true)}><UploadSimple className="size-4" /> Submit for Approval{drafts.length ? ` (${drafts.length})` : ""}</Button>}
-          {data.isAdmin && <Button variant="outline" nativeButton={false} render={<Link href="/admin/review-center?queue=examinations" />}>Administrator Review Center</Button>}
+          {data.isAdmin && <Button variant="outline" nativeButton={false} render={<Link href="/admin/review-center?queue=examinations" />}>Registrar Review Center</Button>}
         </ScheduleHeader>
 
         {/* Period, week, and the official window */}
@@ -356,7 +369,7 @@ export function ExamWorkspace({ data, academicYearControl }: { data: ExamData; a
           {pending && <span className="self-end pb-2 text-xs text-muted-foreground">Saving...</span>}
         </FilterCard>
 
-        <div className="grid gap-3 lg:min-h-[30rem] lg:flex-1 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
+        <div className={cn("grid gap-3 lg:min-h-[30rem] lg:flex-1 lg:overflow-hidden", panelHidden ? "lg:grid-cols-[minmax(0,1fr)_48px]" : "lg:grid-cols-[minmax(0,1fr)_320px]")}>
           <section aria-label={view === "timetable" ? "Timetable" : "Examination list"} className="flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto pr-1">
             {view === "table" ? (
               <ScheduleList entries={entries} info={rowInfo} conflictIndex={issueIndex} onOpen={openExam} />
@@ -377,38 +390,36 @@ export function ExamWorkspace({ data, academicYearControl }: { data: ExamData; a
           </section>
 
           {/* Inspector */}
-          <aside className="min-h-0 space-y-3 overflow-y-auto">
-            <div role="tablist" aria-label="Examination panels" className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
-              {([["conflicts", "Conflicts", hard.length], ["todo", "Unscheduled", unscheduled.length], ["rules", "Constraints", null]] as const).map(([key, label, count]) => (
-                <PanelTab key={key} active={panel === key} onClick={() => setPanel(key)}>
-                  {label}{count !== null && <Badge variant={key === "conflicts" && count ? "destructive" : "secondary"} >{count}</Badge>}
-                </PanelTab>
-              ))}
-            </div>
-            {panel === "conflicts" && <IssueList issues={visibleIssues} examById={examById} maps={maps} onJump={jump} />}
-            {panel === "todo" && (
-              unscheduled.length === 0 ? <EmptyState icon={CheckCircle} title="Every class has an examination" description={`Nothing left to place for the ${EXAM_TYPE_LABELS[period]} period in this view.`} className="py-8" /> : (
-                <ul className="space-y-2">
-                  {unscheduled.map((u) => (
-                    <UnscheduledItem key={classKey(u)} cls={u} subject={maps.subject.get(u.subjectId)} section={maps.section.get(u.sectionId)} room={maps.room.get(u.roomId)} proctor={maps.faculty.get(u.facultyId)} editable={data.canEdit} onPlace={() => openClass(u)} />
-                  ))}
-                </ul>
-              )
-            )}
-            {panel === "rules" && (
-              <div className="space-y-2 rounded-lg border bg-card p-3 text-sm">
-                <p className="font-semibold">Rules applied to every examination</p>
-                <ul className="list-disc space-y-1 pl-4 text-muted-foreground">
-                  <li>Rooms, proctors, and sections are never double-booked.</li>
-                  <li>Room capacity must fit the section.</li>
-                  <li>Only dates inside the official window; never holidays, class suspensions, or other approved activity days.</li>
-                  <li>At least {rules.bufferMin} minutes between examinations of the same section or proctor.</li>
-                  <li>At most {rules.maxPerSectionPerDay} examinations per section per day.</li>
-                  <li>Lunch break {formatTime(rules.lunchStartMin)} to {formatTime(rules.lunchEndMin)} is avoided.</li>
-                </ul>
-                {term && <p className="text-xs text-muted-foreground">Term: {term.label}</p>}
-              </div>
-            )}
+          <aside aria-label="Examination checks" className="min-h-0 space-y-2 overflow-y-auto">
+            {panelHidden ? <ChecksRail total={hard.length + unscheduled.length} conflicts={hard.length} onShow={() => setPanelHidden(false)} /> : <>
+              <ChecksHeading total={hard.length + unscheduled.length} conflicts={hard.length} onHide={() => setPanelHidden(true)} />
+              <PanelSection id="conflicts" title="Conflicts" count={hard.length} tone={hard.length ? "destructive" : "secondary"} open={isOpen("conflicts", hard.length)} onToggle={() => togglePanel("conflicts", hard.length)}>
+                <IssueList issues={visibleIssues} examById={examById} maps={maps} onJump={jump} />
+              </PanelSection>
+              <PanelSection id="todo" title="Unscheduled" count={unscheduled.length} open={isOpen("todo", unscheduled.length)} onToggle={() => togglePanel("todo", unscheduled.length)}>
+                {unscheduled.length === 0 ? <EmptyState icon={CheckCircle} title="Every class has an examination" description={`Nothing left to place for the ${EXAM_TYPE_LABELS[period]} period in this view.`} className="py-8" /> : (
+                  <ul className="space-y-2">
+                    {unscheduled.map((u) => (
+                      <UnscheduledItem key={classKey(u)} cls={u} subject={maps.subject.get(u.subjectId)} section={maps.section.get(u.sectionId)} room={maps.room.get(u.roomId)} proctor={maps.faculty.get(u.facultyId)} editable={data.canEdit} onPlace={() => openClass(u)} />
+                    ))}
+                  </ul>
+                )}
+              </PanelSection>
+              <PanelSection id="rules" title="Constraints" open={isOpen("rules", 0)} onToggle={() => togglePanel("rules", 0)}>
+                <div className="space-y-2 rounded-lg border bg-card p-3 text-sm">
+                  <p className="font-semibold">Rules applied to every examination</p>
+                  <ul className="list-disc space-y-1 pl-4 text-muted-foreground">
+                    <li>Rooms, proctors, and sections are never double-booked.</li>
+                    <li>Room capacity must fit the section.</li>
+                    <li>Only dates inside the official window; never holidays, class suspensions, or other approved activity days.</li>
+                    <li>At least {rules.bufferMin} minutes between examinations of the same section or proctor.</li>
+                    <li>At most {rules.maxPerSectionPerDay} examinations per section per day.</li>
+                    <li>Lunch break {formatTime(rules.lunchStartMin)} to {formatTime(rules.lunchEndMin)} is avoided.</li>
+                  </ul>
+                  {term && <p className="text-xs text-muted-foreground">Term: {term.label}</p>}
+                </div>
+              </PanelSection>
+            </>}
           </aside>
         </div>
       </div>
@@ -531,7 +542,7 @@ function SubmitDialog({ rows, issues, draftHard, maps, onClose }: { rows: ExamRe
   function submit() {
     startTransition(async () => {
       const res = await submitExamsAction(drafts.map((d) => d.id));
-      if (res.ok) { toast.success(`${res.data.count} examination(s) sent to the Administrator.`); onClose(); } else toast.error(res.error);
+      if (res.ok) { toast.success(`${res.data.count} examination(s) sent to the Registrar.`); onClose(); } else toast.error(res.error);
     });
   }
   return (

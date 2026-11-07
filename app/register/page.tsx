@@ -5,14 +5,14 @@ import { RegisterForm } from "@/components/auth/register-form";
 import { requiresAdminApproval } from "@/actions/auth";
 import { homePath } from "@/lib/permissions/roles";
 
-export const metadata = { title: "Create Account · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Create Account · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function RegisterPage() {
   const session = await auth();
   if (session?.user) redirect(homePath(session.user.role));
 
   return (
-    <AuthShell title="Create an account" description="Register for access to the GRANBY COLLEGES OF SCIENCE & TECHNOLOGY Scheduling System">
+    <AuthShell title="Create an account" description="Register for access to the AI-Driven Faculty and Room Scheduling System of GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY">
       <RegisterForm requiresApproval={await requiresAdminApproval()} />
     </AuthShell>
   );

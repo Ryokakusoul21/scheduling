@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { departmentWhere } from "@/lib/permissions/department";
 import { getScope } from "@/lib/permissions/scope";
 import { PageHeader } from "@/components/ux/states";
 import { allowedPriorities, isOverride, statusLabel, URGENT_REASONS, type Priority } from "@/lib/bookings/plan";
@@ -9,7 +10,7 @@ import { formatRange } from "@/lib/scheduler/timetable";
 import { BookingWorkspace, type AckRow, type BookingRow } from "./booking-workspace";
 import { formatDay, manilaClock, relativeDay } from "./format";
 
-export const metadata = { title: "Room Booking · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Room Booking · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 const reasonLabel = (r: string | null) => URGENT_REASONS.find((x) => x.value === r)?.label ?? null;
 
@@ -22,7 +23,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
 
   const [bookings, rooms, faculty, departments, myAcks, settings] = await Promise.all([
     prisma.roomBooking.findMany({
-      // Own bookings, plus overrides of rooms this person must approve; the Administrator sees all.
+      // Own bookings, plus overrides of rooms this person must approve; the Registrar sees all.
       where: { date: { gte: since }, ...(scope.isAdmin ? {} : { OR: [{ bookedById: scope.userId }, { status: "AWAITING_APPROVAL", ...approver }] }) },
       include: {
         room: { select: { roomName: true } },
@@ -118,6 +119,11 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
   const tomorrow = new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
   const defaults = { date: lateToday ? tomorrow : today, startMin: lateToday ? 9 * 60 : nextSlot };
   const priorities = allowedPriorities(scope.role);
+  const roomChoices = (await prisma.room.findMany({
+    where: { archivedAt: null, ...(priorities.some(isOverride) ? {} : departmentWhere.room(scope)) },
+    select: { id: true, roomName: true, capacity: true, floor: { select: { building: { select: { name: true } } } } },
+    orderBy: { roomName: "asc" },
+  })).map((r) => ({ value: r.id, label: `${r.roomName} · ${r.floor?.building.name ?? "No building"} · ${r.capacity} seats` }));
 
   return (
     <div className="space-y-6">
@@ -129,6 +135,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
         defaults={defaults}
         clock={{ today, nowMin }}
         priorities={priorities}
+        roomChoices={roomChoices}
         caps={priorities.some(isOverride) ? await overrideCaps(scope) : null}
         hours={{ openMin: settings.openMin, closeMin: settings.closeMin, buffer: settings.bufferMinutes }}
         openId={openId ?? null}

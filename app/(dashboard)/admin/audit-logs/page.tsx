@@ -4,10 +4,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-export const metadata = { title: "Audit Logs · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Audit Logs · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function AuditLogsPage() {
-  await requireScope("ADMINISTRATOR");
+  await requireScope("SUPER_ADMINISTRATOR");
 
   const logs = await prisma.auditLog.findMany({
     include: { user: { select: { name: true } } },

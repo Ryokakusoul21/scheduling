@@ -10,7 +10,7 @@ const DAY_LABEL: Record<string, string> = {
   MONDAY: "Monday", TUESDAY: "Tuesday", WEDNESDAY: "Wednesday", THURSDAY: "Thursday", FRIDAY: "Friday", SATURDAY: "Saturday", SUNDAY: "Sunday",
 };
 
-/** Classes in the active terms that still use the record, listed so the Administrator can decide before archiving. */
+/** Classes in the active terms that still use the record, listed so the Registrar can decide before archiving. */
 export async function activeClassesOf(kind: ArchiveKind, id: string) {
   const facultyId = kind === "USER" ? (await prisma.user.findUnique({ where: { id }, select: { facultyId: true } }))?.facultyId : id;
   const field = { USER: "facultyId", FACULTY: "facultyId", SUBJECT: "subjectId", ROOM: "roomId", SECTION: "sectionId" }[kind];

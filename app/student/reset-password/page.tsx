@@ -4,7 +4,7 @@ import { ResetPasswordForm } from "@/components/auth/reset-password-form";
 import { Button } from "@/components/ui/button";
 import { findValidToken } from "@/lib/auth/tokens";
 
-export const metadata = { title: "Student Reset Password · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Student Reset Password · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function StudentResetPasswordPage({ searchParams }: { searchParams: Promise<{ token?: string }> }) {
   const { token = "" } = await searchParams;

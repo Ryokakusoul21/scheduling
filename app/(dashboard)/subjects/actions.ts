@@ -63,7 +63,7 @@ export async function saveSubjectAction(id: string | null, formData: FormData): 
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const data = await clean(parsed.data);
-  // Subjects belong to their course or strand's department; General Education subjects (none) are the Administrator's.
+  // Subjects belong to their course or strand's department; General Education subjects (none) are the Registrar's.
   const existing = id ? await prisma.subject.findUnique({ where: { id }, select: { departmentId: true } }) : null;
   const departmentId = await recordDepartment(scope, data.programId, data.level, existing?.departmentId);
   const actor = scope;
@@ -108,7 +108,7 @@ export async function createSubjectRequestAction(input: SubjectRequestInput): Pr
     data: { type: "SUBJECT_CHANGE", requestedById: scope.userId, departmentId: scope.departmentId, targetDepartmentId: subject.departmentId, details: details as never, reason: summary },
   });
   const recipients = await prisma.user.findMany({
-    where: { status: "ACTIVE", archivedAt: null, OR: [{ role: "ADMINISTRATOR" }, ...(subject.departmentId ? [{ role: "HEAD_OF_DEPARTMENT" as const, faculty: { departmentId: subject.departmentId } }] : [])] },
+    where: { status: "ACTIVE", archivedAt: null, OR: [{ role: { in: ["SUPER_ADMINISTRATOR", "REGISTRAR"] } }, ...(subject.departmentId ? [{ role: "HEAD_OF_DEPARTMENT" as const, faculty: { departmentId: subject.departmentId } }] : [])] },
     select: { id: true },
   });
   if (recipients.length) await prisma.notification.createMany({ data: recipients.map(({ id: userId }) => ({ userId, type: "INFO" as const, title: `Subject change requested for ${subject.code}`, message: summary.slice(0, 240), link: "/requests" })) });

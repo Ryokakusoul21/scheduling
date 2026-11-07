@@ -48,7 +48,7 @@ export interface CalendarEvent {
   detail: string;
   badge?: string;
   href?: string;
-  /** Not yet approved; shown only to the Administrator and the submitting department. */
+  /** Not yet approved; shown only to the Registrar and the submitting department. */
   pending?: boolean;
   activity?: ActivityListItem;
   /** Display fields for cells, tooltips, grouping, and coloring. */
@@ -63,7 +63,7 @@ export interface ActivityFormOptions {
   ownDepartmentId: string | null;
 }
 
-/** Whether the person may edit or remove this activity: Administrator any, Head of Department their department's events. */
+/** Whether the person may edit or remove this activity: Registrar any, Head of Department their department's events. */
 export function canManageActivity(a: Pick<ActivityListItem, "type" | "departmentId">, isAdmin: boolean, ownDepartmentId: string | null) {
   if (a.type === "CLASS_SUSPENSION") return false;
   return isAdmin || (a.type === "SCHOOL_EVENT" && !!ownDepartmentId && a.departmentId === ownDepartmentId);
@@ -217,7 +217,7 @@ export function CalendarBoard(props: {
         {events.some((e) => e.pending) && (
           <p className="text-xs text-muted-foreground">
             <span className="mr-1 inline-block rounded border border-dashed border-amber-500 px-1.5 italic">Pending</span>
-            Dashed, faded items await approval and are visible only to the Administrator and the submitting department.
+            Dashed, faded items await approval and are visible only to the Registrar and the submitting department.
           </p>
         )}
 
@@ -413,7 +413,7 @@ const BLANK: ActivityForm = {
 };
 const LEVEL_OPTIONS = ACADEMIC_LEVELS.map((l) => ({ value: l, label: levelLabel(l) }));
 
-/** Add or edit form; a Head of Department's save is a submission that waits for the Administrator's approval. */
+/** Add or edit form; a Head of Department's save is a submission that waits for the Registrar's approval. */
 export function ActivityDialog({ state, isAdmin, options, onClose, onSaved }: { state: { id?: string; form: ActivityForm } | null; isAdmin: boolean; options: ActivityFormOptions; onClose: () => void; onSaved: () => void }) {
   const [pending, startTransition] = useTransition();
   const [form, setForm] = useState<ActivityForm | null>(null);
@@ -452,7 +452,7 @@ export function ActivityDialog({ state, isAdmin, options, onClose, onSaved }: { 
           <DialogDescription>
             {isAdmin
               ? "Class suspensions are created in Schedule Adjustments so affected classes are cancelled and offered make-up options."
-              : "Submitted and edited activities reach the official calendar after the Administrator approves them."}
+              : "Submitted and edited activities reach the official calendar after the Registrar approves them."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid max-h-[65vh] gap-3 overflow-y-auto sm:grid-cols-2">

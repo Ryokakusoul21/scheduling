@@ -4,9 +4,9 @@
  * bookings may displace classes (to another room or time, else online), and examinations, closed rooms, and
  * equal-or-higher urgent bookings are never overridden. Pure and browser-safe (tests/bookings.test.ts).
  */
-import { commitRelocation, ONLINE_ROOM, relocate, type Occupant, type PlanContext, type Session } from "@/lib/occupancy/engine";
+import { commitRelocation, ONLINE_ROOM, relocateOptions, type Occupant, type PlanContext, type Relocation, type Session } from "@/lib/occupancy/engine";
 import { formatRange } from "@/lib/scheduler/timetable";
-import type { Placement, PlanItem } from "@/lib/occupancy/adjust";
+import type { Placement, PlanAlternative, PlanItem } from "@/lib/occupancy/adjust";
 
 export const PRIORITIES = ["REGULAR", "HIGH", "URGENT", "CRITICAL"] as const;
 export type Priority = (typeof PRIORITIES)[number];
@@ -22,15 +22,31 @@ export const URGENT_REASONS = [
 ] as const;
 export type UrgentReason = (typeof URGENT_REASONS)[number]["value"];
 
+/** Days of the timetable loaded when planning, so a displaced class can be moved to a make-up slot up to three weeks ahead. */
+export const PLAN_WINDOW_DAYS = 21;
+
+/** Key of a placement a person may choose for a displaced class. */
+export const slotKey = (r: { date: string; roomId: string; startMin: number }) => `${r.date}|${r.roomId}|${r.startMin}`;
+
+/** A weekly repeat can book at most this many dates after the first one. */
+export const MAX_REPEATS = 15;
+
+/** The same weekday each week after `start`, up to and including `until` (ISO dates). */
+export function weeklyDates(start: string, until: string) {
+  const dates: string[] = [];
+  for (let t = Date.parse(`${start}T00:00:00Z`) + 7 * 86_400_000; t <= Date.parse(`${until}T00:00:00Z`); t += 7 * 86_400_000) dates.push(new Date(t).toISOString().slice(0, 10));
+  return dates;
+}
+
 export const rank = (p: Priority) => PRIORITIES.indexOf(p);
 /** Urgent and Critical bookings are overrides: they may displace classes. */
 export const isOverride = (p: Priority) => rank(p) >= rank("URGENT");
 /** A booking takes another booking's room only with strictly higher priority. */
 export const outranks = (incoming: Priority, existing: Priority) => rank(incoming) > rank(existing);
 
-/** Highest priority a role may book at: Faculty Regular, Head of Department up to Urgent, Administrator up to Critical. */
+/** Highest priority a role may book at: Faculty Regular, Head of Department up to Urgent, Registrar up to Critical. */
 export function maxPriority(role: string): Priority {
-  return role === "ADMINISTRATOR" ? "CRITICAL" : role === "HEAD_OF_DEPARTMENT" ? "URGENT" : "REGULAR";
+  return role === "SUPER_ADMINISTRATOR" || role === "REGISTRAR" ? "CRITICAL" : role === "HEAD_OF_DEPARTMENT" ? "URGENT" : "REGULAR";
 }
 export const allowedPriorities = (role: string) => PRIORITIES.slice(0, rank(maxPriority(role)) + 1);
 
@@ -90,7 +106,7 @@ export interface PlanSnapshot {
   bookings: BookingMeta[];
   roomName: Map<string, string>;
   facultyName: Map<string, string>;
-  classInfo: Map<string, { departmentId: string | null }>;
+  classInfo: Map<string, { departmentId: string | null; fixed?: boolean }>;
   label: (s: Pick<Session, "scheduleId">) => string;
 }
 
@@ -119,7 +135,13 @@ const overlaps = (o: { startMin: number; endMin: number }, start: number, end: n
  * Plans a booking against a snapshot (left unchanged). `ignoreBookingId` is the booking being edited, so it
  * never conflicts with itself.
  */
-export function planBooking(snap: PlanSnapshot, req: BookingRequest, settings: BookingSettings, opts: { ignoreBookingId?: string } = {}): BookingPlan {
+export function planBooking(
+  snap: PlanSnapshot,
+  req: BookingRequest,
+  settings: BookingSettings,
+  /** `choices` maps a class to the placement key the person picked; `canMoveFixed` lets the Registrar move a class marked do not move. */
+  opts: { ignoreBookingId?: string; choices?: Record<string, string>; canMoveFixed?: boolean } = {}
+): BookingPlan {
   const ctx: PlanContext = { ...snap.ctx, occupants: [...snap.ctx.occupants] };
   const blockers: string[] = [];
   const notes: string[] = [];
@@ -158,8 +180,12 @@ export function planBooking(snap: PlanSnapshot, req: BookingRequest, settings: B
         const p = meta ? PRIORITY_LABEL[meta.priority] : "Regular";
         blockers.push(`${o.label} (${when}, ${p} priority) holds the room${buffer ? ` with a ${buffer}-minute buffer` : ""}; equal or higher priority is first come, first served.`);
       }
-    } else if (isOverride(req.priority)) classClashes.push(o);
-    else blockers.push(`${o.label} (${when}) has a class in this room. An Urgent booking can move it.`);
+    } else if (isOverride(req.priority)) {
+      if (snap.classInfo.get(o.refId)?.fixed && !opts.canMoveFixed) {
+        hard = true;
+        blockers.push(`${o.label} (${when}) is marked do not move. Only the Registrar can displace it; choose another room or ask the Registrar.`);
+      } else classClashes.push(o);
+    } else blockers.push(`${o.label} (${when}) has a class in this room. An Urgent booking can move it.`);
   }
   if (blockers.length) return { items: [], displaced: [], blockers, notes, overridable: !hard };
 
@@ -184,20 +210,27 @@ export function planBooking(snap: PlanSnapshot, req: BookingRequest, settings: B
   const placement = (r: { date: string; roomId: string; facultyId: string; startMin: number; endMin: number }): Placement => ({
     date: r.date, roomId: r.roomId, roomName: r.roomId ? name(r.roomId) : ONLINE_ROOM, facultyId: r.facultyId, facultyName: snap.facultyName.get(r.facultyId) ?? "Faculty", startMin: r.startMin, endMin: r.endMin,
   });
+  let protectedMoved = 0;
   for (const o of classClashes) {
     const s = snap.sessions.find((x) => x.scheduleId === o.refId && x.date === req.date);
     if (!s) continue;
+    if (snap.classInfo.get(s.scheduleId)?.fixed) protectedMoved++;
     const base = { scheduleId: s.scheduleId, label: snap.label(s), departmentId: snap.classInfo.get(s.scheduleId)?.departmentId ?? null, before: placement(s) };
-    const r = relocate(s, ctx, { allowOtherDays: true, avoidRoomId: req.roomId });
-    if (r) {
-      commitRelocation(ctx, s, r, base.label);
-      items.push({ ...base, after: placement(r), kind: "MOVED", reason: `${r.reason} ${why}` });
-    } else {
-      const online = { date: s.date, roomId: "", facultyId: s.facultyId, startMin: s.startMin, endMin: s.endMin };
-      commitRelocation(ctx, s, { ...online, reason: "" }, base.label);
-      items.push({ ...base, after: placement(online), kind: "ONLINE", reason: `No room or time slot of the right size and type is free, so the class meets online or asynchronously at its usual time. ${why}` });
-    }
+    // Up to three placements, best first, up to three weeks ahead; meeting online at the usual time is always the last choice.
+    const found = relocateOptions(s, ctx, { allowOtherDays: true, avoidRoomId: req.roomId, lookAheadDays: PLAN_WINDOW_DAYS }, 3);
+    const online = { date: s.date, roomId: "", facultyId: s.facultyId, startMin: s.startMin, endMin: s.endMin };
+    const options: (PlanAlternative & { move: Relocation | null })[] = [
+      ...found.map((r) => ({ key: slotKey(r), placement: placement(r), kind: "MOVED" as const, reason: `${r.reason} ${why}`, move: r })),
+      { key: "ONLINE", placement: placement(online), kind: "ONLINE" as const, reason: `No better room or time slot is free, so the class meets online or asynchronously at its usual time. ${why}`, move: null },
+    ];
+    const picked = options.find((x) => x.key === opts.choices?.[s.scheduleId]) ?? options[0];
+    commitRelocation(ctx, s, picked.move ?? { ...online, reason: "" }, base.label);
+    items.push({
+      ...base, after: picked.placement, kind: picked.kind, reason: picked.reason, chosen: picked.key,
+      alternatives: options.map((x) => ({ key: x.key, placement: x.placement, kind: x.kind, reason: x.reason })),
+    });
   }
+  if (protectedMoved) notes.push(`${protectedMoved} protected ${protectedMoved === 1 ? "class" : "classes"} marked do not move will be moved.`);
   if (items.length) notes.push(`${items.length} ${items.length === 1 ? "class" : "classes"} will be moved.`);
   if (displaced.length) notes.push(`${displaced.length} lower-priority ${displaced.length === 1 ? "booking" : "bookings"} will be ${displaced.every((d) => d.toRoomId) ? "moved to another room" : "moved or cancelled"}.`);
   return { items, displaced, blockers, notes, overridable: false };

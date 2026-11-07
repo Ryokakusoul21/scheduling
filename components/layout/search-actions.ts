@@ -14,7 +14,7 @@ export interface SearchResult {
 }
 
 export async function globalSearchAction(query: string): Promise<SearchResult[]> {
-  // Results are limited to the person's department (the Administrator searches everything).
+  // Results are limited to the person's department (the Registrar searches everything).
   const scope = await getScope();
   const q = query.trim();
   if (q.length < 2) return [];

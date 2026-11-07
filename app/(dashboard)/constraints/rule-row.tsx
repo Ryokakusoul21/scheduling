@@ -27,7 +27,7 @@ export function StrengthBadge({ hard }: { hard: boolean }) {
   );
 }
 
-/** Scope only when it differs from the viewer's default: department rules for the Administrator, school-wide rules for a Head of Department. */
+/** Scope only when it differs from the viewer's default: department rules for the Registrar, school-wide rules for a Head of Department. */
 function ScopeBadge({ row, isAdmin }: { row: ConstraintRow; isAdmin: boolean }) {
   const label = row.departmentId ? (isAdmin ? row.department : null) : isAdmin ? null : "School-wide";
   if (!label) return null;
@@ -66,9 +66,9 @@ export function StatusControl({ row, onToggle }: { row: ConstraintRow; onToggle:
         <Tooltip>
           <TooltipTrigger render={<span tabIndex={0} className="rounded-sm text-muted-foreground" />}>
             <Lock className="size-4" />
-            <span className="sr-only">Set by Administrator</span>
+            <span className="sr-only">Set by Registrar</span>
           </TooltipTrigger>
-          <TooltipContent>Set by Administrator</TooltipContent>
+          <TooltipContent>Set by Registrar</TooltipContent>
         </Tooltip>
       )}
     </span>

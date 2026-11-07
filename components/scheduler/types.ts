@@ -16,6 +16,8 @@ export interface SchedulerEntry {
   endMin: number;
   status: ScheduleStatus;
   notes: string | null;
+  /** Protected from urgent room bookings unless the Registrar confirms. */
+  doNotMove?: boolean;
   /** Another department's class: only its time, room, and faculty are known; used for conflict checks only. */
   busy?: boolean;
 }

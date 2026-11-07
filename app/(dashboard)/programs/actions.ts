@@ -19,7 +19,7 @@ const schema = z
   })
   .refine((d) => d.level !== "COLLEGE" || !!d.departmentId, { message: "Choose the department offering this course", path: ["departmentId"] });
 
-const READ_ONLY = "Programs and strands are managed by the Administrator. You can rename your department.";
+const READ_ONLY = "Programs and strands are managed by the Registrar. You can rename your department.";
 
 function revalidate(id?: string) {
   revalidatePath("/programs");

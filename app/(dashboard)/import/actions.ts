@@ -33,7 +33,7 @@ async function validate(kind: ImportKind, records: Record<string, string>[], sco
       const program = programs.find((p) => p.code === r.data?.programCode);
       if (r.data?.facultyId && !activeTerm(terms, r.data.level, program?.id ?? null)) r = { ...r, warnings: [...r.warnings, "There is no active term for this level, so the faculty will not be assigned."] };
       if (!r.data || scope.isAdmin) return r;
-      // A Head of Department may only add subjects to their own department's programs; General Education subjects are the Administrator's.
+      // A Head of Department may only add subjects to their own department's programs; General Education subjects are the Registrar's.
       return canManageSubject({ role: scope.role, departmentId: scope.departmentId }, { departmentId: program?.departmentId }) ? r : { ...r, data: null, errors: ["You can only import subjects owned by your department."] };
     });
   }
@@ -51,7 +51,7 @@ async function validate(kind: ImportKind, records: Record<string, string>[], sco
     // Rooms imported by a Head of Department always belong to their department and go into existing buildings and floors.
     if (!scope.departmentId || (r.data.departmentId && r.data.departmentId !== scope.departmentId)) return { ...r, data: null, errors: ["You can only import rooms for your department."] };
     const known = floors.some((x) => x.building.name.toLowerCase() === r.data!.building.toLowerCase() && x.name.toLowerCase() === r.data!.floor.toLowerCase());
-    if (!known) return { ...r, data: null, errors: ["That building and floor do not exist yet. Ask the Administrator to add them first."] };
+    if (!known) return { ...r, data: null, errors: ["That building and floor do not exist yet. Ask the Registrar to add them first."] };
     return { ...r, data: { ...r.data, departmentId: scope.departmentId } };
   });
 }

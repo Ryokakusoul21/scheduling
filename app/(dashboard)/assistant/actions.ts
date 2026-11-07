@@ -63,7 +63,7 @@ export async function sendAssistantMessageAction(
     return {
       ok: false,
       error: missingKey
-        ? "The Scheduling Assistant is not set up yet. Please contact the Administrator."
+        ? "The Scheduling Assistant is not set up yet. Please contact the Registrar."
         : "The Scheduling Assistant is unavailable right now. Please try again in a moment.",
     };
   }

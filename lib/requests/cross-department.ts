@@ -27,7 +27,7 @@ export interface CrossDepartmentDetails {
 /**
  * Files a request instead of saving: the class needs another department's faculty member or room. Only
  * free resources reach this point (the double-booking check runs first). One other department approves
- * its own request; when two are involved, the Administrator decides.
+ * its own request; when two are involved, the Registrar decides.
  */
 export async function requestCrossDepartment(scope: Scope, input: ClassData, departments: string[]): Promise<SaveResult> {
   const [subject, section, faculty, room] = await Promise.all([

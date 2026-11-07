@@ -6,7 +6,7 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import { LoginForm } from "@/components/auth/login-form";
 import { homePath } from "@/lib/permissions/roles";
 
-export const metadata = { title: "Student Sign In · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Student Sign In · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 const NOTICES: Record<string, string> = {
   verified: "Email verified. You can now sign in.",
@@ -29,7 +29,7 @@ export default async function StudentLoginPage({ searchParams }: { searchParams:
       )}
       <LoginForm callbackUrl={callbackUrl} audience="student" />
       <p className="mt-6 text-center text-xs text-muted-foreground">
-        Faculty, Head of Department, or Administrator?{" "}
+        Faculty, Head of Department, or Registrar?{" "}
         <Link href="/login" className="font-medium text-primary hover:underline">
           Staff sign in
         </Link>

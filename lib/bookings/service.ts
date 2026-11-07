@@ -12,7 +12,7 @@ import { undoProblems, writePlan, type PlanItem } from "@/lib/occupancy/adjust";
 import { formatRange } from "@/lib/scheduler/timetable";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
 import {
-  allowedPriorities, approvalDepartment, capStatus, isOverride, lockKeys, planBooking, PRIORITY_LABEL, restorableAfterShortening, URGENT_REASONS,
+  allowedPriorities, approvalDepartment, capStatus, isOverride, lockKeys, planBooking, PLAN_WINDOW_DAYS, PRIORITY_LABEL, restorableAfterShortening, URGENT_REASONS,
   type BookingPlan, type DisplacedBooking, type Priority, type UrgentReason,
 } from "./plan";
 
@@ -23,7 +23,11 @@ const day = (d: string) => new Date(`${d}T00:00:00Z`);
 const reasonLabel = (r: string | null) => URGENT_REASONS.find((x) => x.value === r)?.label ?? "Urgent need";
 
 export interface SlotInput { date: string; startMin: number; endMin: number; attendees: number; purpose: string }
-export interface BookingInput extends SlotInput { roomId: string; priority: Priority; urgentReason?: UrgentReason | null; reasonDetail?: string | null }
+export interface BookingInput extends SlotInput {
+  roomId: string; priority: Priority; urgentReason?: UrgentReason | null; reasonDetail?: string | null;
+  /** Placement the person chose for each displaced class (class id to placement key). */
+  choices?: Record<string, string>;
+}
 
 /** Start of the current month in Manila, for the monthly override caps. */
 function monthStart() {
@@ -70,19 +74,19 @@ export interface RoomOption {
  * also see other departments' rooms (they need that department's approval). Ranked by availability, fewest
  * moves, own department first, then the closest capacity fit.
  */
-export async function searchRooms(scope: Scope, input: SlotInput & { roomType?: string; priority: Priority }) {
+export async function searchRooms(scope: Scope, input: SlotInput & { roomType?: string; roomId?: string; priority: Priority }) {
   const settings = await getBookingSettings();
   const override = isOverride(input.priority);
   const [loaded, rooms, departments] = await Promise.all([
-    loadPlan(input.date, addDays(input.date, 6)),
+    loadPlan(input.date, addDays(input.date, PLAN_WINDOW_DAYS)),
     prisma.room.findMany({
-      where: { archivedAt: null, ...(override ? {} : departmentWhere.room(scope)), ...(input.roomType ? { roomType: input.roomType as never } : {}) },
+      where: { archivedAt: null, ...(override ? {} : departmentWhere.room(scope)), ...(input.roomId ? { id: input.roomId } : input.roomType ? { roomType: input.roomType as never } : {}) },
       include: { floor: { select: { name: true, building: { select: { name: true } } } } },
     }),
     prisma.department.findMany({ select: { id: true, name: true } }),
   ]);
   const options: RoomOption[] = rooms.map((r) => {
-    const plan = planBooking(loaded, { ...input, roomId: r.id }, settings);
+    const plan = planBooking(loaded, { ...input, roomId: r.id }, settings, { canMoveFixed: scope.isAdmin });
     const approval = override ? approvalDepartment(scope, r.departmentId) : null;
     return {
       roomId: r.id,
@@ -137,11 +141,11 @@ export async function createBooking(scope: Scope, d: BookingInput) {
   if (approval) {
     // Nothing moves until the room's department approves; the plan is made again at that moment.
     const settings = await getBookingSettings();
-    const plan = planBooking(await loadPlan(d.date, addDays(d.date, 6)), d, settings);
+    const plan = planBooking(await loadPlan(d.date, addDays(d.date, PLAN_WINDOW_DAYS)), d, settings, { canMoveFixed: scope.isAdmin });
     if (plan.blockers.length) return { ok: false, error: plan.blockers.join(" ") } satisfies Fail;
     const booking = await prisma.roomBooking.create({ data: { ...fields, status: "AWAITING_APPROVAL", approvalDepartmentId: approval } });
     await audit(prisma, scope, booking.id, `Requested an urgent override of ${v.room.roomName}, awaiting the owning department's approval`, { ...d, displacedClasses: plan.items.length });
-    await notifyManagers(approval, { title: "Urgent room override needs your approval", message: `${scope.name} asks to take ${v.room.roomName} on ${d.date}, ${formatRange(d.startMin, d.endMin)} for "${d.purpose}" (${reasonLabel(d.urgentReason ?? null)}). ${plan.items.length} class(es) would move.`, link: "/bookings", type: "WARNING" });
+    await notifyManagers(approval, { title: "Urgent room override needs your approval", message: `${scope.name} asks to take ${v.room.roomName} on ${d.date}, ${formatRange(d.startMin, d.endMin)} for "${d.purpose}" (${reasonLabel(d.urgentReason ?? null)}). ${plan.items.length} class(es) would move.`, link: `/bookings?booking=${booking.id}`, type: "WARNING" });
     return { ok: true as const, bookingId: booking.id, status: "AWAITING_APPROVAL" as const, items: redact(plan.items, scope), displaced: plan.displaced };
   }
   return commit(scope, d, { fields, roomName: v.room.roomName });
@@ -154,8 +158,8 @@ export async function createBooking(scope: Scope, d: BookingInput) {
 async function commit(scope: Scope, d: BookingInput, ctx: { fields: Prisma.RoomBookingUncheckedCreateInput | null; roomName: string; existingId?: string; actorId?: string }) {
   const settings = await getBookingSettings();
   const loadedAt = new Date();
-  const loaded = await loadPlan(d.date, addDays(d.date, 6));
-  const plan = planBooking(loaded, d, settings, { ignoreBookingId: ctx.existingId });
+  const loaded = await loadPlan(d.date, addDays(d.date, PLAN_WINDOW_DAYS));
+  const plan = planBooking(loaded, d, settings, { ignoreBookingId: ctx.existingId, choices: d.choices, canMoveFixed: scope.isAdmin });
   if (plan.blockers.length) return { ok: false, error: plan.blockers.join(" ") } satisfies Fail;
   const rooms = [d.roomId, ...plan.displaced.map((x) => x.toRoomId ?? ""), ...plan.items.map((i) => i.after?.roomId ?? "")];
   const dates = [...new Set([d.date, ...plan.items.map((i) => i.after?.date ?? d.date)])];
@@ -241,13 +245,13 @@ const fromRow = (b: { roomId: string; date: Date; startMin: number; endMin: numb
   roomId: b.roomId, date: isoDate(b.date), startMin: b.startMin, endMin: b.endMin, attendees: b.attendees, purpose: b.purpose, priority: b.priority, urgentReason: b.urgentReason as UrgentReason | null, reasonDetail: b.reasonDetail,
 });
 
-/** The owning department's Head (or the Administrator) approves an override of their room; it is planned and applied then. */
+/** The owning department's Head (or the Registrar) approves an override of their room; it is planned and applied then. */
 export async function reviewOverride(scope: Scope, id: string, approve: boolean, note?: string) {
   const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { roomName: true } }, bookedBy: { select: { id: true, name: true } } } });
   if (!b || b.status !== "AWAITING_APPROVAL") return { ok: false, error: "This request was already decided." } satisfies Fail;
   if (!scope.isAdmin && !(b.approvalDepartmentId && scope.departmentIds.includes(b.approvalDepartmentId))) {
     await logBlocked(scope, "decide an urgent override of another department's room", "RoomBooking", id);
-    return { ok: false, error: "Only the Head of Department who owns this room, or the Administrator, can decide." } satisfies Fail;
+    return { ok: false, error: "Only the Head of Department who owns this room, or the Registrar, can decide." } satisfies Fail;
   }
   if (!approve) {
     await prisma.roomBooking.update({ where: { id }, data: { status: "REJECTED", reviewedById: scope.userId, reviewedAt: new Date(), reviewNote: note?.trim() || null } });
@@ -294,7 +298,7 @@ export async function releaseDisplaced(scope: Scope, bookingId: string) {
 export async function cancelBooking(scope: Scope, id: string, restore: boolean) {
   const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { roomName: true } }, batch: { include: { adjustments: true } } } });
   if (!b || ["CANCELLED", "REJECTED"].includes(b.status)) return { ok: false, error: "This booking is already cancelled." } satisfies Fail;
-  if (!scope.isAdmin && b.bookedById !== scope.userId) return { ok: false, error: "Only the person who booked the room or an Administrator can cancel it." } satisfies Fail;
+  if (!scope.isAdmin && b.bookedById !== scope.userId) return { ok: false, error: "Only the person who booked the room or a Registrar can cancel it." } satisfies Fail;
   const undo = restore && b.batch && !b.batch.undoneAt;
   if (undo) {
     const problems = await undoProblems(b.batch!.id, b.batch!.adjustments, [b.id]);
@@ -312,7 +316,7 @@ export async function cancelBooking(scope: Scope, id: string, restore: boolean) 
   }, { timeout: 30000 });
   if (undo) await notifyRestored(b.batch!.adjustments.map((a) => a.scheduleId), b.room.roomName, b.purpose);
   if (restoredOwners.length) await notifyUsers(restoredOwners, { title: "Room booking restored", message: `The higher-priority booking of ${b.room.roomName} was cancelled, so your booking is back in its original room.`, link: "/bookings" });
-  if (b.bookedById !== scope.userId) await notifyUsers([b.bookedById], { title: "Room booking cancelled", message: `Your booking of ${b.room.roomName} for "${b.purpose}" was cancelled by an Administrator.`, link: "/bookings" });
+  if (b.bookedById !== scope.userId) await notifyUsers([b.bookedById], { title: "Room booking cancelled", message: `Your booking of ${b.room.roomName} for "${b.purpose}" was cancelled by a Registrar.`, link: "/bookings" });
   queueWorkloadCheck("A room booking was cancelled", scope.userId);
   return { ok: true as const };
 }
@@ -330,7 +334,7 @@ async function notifyRestored(scheduleIds: string[], roomName: string, purpose: 
 export async function shortenBooking(scope: Scope, id: string, startMin: number, endMin: number, restore: boolean) {
   const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { roomName: true } }, batch: { include: { adjustments: { include: { schedule: true } } } } } });
   if (!b || b.status !== "CONFIRMED") return { ok: false, error: "Only confirmed bookings can be shortened." } satisfies Fail;
-  if (!scope.isAdmin && b.bookedById !== scope.userId) return { ok: false, error: "Only the person who booked the room or an Administrator can change it." } satisfies Fail;
+  if (!scope.isAdmin && b.bookedById !== scope.userId) return { ok: false, error: "Only the person who booked the room or a Registrar can change it." } satisfies Fail;
   if (startMin < b.startMin || endMin > b.endMin || endMin <= startMin || (startMin === b.startMin && endMin === b.endMin)) return { ok: false, error: "Choose a shorter time inside the current booking. To extend or move it, cancel and book again." } satisfies Fail;
   const date = isoDate(b.date);
   const open = b.batch && !b.batch.undoneAt ? b.batch.adjustments.filter((a) => a.kind !== "MAKE_UP") : [];
@@ -356,7 +360,7 @@ export async function shortenBooking(scope: Scope, id: string, startMin: number,
 export async function editBookingDetails(scope: Scope, id: string, purpose: string, attendees: number) {
   const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { capacity: true, roomName: true } } } });
   if (!b || ["CANCELLED", "REJECTED"].includes(b.status)) return { ok: false, error: "This booking can no longer be changed." } satisfies Fail;
-  if (!scope.isAdmin && b.bookedById !== scope.userId) return { ok: false, error: "Only the person who booked the room or an Administrator can change it." } satisfies Fail;
+  if (!scope.isAdmin && b.bookedById !== scope.userId) return { ok: false, error: "Only the person who booked the room or a Registrar can change it." } satisfies Fail;
   if (attendees > b.room.capacity) return { ok: false, error: `${b.room.roomName} seats only ${b.room.capacity}.` } satisfies Fail;
   await prisma.roomBooking.update({ where: { id }, data: { purpose, attendees } });
   await audit(prisma, scope, id, "Changed the booking details", { purpose, attendees, before: { purpose: b.purpose, attendees: b.attendees } });

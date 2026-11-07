@@ -22,7 +22,7 @@ export const POLICY_RESOURCES = [
 ] as const;
 
 export type PolicyResourceType = (typeof POLICY_RESOURCES)[number];
-export type PolicyRole = "ADMINISTRATOR" | "HEAD_OF_DEPARTMENT" | "FACULTY" | "STUDENT";
+export type PolicyRole = "SUPER_ADMINISTRATOR" | "REGISTRAR" | "HEAD_OF_DEPARTMENT" | "FACULTY" | "STUDENT";
 
 export interface PolicyUser {
   id?: string;
@@ -113,7 +113,9 @@ function ownsDepartment(user: PolicyUser, resource: PolicyResource) {
 /** The only authorization decision function. Anything not listed is denied. */
 export function can(user: PolicyUser | null | undefined, action: PolicyAction, resource: PolicyResource): boolean {
   if (!isActivePolicyUser(user)) return false;
-  if (user.role === "ADMINISTRATOR") return true;
+  if (user.role === "SUPER_ADMINISTRATOR") return true;
+  // The Registrar runs every academic record but not accounts, settings, or the audit log.
+  if (user.role === "REGISTRAR") return !["user", "settings", "auditLog"].includes(resource.type);
 
   if (user.role === "HEAD_OF_DEPARTMENT") {
     // Shared resources expose basic availability/details only, never mutations.
@@ -149,7 +151,7 @@ export type PolicyWhere = Record<string, unknown>;
  */
 export function scopeQuery(user: PolicyUser | null | undefined, type: PolicyResourceType): PolicyWhere {
   if (!isActivePolicyUser(user)) return { id: { equals: "__denied__" } };
-  if (user.role === "ADMINISTRATOR") return {};
+  if (user.role === "SUPER_ADMINISTRATOR" || user.role === "REGISTRAR") return {};
   const departments = policyDepartmentIds(user);
   if (user.role === "HEAD_OF_DEPARTMENT") {
     if (!departments.length) return { id: { equals: "__denied__" } };

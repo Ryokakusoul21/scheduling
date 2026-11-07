@@ -22,8 +22,8 @@ const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) 
 const shortDay = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" });
 
 /** Occupancy at a glance: rooms down the side, a day's hours (or a six-day week) across, urgent bookings striped red. */
-export function AvailabilityGrid({ today, hours }: { today: string; hours: { openMin: number; closeMin: number } }) {
-  const [open, setOpen] = useState(false);
+/** `onPick` fills the booking form with the room, day, and time clicked in the one-day view. */
+export function AvailabilityGrid({ today, hours, onPick }: { today: string; hours: { openMin: number; closeMin: number }; onPick?: (slot: { roomId: string; date: string; startMin: number; endMin: number }) => void }) {
   const [from, setFrom] = useState(today);
   const [days, setDays] = useState<1 | 6>(1);
   const [data, setData] = useState<Data | null>(null);
@@ -31,22 +31,33 @@ export function AvailabilityGrid({ today, hours }: { today: string; hours: { ope
   const [loading, start] = useTransition();
 
   useEffect(() => {
-    if (!open) return;
     start(async () => {
       const r = await availabilityAction(from, days);
       if (r.ok) { setData(r.data); setError(null); } else setError(r.error);
     });
-  }, [open, from, days]);
+  }, [from, days]);
 
   const span = hours.closeMin - hours.openMin;
   const pos = (b: { startMin: number; endMin: number }) => ({ left: `${((Math.max(b.startMin, hours.openMin) - hours.openMin) / span) * 100}%`, width: `${((Math.min(b.endMin, hours.closeMin) - Math.max(b.startMin, hours.openMin)) / span) * 100}%` });
   const dates = Array.from({ length: days }, (_, i) => addDays(from, i));
   const ticks = Array.from({ length: Math.floor(span / 120) + 1 }, (_, i) => hours.openMin + i * 120);
 
+  // A click on empty space in the one-day view picks that room and the half hour under the pointer.
+  const pickable = !!onPick && days === 1;
+  const pick = (roomId: string, date: string, e: React.MouseEvent<HTMLDivElement>) => {
+    const box = e.currentTarget.getBoundingClientRect();
+    const startMin = Math.min(Math.floor((hours.openMin + ((e.clientX - box.left) / box.width) * span) / 30) * 30, hours.closeMin - 30);
+    onPick?.({ roomId, date, startMin, endMin: Math.min(startMin + 60, hours.closeMin) });
+  };
+
   const Lane = ({ roomId, date }: { roomId: string; date: string }) => (
-    <div className="relative h-7 rounded bg-muted/40">
+    <div
+      className={cn("relative h-7 rounded bg-muted/40", pickable && date >= today && "cursor-pointer hover:bg-primary/10")}
+      title={pickable && date >= today ? "Click to book this room at this time" : undefined}
+      onClick={pickable && date >= today ? (e) => pick(roomId, date, e) : undefined}
+    >
       {data?.blocks.filter((b) => b.roomId === roomId && b.date === date).map((b, i) => (
-        <span key={i} title={`${b.label}, ${formatRange(b.startMin, b.endMin)}${b.urgent ? " (urgent)" : ""}`} style={pos(b)}
+        <span key={i} onClick={(e) => e.stopPropagation()} title={`${b.label}, ${formatRange(b.startMin, b.endMin)}${b.urgent ? " (urgent)" : ""}`} style={pos(b)}
           className={cn("absolute inset-y-0.5 overflow-hidden rounded border px-1 text-[10px] leading-6 whitespace-nowrap", TONE[b.urgent ? "URGENT" : b.kind])}>
           {days === 1 ? b.label : ""}
         </span>
@@ -55,8 +66,8 @@ export function AvailabilityGrid({ today, hours }: { today: string; hours: { ope
   );
 
   return (
-    <details className="rounded-xl border bg-card p-5" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
-      <summary className="cursor-pointer text-base font-semibold">Room availability</summary>
+    <section aria-labelledby="availability-title" className="rounded-xl border bg-card p-5">
+      <h2 id="availability-title" className="text-base font-semibold">Room availability <span className="text-sm font-normal text-muted-foreground">· in the day view, click a free time to book that room</span></h2>
       <div className="mt-4 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <Button size="icon" variant="outline" className="size-9" aria-label="Previous" onClick={() => setFrom(addDays(from, -days))}><CaretLeft className="size-4" /></Button>
@@ -93,6 +104,6 @@ export function AvailabilityGrid({ today, hours }: { today: string; hours: { ope
           )
         )}
       </div>
-    </details>
+    </section>
   );
 }

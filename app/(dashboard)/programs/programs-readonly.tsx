@@ -84,7 +84,7 @@ export function ProgramsReadOnly({ programs, departments }: { programs: ProgramR
         );
       })}
 
-      {programs.length === 0 && <EmptyState title="No programs assigned to your department yet" description="Ask the Administrator to add programs to your department." />}
+      {programs.length === 0 && <EmptyState title="No programs assigned to your department yet" description="Ask the Registrar to add programs to your department." />}
 
       <FormDialog
         open={!!renaming}

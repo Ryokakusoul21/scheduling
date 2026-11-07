@@ -6,7 +6,7 @@ import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { ProgramsManager } from "./programs-manager";
 import { ProgramsReadOnly } from "./programs-readonly";
 
-export const metadata = { title: "Programs and Strands · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Programs and Strands · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function ProgramsPage() {
   const scope = await requireScope(...STAFF_ROLES);

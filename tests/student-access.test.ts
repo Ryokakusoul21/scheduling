@@ -13,7 +13,7 @@ describe("student access", () => {
   });
 
   it("keeps staff out of the student portal", () => {
-    for (const role of ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT", "FACULTY"] as const) {
+    for (const role of ["REGISTRAR", "HEAD_OF_DEPARTMENT", "FACULTY"] as const) {
       expect(canAccessPath("/student", role)).toBe(false);
       expect(canAccessPath("/scheduler", role)).toBe(true);
     }
@@ -45,7 +45,7 @@ describe("printable reports", () => {
 
   it("includes the institution header, term, and landscape orientation", () => {
     const html = reportHtml(doc);
-    expect(html).toContain("GRANBY COLLEGES OF SCIENCE &#38; TECHNOLOGY");
+    expect(html).toContain("GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY");
     expect(html).toContain("2026-2027 · First Semester");
     expect(html).toContain("Date Generated:");
     expect(html).toContain("A4 landscape");

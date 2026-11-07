@@ -66,7 +66,7 @@ async function examProblems(scope: Scope, d: ExamInput, excludeId?: string) {
   return conflicts;
 }
 
-/** Subject and proctor must be in scope; a room of another department can only be requested from the Administrator. */
+/** Subject and proctor must be in scope; a room of another department can only be requested from the Registrar. */
 async function resourcesAllowed(scope: Scope, d: ExamInput) {
   if (scope.isAdmin) return null;
   const [subject, proctor, room] = await Promise.all([
@@ -77,7 +77,7 @@ async function resourcesAllowed(scope: Scope, d: ExamInput) {
   // A proctor outside the department is fine when that person teaches the class.
   const teaches = proctor || (await prisma.schedule.count({ where: { semesterId: d.semesterId, sectionId: d.sectionId, subjectId: d.subjectId, facultyId: d.proctorId, status: { not: "ARCHIVED" } } }));
   if (!subject || !teaches) return "Choose a subject and proctor of your department, or the teacher of the class.";
-  if (room && isForeign(scope, room.departmentId)) return "That room belongs to another department. Send a schedule request to the Administrator to use it.";
+  if (room && isForeign(scope, room.departmentId)) return "That room belongs to another department. Send a schedule request to the Registrar to use it.";
   return null;
 }
 
@@ -100,7 +100,7 @@ export async function saveExamAction(input: ExamInput, id?: string): Promise<Res
   if (conflicts.length) return { ok: false, error: conflicts.join(" ") };
 
   const section = await prisma.section.findUnique({ where: { id: d.sectionId }, select: { departmentId: true } });
-  // The Administrator's own saves are official; a Head of Department's edits stay drafts, or return for review once approved.
+  // The Registrar's own saves are official; a Head of Department's edits stay drafts, or return for review once approved.
   const status = scope.isAdmin ? "PUBLISHED" : current?.status === "PUBLISHED" ? "REVIEW" : "DRAFT";
   const data = { ...d, departmentId: section?.departmentId ?? null, date: new Date(`${d.date}T00:00:00Z`), notes: d.notes || null, status } as const;
   const exam = id ? await prisma.examination.update({ where: { id }, data }) : await prisma.examination.create({ data });
@@ -137,7 +137,7 @@ export async function removeExamAction(id: string): Promise<Result> {
   return { ok: true, data: undefined };
 }
 
-/** Sends the department's draft examinations to the Administrator as one listing; blocked while hard conflicts remain. */
+/** Sends the department's draft examinations to the Registrar as one listing; blocked while hard conflicts remain. */
 export async function submitExamsAction(ids: string[]): Promise<Result<{ count: number }>> {
   const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const parsed = z.array(z.string().min(1)).min(1).max(1000).safeParse(ids);
@@ -159,7 +159,7 @@ export async function submitExamsAction(ids: string[]): Promise<Result<{ count: 
     if (hasHardConflict(issues)) return { ok: false, error: `Resolve the conflicts in the ${type.toLowerCase().replace("_", "-")} examinations before submitting.` };
   }
   const { count } = await prisma.examination.updateMany({ where: { id: { in: parsed.data }, status: "DRAFT" }, data: { status: "REVIEW", submittedAt: new Date() } });
-  await prisma.auditLog.create({ data: { userId: scope.userId, role: scope.role, departmentId: scope.departmentId, action: `Submitted ${count} examination(s) for Administrator review`, entity: "Examination" } });
+  await prisma.auditLog.create({ data: { userId: scope.userId, role: scope.role, departmentId: scope.departmentId, action: `Submitted ${count} examination(s) for Registrar review`, entity: "Examination" } });
   await notifyManagers(null, { title: "Examination schedule submitted", message: `${count} examination(s) await your review.`, link: "/admin/review-center?queue=examinations" });
   refresh();
   revalidatePath("/admin/review-center");

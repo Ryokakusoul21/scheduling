@@ -1,27 +1,18 @@
-import Link from "next/link";
-import { cn } from "@/lib/utils";
+import { CalendarDots, Exam } from "@phosphor-icons/react/ssr";
+import { PageTabs } from "@/components/ux/page-tabs";
 
 export type SchedulerMode = "classes" | "examinations";
 
-const MODES: { value: SchedulerMode; label: string }[] = [
-  { value: "classes", label: "Class Schedule" },
-  { value: "examinations", label: "Examination Schedule" },
-];
-
 /** Switches the Scheduler between class and examination scheduling; the mode lives in the address. */
 export function ModeSwitch({ mode, academicYearId }: { mode: SchedulerMode; academicYearId?: string }) {
+  const href = (m: SchedulerMode) => `/scheduler?mode=${m}${academicYearId ? `&ay=${academicYearId}` : ""}`;
   return (
-    <nav aria-label="Scheduler mode" className="flex shrink-0 gap-1 rounded-lg bg-muted p-1 self-start">
-      {MODES.map((m) => (
-        <Link
-          key={m.value}
-          href={`/scheduler?mode=${m.value}${academicYearId ? `&ay=${academicYearId}` : ""}`}
-          aria-current={mode === m.value ? "page" : undefined}
-          className={cn("rounded-md px-3 py-1.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring", mode === m.value ? "bg-background shadow-xs" : "text-muted-foreground hover:bg-background/60")}
-        >
-          {m.label}
-        </Link>
-      ))}
-    </nav>
+    <PageTabs
+      label="Scheduler mode"
+      tabs={[
+        { href: href("classes"), label: "Class Schedule", icon: CalendarDots, active: mode === "classes" },
+        { href: href("examinations"), label: "Examination Schedule", icon: Exam, active: mode === "examinations" },
+      ]}
+    />
   );
 }

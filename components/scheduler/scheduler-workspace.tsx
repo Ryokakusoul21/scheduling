@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { usePersisted } from "@/hooks/use-persisted";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -14,7 +16,6 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import {
-  ArrowLeft,
   CalendarDots,
   CheckCircle,
   FunnelSimple,
@@ -24,7 +25,6 @@ import {
   Rows,
   SquaresFour,
   UploadSimple,
-  UsersThree,
   WarningOctagon,
   X,
 } from "@phosphor-icons/react/ssr";
@@ -32,15 +32,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { SectionSheet, printSheets, type SheetSource } from "./schedule-sheet";
 import { NativeSelect } from "@/components/ux/native-select";
-import { EmptyState, SelectCard } from "@/components/ux/states";
-import { BackButton } from "@/components/ux/back-button";
+import { EmptyState } from "@/components/ux/states";
 import { ReportButtons } from "@/components/ux/export-buttons";
 import { timetableDoc } from "@/lib/export/report";
 import { useShortcut } from "@/components/ux/shortcuts";
-import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { cn } from "@/lib/utils";
 import { detectConflicts, isOverlapConflict, type ConflictContext } from "@/lib/scheduler/conflictDetector";
 import {
@@ -58,13 +55,13 @@ import {
 import { rankFaculty, rankRooms } from "@/lib/scheduler/suggest";
 import { assignedFor } from "@/lib/subjects/assignment-rules";
 import type { DayOfWeek, SchedEntry } from "@/lib/scheduler/types";
-import { stageLabel } from "@/lib/academics/levels";
+import { levelLabel, stageLabel } from "@/lib/academics/levels";
 import { deleteClassAction, moveClassAction, publishClassesAction, saveClassAction, submitClassesAction, type ClassInput } from "@/app/(dashboard)/scheduler/actions";
 
 import { collision, gridKeyboardCoordinates } from "./dnd-grid";
 import { Timetable, PALETTE, type BlockInfo, type DropPreview } from "./timetable";
 import { ClassDialog, type ClassDraft } from "./class-dialog";
-import { FilterCard, FilterSelect, PanelTab, ScheduleHeader, ViewToggle } from "./schedule-chrome";
+import { ChecksHeading, ChecksRail, FilterCard, FilterSelect, PanelSection, ScheduleHeader, ViewToggle } from "./schedule-chrome";
 import { ConflictsPanel, SectionNeedsSummary, UnscheduledPanel, WarningsPanel } from "./side-panels";
 import { ResolveIssues, type ResolveRequest } from "./resolve-issues";
 import { buildResolverInput } from "@/lib/scheduler/resolver/client-input";
@@ -93,11 +90,13 @@ export function SchedulerWorkspace({
   permissions,
   defaults,
   academicYearControl,
+  modes,
 }: {
   data: SchedulerData;
   permissions: SchedulerPermissions;
   defaults: Partial<Filters>;
   academicYearControl?: React.ReactNode;
+  modes?: React.ReactNode;
 }) {
   // Local copy of the classes for optimistic drag-and-drop; re-synced when the server sends new data.
   const [entries, setEntries] = useState(initial.entries);
@@ -119,7 +118,9 @@ export function SchedulerWorkspace({
 
   const dndId = useId();
   const [view, setView] = useState<"timetable" | "table">("timetable");
-  const [panel, setPanel] = useState<"conflicts" | "todo" | "warnings" | "rules" | null>(null);
+  // Open side panel sections and the hidden panel are remembered per browser.
+  const [openPanels, setOpenPanels] = usePersisted<Partial<Record<PanelKey, boolean>>>("scheduler-panels", {});
+  const [panelHidden, setPanelHidden] = usePersisted("scheduler-panel-hidden", false);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [perspective, setPerspective] = useState<"section" | "faculty" | "room">("section");
   // Requests still being saved; together with an open class dialog these count as unsaved changes.
@@ -137,6 +138,15 @@ export function SchedulerWorkspace({
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filterBarRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const togglePanel = (key: PanelKey, current: boolean) => setOpenPanels({ ...openPanels, [key]: !current });
+  const toggleHidden = () => setPanelHidden(!panelHidden);
+  // Shows the panel, opens one section, and scrolls it into view.
+  const setPanel = (key: PanelKey) => {
+    setOpenPanels({ ...openPanels, [key]: true });
+    setPanelHidden(false);
+    requestAnimationFrame(() => panelRef.current?.querySelector(`[data-panel="${key}"]`)?.scrollIntoView({ block: "nearest" }));
+  };
 
   // ---------------------------------------------------------------------------
   // Lookups
@@ -241,6 +251,7 @@ export function SchedulerWorkspace({
         ghost: ghostIds.has(e.id),
         contextual: contextualIds.has(e.id),
         pinned: e.notes?.includes("[PINNED]") ?? false,
+        doNotMove: e.doNotMove,
         override: e.notes?.match(/\[OVERRIDE:([^\]]+)\]/)?.[1],
         proposed: proposedIds.has(e.id),
       };
@@ -300,7 +311,6 @@ export function SchedulerWorkspace({
   const [ruleCount, setRuleCount] = useState<number | null>(null);
   const issueTotal = (focusedSection ? needs.length : allNeeds.length) + warningCount + overlapCount;
 
-  const activePanel = panel ?? (focusedSection && scopedConflicts.length === 0 && needs.length > 0 ? "todo" : "conflicts");
 
   // ---------------------------------------------------------------------------
   // Mutations
@@ -438,7 +448,7 @@ export function SchedulerWorkspace({
     if (!res.ok) return void toast.error(res.error);
     const selected = new Set(ids);
     setEntries((prev) => prev.map((e) => (selected.has(e.id) ? { ...e, status: "REVIEW" } : e)));
-    toast.success(`Submitted ${res.data.count} class schedule${res.data.count === 1 ? "" : "s"} for Administrator review.`);
+    toast.success(`Submitted ${res.data.count} class schedule${res.data.count === 1 ? "" : "s"} for Registrar review.`);
   }
   // Opening the dialog
   // ---------------------------------------------------------------------------
@@ -812,30 +822,36 @@ export function SchedulerWorkspace({
     return timetableDoc(`${kind} Timetable: ${focusTitle}`, term || "No term selected", rows, `${kind.toLowerCase()}-timetable-${focusTitle.replace(/\W+/g, "-").toLowerCase()}`);
   }, [focus, focusTitle, visibleTimetable, maps.term, filters.termId, rowInfo]);
 
+  const unscheduledCount = focusedSection ? needs.length : allNeeds.length;
+  const isOpen = (key: PanelKey, count: number | null) => openPanels[key] ?? (count === null ? false : count > 0);
   const sidePanel = (
-    <div ref={panelRef} className="space-y-3">
-      <div role="tablist" aria-label="Scheduler panels" className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
-        <PanelTab active={activePanel === "conflicts"} onClick={() => setPanel("conflicts")}>
-          Conflicts <Badge variant={overlapCount ? "destructive" : "secondary"}>{overlapCount}</Badge>
-        </PanelTab>
-        <PanelTab active={activePanel === "todo"} onClick={() => setPanel("todo")}>
-          Unscheduled <Badge variant="secondary">{focusedSection ? needs.length : allNeeds.length}</Badge>
-        </PanelTab>
-        <PanelTab active={activePanel === "warnings"} onClick={() => setPanel("warnings")}>
-          Warnings <Badge variant={warningCount ? "outline" : "secondary"}>{warningCount}</Badge>
-        </PanelTab>
-        {permissions.canEdit && (
-          <PanelTab active={activePanel === "rules"} onClick={() => setPanel("rules")}>
-            Constraints
-            {ruleCount !== null && <Badge variant={ruleCount ? "outline" : "secondary"}>{ruleCount}</Badge>}
-          </PanelTab>
-        )}
-      </div>
-      {activePanel === "rules" ? (
-        <ConstraintReportPanel termId={filters.termId === ACTIVE_TERMS ? "" : filters.termId} onJump={jumpTo} onCount={setRuleCount} />
-      ) : activePanel === "conflicts" ? (
+    <div ref={panelRef} className="space-y-2">
+      <ChecksHeading total={issueTotal} conflicts={overlapCount} onHide={toggleHidden} />
+      <PanelSection id="conflicts" title="Conflicts" count={overlapCount} tone={overlapCount ? "destructive" : "secondary"} open={isOpen("conflicts", overlapCount)} onToggle={() => togglePanel("conflicts", isOpen("conflicts", overlapCount))}>
         <ConflictsPanel conflicts={scopedConflicts.filter(isOverlapConflict)} describe={describe} onJump={jumpTo} onFix={permissions.canEdit ? fixIssue : undefined} />
-      ) : activePanel === "warnings" ? (
+      </PanelSection>
+      <PanelSection id="todo" title="Unscheduled" count={unscheduledCount} open={isOpen("todo", unscheduledCount)} onToggle={() => togglePanel("todo", isOpen("todo", unscheduledCount))}>
+        {focusedSection ? (
+          <UnscheduledPanel
+            needs={needs}
+            editable={permissions.canEdit}
+            onAdd={(n) => openNeed(n)}
+            onAutoAssign={() => void autoAssignRemaining()}
+            label={(n) => {
+              const s = maps.subject.get(n.subjectId);
+              const preferred = rankFaculty(data.faculty.filter((f) => f.status === "ACTIVE" && !f.foreign), { dayOfWeek: "MONDAY", startMin: 8 * 60, endMin: 9 * 60 }, entries, maps.section.get(n.sectionId)?.level)[0];
+              return { title: `${s?.code ?? "?"}${n.component === "LABORATORY" ? " (Laboratory)" : ""}`, subtitle: s?.name ?? "", details: `${s?.lectureHours ?? 0} lecture hours · ${s?.labHours ?? 0} laboratory hours`, preferredFaculty: maps.faculty.get(preferred?.id ?? "")?.fullName };
+            }}
+          />
+        ) : (
+          <SectionNeedsSummary
+            needs={allNeeds}
+            sectionName={(id) => ({ short: maps.section.get(id)?.shortName ?? "Section", full: maps.section.get(id)?.name ?? "Section" })}
+            onPick={(id) => update({ sectionId: id })}
+          />
+        )}
+      </PanelSection>
+      <PanelSection id="warnings" title="Warnings" count={warningCount} tone={warningCount ? "outline" : "secondary"} open={isOpen("warnings", warningCount)} onToggle={() => togglePanel("warnings", isOpen("warnings", warningCount))}>
         <WarningsPanel
           warnings={scopedConflicts.filter((c) => !isOverlapConflict(c))}
           describe={describe}
@@ -845,24 +861,11 @@ export function SchedulerWorkspace({
           onFix={permissions.canEdit ? fixIssue : undefined}
           onFixAll={permissions.canEdit ? (kind) => setResolveRequest({ scope: "filter", kinds: [kind] }) : undefined}
         />
-      ) : focusedSection ? (
-        <UnscheduledPanel
-          needs={needs}
-          editable={permissions.canEdit}
-          onAdd={(n) => openNeed(n)}
-          onAutoAssign={() => void autoAssignRemaining()}
-          label={(n) => {
-            const s = maps.subject.get(n.subjectId);
-            const preferred = rankFaculty(data.faculty.filter((f) => f.status === "ACTIVE" && !f.foreign), { dayOfWeek: "MONDAY", startMin: 8 * 60, endMin: 9 * 60 }, entries, maps.section.get(n.sectionId)?.level)[0];
-            return { title: `${s?.code ?? "?"}${n.component === "LABORATORY" ? " (Laboratory)" : ""}`, subtitle: s?.name ?? "", details: `${s?.lectureHours ?? 0} lecture hours · ${s?.labHours ?? 0} laboratory hours`, preferredFaculty: maps.faculty.get(preferred?.id ?? "")?.fullName };
-          }}
-        />
-      ) : (
-        <SectionNeedsSummary
-          needs={allNeeds}
-          sectionName={(id) => ({ short: maps.section.get(id)?.shortName ?? "Section", full: maps.section.get(id)?.name ?? "Section" })}
-          onPick={(id) => update({ sectionId: id })}
-        />
+      </PanelSection>
+      {permissions.canEdit && (
+        <PanelSection id="rules" title="Constraints" count={ruleCount} tone={ruleCount ? "outline" : "secondary"} open={isOpen("rules", ruleCount)} onToggle={() => togglePanel("rules", isOpen("rules", ruleCount))}>
+          <ConstraintReportPanel termId={filters.termId === ACTIVE_TERMS ? "" : filters.termId} onJump={jumpTo} onCount={setRuleCount} />
+        </PanelSection>
       )}
     </div>
   );
@@ -896,15 +899,20 @@ export function SchedulerWorkspace({
       <div className="flex flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-hidden">
         {/* Header */}
         <ScheduleHeader
-          trail="Dashboard › Class Schedules ›"
+          trail={
+            <nav aria-label="Breadcrumb" className="flex items-center gap-1">
+              <Link href="/dashboard" onClick={(e) => { if ((dialog || pending > 0) && !confirm("Leave with unsaved changes?")) e.preventDefault(); }} className="hover:text-foreground">Dashboard</Link> ›
+              {focusedSection ? <button type="button" onClick={() => update({ sectionId: "" })} className="hover:text-foreground">Class Schedules</button> : <span>Class Schedules</span>} ›
+              {focusedSection && <><span className="font-medium text-foreground">{focusedSection.name}</span> ›</>}
+            </nav>
+          }
+          modes={modes}
           help="Drag classes to reschedule. Hard constraints block a save; soft ones ask before overriding."
-          leading={permissions.canEdit && (filters.sectionId && perspective === "section"
-            // Inside a section timetable, Back returns to the section cards first.
-            ? <Button variant="outline" onClick={() => update({ sectionId: "" })} className="print:hidden"><ArrowLeft className="size-4" /> Back</Button>
-            : <BackButton fallback="/dashboard" dirty={!!dialog || pending > 0} />)}
-        >
+          leading={<>
             {academicYearControl}
             <div className="min-w-40"><NativeSelect aria-label="Term" value={filters.termId} onChange={(e) => update({ termId: e.target.value || ACTIVE_TERMS })} options={options.terms} /></div>
+          </>}
+        >
             <Button
               variant="outline"
               className="lg:hidden"
@@ -992,7 +1000,7 @@ export function SchedulerWorkspace({
             )}
         </FilterCard>
 
-        <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
+        <div className={cn("grid gap-3 lg:min-h-0 lg:flex-1 lg:overflow-hidden", panelHidden ? "lg:grid-cols-[minmax(0,1fr)_48px]" : "lg:grid-cols-[minmax(0,1fr)_320px]")}>
           <section aria-label={view === "timetable" ? "Timetable" : "Class list"} className="flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto pr-1">
             {focusTitle && view === "timetable" && (
               <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -1039,7 +1047,6 @@ export function SchedulerWorkspace({
                 subjects={data.subjects}
                 data={data}
                 termOf={termOf}
-                showLevels={!permissions.queueOnly}
                 onPick={(id) => update({ sectionId: id })}
                 onResolve={permissions.canEdit ? (id) => setResolveRequest({ scope: "selected", sectionIds: [id] }) : undefined}
               />
@@ -1061,7 +1068,11 @@ export function SchedulerWorkspace({
           </section>
 
           <aside aria-label="Conflicts and unscheduled subjects" className="hidden min-h-0 overflow-y-auto lg:block">
-            <div className="pr-1">{sidePanel}</div>
+            {panelHidden ? (
+              <ChecksRail total={issueTotal} conflicts={overlapCount} onShow={toggleHidden} />
+            ) : (
+              <div className="pr-1">{sidePanel}</div>
+            )}
           </aside>
         </div>
       </div>
@@ -1121,7 +1132,9 @@ export function SchedulerWorkspace({
   );
 }
 
-/** Card grid shown when no single section/faculty/room is selected. */
+type PanelKey = "conflicts" | "todo" | "warnings" | "rules";
+
+/** Schedule sheets shown when no single section, faculty, or room is selected, one tab per program or level. */
 function SectionPicker({
   sections,
   entries,
@@ -1129,7 +1142,6 @@ function SectionPicker({
   subjects,
   data,
   termOf,
-  showLevels,
   onPick,
   onResolve,
 }: {
@@ -1139,14 +1151,10 @@ function SectionPicker({
   subjects: SchedulerData["subjects"];
   data: SchedulerData;
   termOf: (sectionId: string) => string;
-  showLevels: boolean;
   onPick: (id: string) => void;
   onResolve?: (id: string) => void;
 }) {
-  const { ref: rovingRef, onKeyDown: onRovingKeyDown, onFocus: onRovingFocus } = useRovingFocus({ orientation: "grid" });
-  const [levelTab, setLevelTab] = useState<string>("");
-  const [sheetId, setSheetId] = useState<string | null>(null);
-  const [programTab, setProgramTab] = useState<string>("");
+  const [tab, setTab] = useState<string>("");
   const lookups = useMemo(() => ({
     subjects: new Map(data.subjects.map((x) => [x.id, x])),
     faculty: new Map(data.faculty.map((x) => [x.id, x])),
@@ -1167,111 +1175,68 @@ function SectionPicker({
   });
   const YEARS = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH"];
   const yearRank = (x: SchedulerData["sections"][number]) => { const i = YEARS.findIndex((y) => (x.yearLevel ?? "").startsWith(y)); return i < 0 ? 9 : i; };
-  const programTabs = useMemo(() => {
-    const ids = [...new Set(sections.map((x) => x.programId).filter((x): x is string => !!x))];
-    return ids.map((id) => lookups.programs.get(id)).filter((x): x is NonNullable<typeof x> => !!x).sort((a, b) => a.code.localeCompare(b.code));
+  // A section belongs to its program's tab, or to its level's tab when it has no program.
+  const tabOf = (x: SchedulerData["sections"][number]) => x.programId ?? `level:${x.level}`;
+  const tabs = useMemo(() => {
+    const programs = [...new Set(sections.map((x) => x.programId).filter((x): x is string => !!x))]
+      .map((id) => lookups.programs.get(id)).filter((x): x is NonNullable<typeof x> => !!x)
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map((p) => ({ id: p.id, label: p.code, title: p.name }));
+    const levels = [...new Set(sections.filter((x) => !x.programId).map((x) => x.level))]
+      .map((level) => ({ id: `level:${level}`, label: levelLabel(level), title: levelLabel(level) }));
+    return [...programs, ...levels];
   }, [sections, lookups]);
-  const stack = programTab ? sections.filter((x) => x.programId === programTab).sort((a, b) => yearRank(a) - yearRank(b) || a.shortName.localeCompare(b.shortName, undefined, { numeric: true })) : [];
-  const sheetSection = sheetId ? sections.find((x) => x.id === sheetId) : undefined;
-  const stats = useMemo(() => {
-    const map = new Map<string, { classes: number; conflicts: number }>();
-    for (const e of entries) {
-      const s = map.get(e.sectionId) ?? { classes: 0, conflicts: 0 };
-      s.classes++;
-      if (conflictIndex.get(e.id)?.severity === "conflict") s.conflicts++;
-      map.set(e.sectionId, s);
-    }
+  const active = tabs.some((t) => t.id === tab) ? tab : (tabs[0]?.id ?? "");
+  const stack = sections.filter((x) => tabOf(x) === active).sort((a, b) => yearRank(a) - yearRank(b) || a.shortName.localeCompare(b.shortName, undefined, { numeric: true }));
+  const conflicts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of entries) if (conflictIndex.get(e.id)?.severity === "conflict") map.set(e.sectionId, (map.get(e.sectionId) ?? 0) + 1);
     return map;
   }, [entries, conflictIndex]);
-  const shown = levelTab ? sections.filter((s) => s.level === levelTab) : sections;
-  // Same function as the Unscheduled panel, so the card and the panel can never disagree.
-  const progress = (section: SchedulerData["sections"][number]) => {
-    const remaining = sectionNeeds(section, subjects, entries, termOf(section.id)).length;
-    return { total: section.curriculum.length, remaining };
-  };
 
   if (sections.length === 0) {
     return <EmptyState icon={FunnelSimple} title="No sections match these filters" description="Try a different level, grade, or program." />;
   }
   return (
-    <div className="space-y-2">
-      {showLevels && <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Academic level quick filters">
-        {[["", `All (${sections.length})`], ["COLLEGE", "College"], ["SENIOR_HIGH", "Senior High School"], ["JUNIOR_HIGH", "Junior High School"], ["ELEMENTARY", "Elementary"]].map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={levelTab === value} onClick={() => setLevelTab(value)} className={cn("rounded-full border px-3 py-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring", levelTab === value ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted")}>{label}</button>)}
-      </div>}
-      {programTabs.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Schedule sheets by program">
-          <span className="mr-1 text-xs font-medium text-muted-foreground">Schedule sheets:</span>
-          {[{ id: "", code: "Section cards" }, ...programTabs].map((pr) => (
-            <button key={pr.id} type="button" role="tab" aria-selected={programTab === pr.id} onClick={() => setProgramTab(pr.id)} className={cn("rounded-full border px-3 py-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring", programTab === pr.id ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted")}>{pr.code}</button>
-          ))}
-        </div>
-      )}
-      {programTab ? (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
-            <p className="text-sm text-muted-foreground">{stack.length} class schedule sheet{stack.length === 1 ? "" : "s"}, scroll to see each section.</p>
-            <Button size="sm" variant="outline" onClick={() => printSheets(stack.map(sourceOf), "Schedule of classes")}>Print or save as PDF</Button>
-          </div>
-          <div className="max-h-[75vh] space-y-6 overflow-y-auto rounded-xl bg-muted/40 p-3">
-            {stack.map((x) => <SectionSheet key={x.id} source={sourceOf(x)} />)}
-          </div>
-        </div>
-      ) : <>
-      <p className="text-sm text-muted-foreground">Choose a section to open its schedule sheet (arrow keys + Enter work too).</p>
-      <div ref={rovingRef} onKeyDown={onRovingKeyDown} onFocus={onRovingFocus} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {shown.map((s) => {
-          const st = stats.get(s.id) ?? { classes: 0, conflicts: 0 };
-          const { total, remaining } = progress(s);
-          const scheduled = total - remaining;
-          const resolvable = !!onResolve && s.editable && (remaining > 0 || st.conflicts > 0);
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-1.5 print:hidden" role="tablist" aria-label="Schedule sheets">
+        <span className="mr-1 text-xs font-medium text-muted-foreground">Schedule sheets:</span>
+        {tabs.map((t) => (
+          <button key={t.id} type="button" role="tab" title={t.title} aria-selected={active === t.id} onClick={() => setTab(t.id)} className={cn("rounded-full border px-3 py-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring", active === t.id ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted")}>
+            {t.label}
+          </button>
+        ))}
+        <Button size="sm" variant="outline" className="ml-auto" onClick={() => printSheets(stack.map(sourceOf), "Schedule of classes")}>Print or save as PDF</Button>
+      </div>
+      <div className="space-y-6 rounded-xl bg-muted/40 p-3">
+        {stack.map((s) => {
+          const total = s.curriculum.length;
+          // Same function as the Unscheduled panel, so the sheet and the panel can never disagree.
+          const remaining = sectionNeeds(s, subjects, entries, termOf(s.id)).length;
+          const clash = conflicts.get(s.id) ?? 0;
           return (
-            <div key={s.id} className="relative">
-            <SelectCard
-              className={cn(resolvable && "pb-14")}
-              title={s.name}
-              subtitle={`${stageLabel(s)} · ${s.studentCount} learners`}
-              icon={UsersThree}
-              onSelect={() => setSheetId(s.id)}
-              accent={st.conflicts ? "bg-red-500/15 text-red-600" : undefined}
-              meta={
-                <>
-                  <Badge variant="secondary">{scheduled} / {total} scheduled</Badge>
-                  {remaining > 0 && <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-300">{remaining} unscheduled</Badge>}
-                  {st.conflicts > 0 ? (
-                    <Badge variant="destructive">
-                      <WarningOctagon weight="fill" /> {st.conflicts} in conflict
-                    </Badge>
-                  ) : st.classes > 0 && remaining === 0 ? (
-                    <Badge variant="outline" className="text-emerald-700 dark:text-emerald-400">
-                      <CheckCircle weight="fill" /> Complete · No conflicts
-                    </Badge>
-                  ) : null}
-                </>
-              }
-            />
-            {resolvable && (
-              <Button size="sm" variant="outline" className="absolute right-3 bottom-3 h-8" onClick={() => onResolve!(s.id)} aria-label={`Resolve issues in ${s.name}`}>
-                <MagicWand className="size-3.5" /> Resolve
-              </Button>
-            )}
+            <div key={s.id} className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2 print:hidden">
+                <span className="font-semibold">{s.name}</span>
+                <Badge variant="secondary">{total - remaining} / {total} scheduled</Badge>
+                {remaining > 0 && <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-300">{remaining} unscheduled</Badge>}
+                {clash > 0 ? (
+                  <Badge variant="destructive"><WarningOctagon weight="fill" /> {clash} in conflict</Badge>
+                ) : total > 0 && remaining === 0 ? (
+                  <Badge variant="outline" className="text-emerald-700 dark:text-emerald-400"><CheckCircle weight="fill" /> Complete · No conflicts</Badge>
+                ) : null}
+                <span className="ml-auto flex gap-2">
+                  {onResolve && s.editable && (remaining > 0 || clash > 0) && (
+                    <Button size="sm" variant="outline" onClick={() => onResolve(s.id)} aria-label={`Resolve issues in ${s.name}`}><MagicWand className="size-3.5" /> Resolve</Button>
+                  )}
+                  <Button size="sm" onClick={() => onPick(s.id)}>Open timetable editor</Button>
+                </span>
+              </div>
+              <SectionSheet source={sourceOf(s)} />
             </div>
           );
         })}
       </div>
-      </>}
-
-      <Dialog open={!!sheetSection} onOpenChange={(o) => !o && setSheetId(null)}>
-        <DialogContent className="max-h-[92vh] gap-3 overflow-y-auto sm:max-w-5xl">
-          <DialogTitle>{sheetSection?.name}</DialogTitle>
-          <DialogDescription className="sr-only">Schedule of classes for this section.</DialogDescription>
-          <div className="flex flex-wrap gap-2 print:hidden">
-            <Button size="sm" onClick={() => { const id = sheetId!; setSheetId(null); onPick(id); }}>Open timetable editor</Button>
-            <Button size="sm" variant="outline" onClick={() => sheetSection && printSheets([sourceOf(sheetSection)], sheetSection.name)}>Print or save as PDF</Button>
-          </div>
-          <div>{sheetSection && <SectionSheet source={sourceOf(sheetSection)} />}</div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
-

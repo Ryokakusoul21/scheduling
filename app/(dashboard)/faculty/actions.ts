@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db/prisma";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { ACADEMIC_LEVELS } from "@/lib/academics/levels";
 
-const STAFF = ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT"] as const;
+const STAFF = ["SUPER_ADMINISTRATOR", "REGISTRAR", "HEAD_OF_DEPARTMENT"] as const;
 
 /** FormData -> object, keeping repeated keys (checkbox groups) as arrays. */
 function formObject(formData: FormData) {

@@ -24,7 +24,7 @@ describe("requestFormSchema", () => {
 
 describe("canReviewRequest", () => {
   const head = { role: "HEAD_OF_DEPARTMENT", userId: "h", departmentIds: ["cs"] };
-  const admin = { role: "ADMINISTRATOR", userId: "a", departmentIds: [] };
+  const admin = { role: "REGISTRAR", userId: "a", departmentIds: [] };
   const req = (over: Record<string, unknown> = {}) => ({ status: "PENDING", type: "CHANGE_ROOM", requestedById: "f", requesterRole: "FACULTY", departmentId: "cs", targetDepartmentId: null, ...over });
 
   it("lets the owning Head of Department decide own-department class requests and requests aimed at them", () => {
@@ -37,11 +37,11 @@ describe("canReviewRequest", () => {
     expect(canReviewRequest(head, req({ status: "APPROVED" }))).toBe(false);
     expect(canReviewRequest({ role: "FACULTY", userId: "f2", departmentIds: ["cs"] }, req())).toBe(false);
   });
-  it("does not let the Administrator decide what a Head of Department owns", () => {
+  it("does not let the Registrar decide what a Head of Department owns", () => {
     expect(canReviewRequest(admin, req())).toBe(false);
     expect(canReviewRequest(admin, req({ type: "CROSS_DEPARTMENT", targetDepartmentId: "cs" }))).toBe(false);
   });
-  it("leaves the Administrator only the requests no Head of Department can decide", () => {
+  it("leaves the Registrar only the requests no Head of Department can decide", () => {
     expect(canReviewRequest(head, req({ type: "FACULTY_CHANGE", requesterRole: "HEAD_OF_DEPARTMENT" }))).toBe(false);
     expect(canReviewRequest(admin, req({ type: "FACULTY_CHANGE", requesterRole: "HEAD_OF_DEPARTMENT" }))).toBe(true);
     expect(canReviewRequest(admin, req({ requesterRole: "HEAD_OF_DEPARTMENT", requestedById: "h2" }))).toBe(true);
@@ -60,10 +60,10 @@ describe("edit, cancel and status grouping", () => {
     expect(canCancelRequest(head, req({ departmentId: "biz" }))).toBe(false);
     expect(canCancelRequest(head, req({ status: "APPROVED" }))).toBe(false);
   });
-  it("gives the faculty member who filed a request and the Administrator neither action", () => {
+  it("gives the faculty member who filed a request and the Registrar neither action", () => {
     expect(canCancelRequest({ role: "FACULTY", userId: "f", departmentIds: ["cs"] }, req())).toBe(false);
     expect(canEditRequest({ role: "FACULTY", userId: "f", departmentIds: ["cs"] }, req())).toBe(false);
-    expect(canCancelRequest({ role: "ADMINISTRATOR", userId: "a", departmentIds: [] }, req())).toBe(false);
+    expect(canCancelRequest({ role: "REGISTRAR", userId: "a", departmentIds: [] }, req())).toBe(false);
   });
   it("lets a head change or withdraw their own request, but only edit the plain class types", () => {
     expect(canCancelRequest(head, req({ requestedById: "h", requesterRole: "HEAD_OF_DEPARTMENT", type: "SUBJECT_CHANGE" }))).toBe(true);

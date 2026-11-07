@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
+import { flushSync } from "react-dom";
 import { useTheme } from "@/lib/theme/theme-provider";
-import { List as Menu, Moon, Sun, Laptop, SignOut as LogOut, User as UserIcon, Bell, Keyboard } from "@phosphor-icons/react/ssr";
+import { Moon, Sun, SignOut as LogOut, User as UserIcon, Bell, Keyboard } from "@phosphor-icons/react/ssr";
 import { useShortcuts } from "@/components/ux/shortcuts";
 import { GlobalSearch } from "./global-search";
 
@@ -18,9 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { NavGroups } from "./sidebar";
 import type { AppRole } from "@/lib/permissions/roles";
 import Link from "next/link";
 import { roleLabel } from "@/lib/permissions/roles";
@@ -31,38 +29,48 @@ export function Topbar({
   image,
   role,
   unreadNotifications = 0,
+  subtitle,
 }: {
   name: string;
   email: string;
   image?: string | null;
   role: AppRole;
   unreadNotifications?: number;
+  /** Secondary line under the name in the account menu, for example the student number. */
+  subtitle?: string;
 }) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
-  const [open, setOpen] = useState(false);
-  const themeLabel = `Theme: ${theme === "dark" ? "Dark" : theme === "light" ? "Light" : "System"}`;
+  const dark = theme === "dark";
+  const themeLabel = `Switch to ${dark ? "light" : "dark"} mode`;
+
+  // The new theme spreads out in a slow circle from the button that was pressed.
+  function toggleTheme(e: React.MouseEvent<HTMLButtonElement>) {
+    const next = document.documentElement.classList.contains("dark") ? "light" : "dark";
+    const start = (document as Document & { startViewTransition?: (cb: () => void) => { ready: Promise<void> } }).startViewTransition;
+    if (!start || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return setTheme(next);
+    const { clientX: x, clientY: y } = e;
+    const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    start.call(document, () => flushSync(() => setTheme(next))).ready.then(() =>
+      document.documentElement.animate({ clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] }, { duration: 900, easing: "ease-in-out", pseudoElement: "::view-transition-new(root)" }),
+    );
+  }
   const { openHelp } = useShortcuts();
+  // Students stay inside the portal: no staff search, and their own notification, profile, and login pages.
+  const student = role === "STUDENT";
+  const home = student ? "/student" : "";
 
   return (
     <TooltipProvider>
     <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-black/10 bg-card px-4 py-2 md:flex-nowrap md:px-6">
-      <div className="flex min-w-0 items-center gap-3 md:hidden">
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetTrigger render={<Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation" />}>
-            <Menu className="size-5" />
-          </SheetTrigger>
-          <SheetContent side="left" className="w-72 bg-sidebar p-0 text-sidebar-foreground">
-            <div className="sidebar-scroll h-full overflow-y-auto p-4">
-              <NavGroups role={role} onNavigate={() => setOpen(false)} />
-            </div>
-          </SheetContent>
-        </Sheet>
-      </div>
 
-      <div className="order-3 w-full md:order-none md:max-w-md md:flex-1">
-        <GlobalSearch />
-      </div>
+      {student ? (
+        <p className="hidden truncate text-sm font-semibold md:block">GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY</p>
+      ) : (
+        <div className="order-3 w-full md:order-none md:max-w-md md:flex-1">
+          <GlobalSearch />
+        </div>
+      )}
 
       <div className="ml-auto flex items-center gap-1.5">
         <Tooltip>
@@ -82,7 +90,7 @@ export function Topbar({
                 className="relative size-9"
                 nativeButton={false}
                 aria-label={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : "Notifications"}
-                render={<Link href="/notifications" />}
+                render={<Link href={`${home}/notifications`} />}
               />
             }
           >
@@ -96,25 +104,12 @@ export function Topbar({
           <TooltipContent>Notifications</TooltipContent>
         </Tooltip>
 
-        <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-9" aria-label={themeLabel} />} />}>
-              {theme === "dark" ? <Moon className="size-5" /> : theme === "light" ? <Sun className="size-5" /> : <Laptop className="size-5" />}
-            </TooltipTrigger>
-            <TooltipContent>{themeLabel}</TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setTheme("light")}>
-              <Sun className="size-4" /> Light
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTheme("dark")}>
-              <Moon className="size-4" /> Dark
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTheme("system")}>
-              <Laptop className="size-4" /> System
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger render={<Button variant="ghost" size="icon" className="size-9" aria-label={themeLabel} onClick={toggleTheme} />}>
+            {dark ? <Moon className="size-5" /> : <Sun className="size-5" />}
+          </TooltipTrigger>
+          <TooltipContent>{themeLabel}</TooltipContent>
+        </Tooltip>
 
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -130,17 +125,18 @@ export function Topbar({
             <DropdownMenuLabel>
               <p className="truncate text-sm font-medium">{name}</p>
               <p className="truncate text-xs font-normal text-muted-foreground">{email}</p>
+              {subtitle && <p className="truncate text-xs font-normal text-muted-foreground">{subtitle}</p>}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem render={<Link href="/profile" />}>
+            <DropdownMenuItem render={<Link href={`${home}/profile`} />}>
               <UserIcon className="size-4" /> Profile
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
-              onClick={() => signOut({ callbackUrl: "/login" }).then(() => router.refresh())}
+              onClick={() => signOut({ callbackUrl: student ? "/student/login" : "/login" }).then(() => router.refresh())}
             >
-              <LogOut className="size-4" /> Log out
+              <LogOut className="size-4" /> {student ? "Sign out" : "Log out"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

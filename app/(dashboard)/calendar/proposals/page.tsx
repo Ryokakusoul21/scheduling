@@ -1,16 +1,16 @@
 import { prisma } from "@/lib/db/prisma";
-import Link from "next/link";
 import { requireScope } from "@/lib/permissions/scope";
 import { isoDate } from "@/lib/occupancy/engine";
 import { formatRange } from "@/lib/scheduler/timetable";
 import { PageHeader } from "@/components/ux/states";
 import { ProposalWorkspace } from "./proposal-workspace";
+import { CalendarTabs } from "../calendar-tabs";
 import type { ProposalListItem } from "@/lib/activities/proposals";
 
-export const metadata = { title: "School Activity Proposals · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "School Activity Proposals · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function ActivityProposalsPage({ searchParams }: { searchParams: Promise<{ proposal?: string }> }) {
-  const scope = await requireScope("HEAD_OF_DEPARTMENT", "ADMINISTRATOR");
+  const scope = await requireScope("HEAD_OF_DEPARTMENT", "SUPER_ADMINISTRATOR", "REGISTRAR");
   const params = await searchParams;
   const [terms, proposals, departments] = await Promise.all([
     prisma.semester.findMany({ include: { academicYear: true }, orderBy: [{ academicYear: { startDate: "desc" } }, { startDate: "asc" }] }),
@@ -31,12 +31,7 @@ export default async function ActivityProposalsPage({ searchParams }: { searchPa
       level: r.level ?? "", category: r.category ?? "", status: r.status, reviewNote: r.reviewNote ?? "", activityId: r.activityId })),
   }));
   return <div className="space-y-4"><PageHeader title="School Activity Proposals" description="Prepare, validate, submit, review, and publish a whole semester's activity table." />
-    <nav aria-label="Calendar of Activities sections" className="flex gap-1 overflow-x-auto border-b">
-      <Link href="/calendar?tab=calendar" className="-mb-px border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">Calendar</Link>
-      <Link href="/calendar?tab=table" className="-mb-px border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">Table</Link>
-      {scope.isAdmin && <Link href="/calendar?tab=approvals" className="-mb-px border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">Activity Approvals</Link>}
-      <Link href="/calendar/proposals" aria-current="page" className="-mb-px border-b-2 border-primary px-3 py-2 text-sm font-medium text-foreground">Semester Proposals</Link>
-    </nav>
+    <CalendarTabs active="proposals" isAdmin={scope.isAdmin} showProposals />
     <ProposalWorkspace isAdmin={scope.isAdmin} ownDepartmentId={scope.departmentId} selectedId={params.proposal} proposals={items}
       terms={terms.map((t) => ({ id: t.id, label: `${t.academicYear.name} · ${t.name}`, level: t.level }))}
       departments={departments.map((d) => ({ id: d.id, name: d.name }))} />

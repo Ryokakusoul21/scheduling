@@ -23,10 +23,10 @@ const schema = z
   .refine((d) => d.end >= d.start, { message: "The end date cannot be before the start date." })
   .refine((d) => (d.startMin === null) === (d.endMin === null) && (d.startMin === null || d.endMin! > d.startMin), { message: "Give both times, or neither for whole days." });
 
-/** A faculty member reports being unavailable; their Head of Department and the Administrator review it in Schedule Adjustments. */
+/** A faculty member reports being unavailable; their Head of Department and the Registrar review it in Schedule Adjustments. */
 export async function reportUnavailabilityAction(input: z.infer<typeof schema>): Promise<Result> {
   const scope = await requireScope(...TEACHING_ROLES);
-  if (!scope.facultyId) return { ok: false, error: "Your account is not linked to a faculty record. Ask the Administrator to link it." };
+  if (!scope.facultyId) return { ok: false, error: "Your account is not linked to a faculty record. Ask the Registrar to link it." };
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the details." };
   const d = parsed.data;

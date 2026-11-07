@@ -101,14 +101,14 @@ function headCanDecide(r: Reviewable, departmentIds: readonly string[]) {
 }
 
 /**
- * Who may approve or reject: the Head of Department who owns the request, and nobody else. The Administrator watches
+ * Who may approve or reject: the Head of Department who owns the request, and nobody else. The Registrar watches
  * everything but decides only what no Head of Department can: faculty-record changes, requests with no owning
  * department, and requests filed by a Head of Department (who cannot approve their own).
  */
 export function canReviewRequest(who: Reviewer, r: Reviewable) {
   if (r.status !== "PENDING" || r.requestedById === who.userId) return false;
   if (who.role === "HEAD_OF_DEPARTMENT") return headCanDecide(r, who.departmentIds);
-  if (who.role !== "ADMINISTRATOR") return false;
+  if (who.role !== "SUPER_ADMINISTRATOR" && who.role !== "REGISTRAR") return false;
   const owned = r.type !== "FACULTY_CHANGE" && r.requesterRole !== "HEAD_OF_DEPARTMENT" && (!!r.targetDepartmentId || (ORDINARY.has(r.type) && !!r.departmentId));
   return !owned;
 }

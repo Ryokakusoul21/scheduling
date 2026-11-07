@@ -60,7 +60,7 @@ export async function addScopeAndExamSamples(db: PrismaClient) {
     ],
   });
 
-  // Seeded examinations count as approved; one stays submitted so the Administrator Review Center has an examination to review.
+  // Seeded examinations count as approved; one stays submitted so the Registrar Review Center has an examination to review.
   await db.examination.updateMany({ data: { status: "PUBLISHED" } });
   const review = await db.examination.findFirst({ where: { section: { name: "Information Technology 2-B" } }, select: { id: true } });
   if (review) await db.examination.update({ where: { id: review.id }, data: { status: "REVIEW", submittedAt: new Date() } });

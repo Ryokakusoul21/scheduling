@@ -12,7 +12,7 @@ export interface AssignmentRow { id: string; programId: string; label: string; i
 
 const inputClass = "h-9 rounded-md border border-input bg-background px-2 text-sm";
 
-/** Administrator dialog: limits a Head of Department to specific programs or strands. No active row means the whole department. */
+/** Registrar dialog: limits a Head of Department to specific programs or strands. No active row means the whole department. */
 export function ProgramAssignments({ userId, name, options, rows, onClose }: { userId: string; name: string; options: ProgramOption[]; rows: AssignmentRow[]; onClose: () => void }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);

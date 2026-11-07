@@ -1,14 +1,19 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { Geist_Mono, Poppins } from "next/font/google";
+import { Geist_Mono, Inter, Plus_Jakarta_Sans } from "next/font/google";
 import { Providers } from "./providers";
 import { parseTheme, RESOLVED_THEME_COOKIE, THEME_COOKIE } from "@/lib/theme/theme-cookies";
 import "./globals.css";
 
-const poppins = Poppins({
-  variable: "--font-poppins",
+// Inter for body text and tables; Plus Jakarta Sans for headings.
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+});
+
+const jakarta = Plus_Jakarta_Sans({
+  variable: "--font-jakarta",
+  subsets: ["latin"],
 });
 
 const geistMono = Geist_Mono({
@@ -17,8 +22,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GRANBY COLLEGES OF SCIENCE & TECHNOLOGY Scheduling System",
-  description: "Class Scheduling and Room Booking System of GRANBY COLLEGES OF SCIENCE & TECHNOLOGY",
+  title: "AI-Driven Faculty and Room Scheduling System for GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY",
+  description: "AI-Driven Faculty and Room Scheduling System of GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
@@ -34,7 +39,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${poppins.variable} ${geistMono.variable} h-full antialiased${isDark ? " dark" : ""}`}
+      className={`${inter.variable} ${jakarta.variable} ${geistMono.variable} h-full antialiased${isDark ? " dark" : ""}`}
     >
       <body className="min-h-full flex flex-col">
         <Providers initialTheme={theme}>{children}</Providers>

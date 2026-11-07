@@ -3,10 +3,10 @@ import { listArchived } from "@/lib/archive/list";
 import { UserTabs } from "../user-tabs";
 import { ArchivedList } from "./archived-list";
 
-export const metadata = { title: "Archived Records · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Archived Records · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function ArchivedPage() {
-  await requireRole("ADMINISTRATOR");
+  await requireRole("SUPER_ADMINISTRATOR");
   const rows = await listArchived();
   return (
     <div className="space-y-4">

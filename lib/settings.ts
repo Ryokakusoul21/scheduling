@@ -5,7 +5,7 @@ import { DEFAULT_BOOKING_SETTINGS, type BookingSettings } from "@/lib/bookings/p
 export const SETTING_WORKLOAD = "workload";
 
 /**
- * Teaching load rules set by the Administrator. Loads are weekly contact hours or subject units; part-time
+ * Teaching load rules set by the Registrar. Loads are weekly contact hours or subject units; part-time
  * faculty have their own range, units are capped separately, and the tolerance is how far a load may sit
  * from its department's average before the check evens it out. Every fix needs Head of Department approval.
  */
@@ -35,7 +35,7 @@ export async function getWorkloadSettings(): Promise<WorkloadSettings> {
 
 export const SETTING_BOOKING = "booking";
 
-/** Room booking rules set by the Administrator: buffer between bookings, operating hours, and monthly override caps. */
+/** Room booking rules set by the Registrar: buffer between bookings, operating hours, and monthly override caps. */
 export async function getBookingSettings(): Promise<BookingSettings> {
   const row = await prisma.systemSetting.findUnique({ where: { key: SETTING_BOOKING } });
   return { ...DEFAULT_BOOKING_SETTINGS, ...((row?.value as Partial<BookingSettings> | undefined) ?? {}) };

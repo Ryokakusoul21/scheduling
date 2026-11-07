@@ -1,5 +1,5 @@
 /**
- * Sample data for GRANBY COLLEGES OF SCIENCE & TECHNOLOGY so every feature can be demonstrated immediately.
+ * Sample data for GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY so every feature can be demonstrated immediately.
  * Dates are computed from the day the seed runs, so the current term, calendar, and examinations are always "now".
  * Run on an empty database: `npx prisma migrate reset`, then `npx prisma db seed`.
  */
@@ -50,23 +50,12 @@ function nextWeekday(weekday: number, fromDays: number) {
   return ymd(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 
-/** Small deterministic random generator so enrollment history is identical on every seed. */
-function mulberry32(seed: number) {
-  return () => {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 async function main() {
   if ((await prisma.user.count()) > 0) {
     console.log("Database already has data. Run `npx prisma migrate reset` to start over with fresh sample data.");
     return;
   }
-  console.log("Seeding GRANBY COLLEGES OF SCIENCE & TECHNOLOGY scheduling database...");
+  console.log("Seeding GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY scheduling database...");
 
   // -------------------------------------------------------------------
   // Academic calendar relative to today (academic year starts in August)
@@ -463,7 +452,8 @@ async function main() {
   // -------------------------------------------------------------------
   const passwordHash = await bcrypt.hash(DEV_PASSWORD, 12);
   const userDefs = [
-    { email: "administrator@granby.edu.ph", name: "Cecilia Robles", role: "ADMINISTRATOR" as const },
+    { email: "superadministrator@granby.edu.ph", name: "Ramon Villanueva", role: "SUPER_ADMINISTRATOR" as const },
+    { email: "registrar@granby.edu.ph", name: "Cecilia Robles", role: "REGISTRAR" as const },
     { email: "head.computing@granby.edu.ph", name: "Liza Cruz", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["F-003"].id },
     { email: "head.basiceducation@granby.edu.ph", name: "Rhea Manalo", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["T-003"].id },
     { email: "head.generaleducation@granby.edu.ph", name: "Daniel Ramos", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["F-008"].id },
@@ -504,17 +494,17 @@ async function main() {
     },
   });
 
-  // One automatic class-schedule proposal and one ordinary request keep the Administrator Review Center populated.
+  // One automatic class-schedule proposal and one ordinary request keep the Registrar Review Center populated.
   const automaticReview = await prisma.schedule.findFirst({ where: { semesterId: collegeTerm.id, section: { departmentId: dept.CCS } }, orderBy: { createdAt: "asc" } });
   if (automaticReview) {
-    await prisma.schedule.update({ where: { id: automaticReview.id }, data: { status: "REVIEW", generatedBy: "AI", notes: "Automatically generated conflict-free placement submitted by the Head of Department for Administrator review." } });
+    await prisma.schedule.update({ where: { id: automaticReview.id }, data: { status: "REVIEW", generatedBy: "AI", notes: "Automatically generated conflict-free placement submitted by the Head of Department for Registrar review." } });
     await prisma.scheduleRequest.create({
       data: {
         type: "CHANGE_ROOM", status: "PENDING", scheduleId: automaticReview.id, requestedById: user["faculty@granby.edu.ph"],
         reason: "Request a room nearer the computer laboratory for the next class transition.", details: { reason: "Reduce travel time between consecutive classes." },
       },
     });
-    await prisma.notification.create({ data: { userId: user["administrator@granby.edu.ph"], type: "INFO", title: "Automatic class schedule awaiting review", message: "The College of Computer Studies submitted an automatically generated class schedule proposal.", link: "/admin/review-center?queue=class-schedules" } });
+    await prisma.notification.create({ data: { userId: user["registrar@granby.edu.ph"], type: "INFO", title: "Automatic class schedule awaiting review", message: "The College of Computer Studies submitted an automatically generated class schedule proposal.", link: "/admin/review-center?queue=class-schedules" } });
   }
   // Demo students (view-only portal at /student); fictional names and numbers.
   const studentDefs = [
@@ -591,46 +581,11 @@ async function main() {
   });
 
   // -------------------------------------------------------------------
-  // Enrollment history (seven academic years) for forecasting
-  // -------------------------------------------------------------------
-  const random = mulberry32(2026);
-  const trends: { level: AcademicLevel; program?: string; base: number; growth: number }[] = [
-    { level: "COLLEGE", program: "BSIT", base: 160, growth: 0.09 },
-    { level: "COLLEGE", program: "BSCS", base: 55, growth: 0.07 },
-    { level: "COLLEGE", program: "BSCrim", base: 120, growth: 0.03 },
-    { level: "COLLEGE", program: "BSISM", base: 40, growth: -0.02 },
-    { level: "COLLEGE", program: "BSA", base: 70, growth: 0.04 },
-    { level: "COLLEGE", program: "BSBA", base: 110, growth: 0.02 },
-    { level: "COLLEGE", program: "BSTM", base: 90, growth: -0.04 },
-    { level: "COLLEGE", program: "BEED", base: 45, growth: 0.01 },
-    { level: "COLLEGE", program: "BSED", base: 50, growth: 0.0 },
-    ...DEFAULT_SHS_STRANDS.map((s, i) => ({ level: "SENIOR_HIGH" as const, program: s.code, base: 45 + i * 8, growth: 0.03 })),
-    { level: "JUNIOR_HIGH", base: 210, growth: 0.02 },
-    { level: "ELEMENTARY", base: 230, growth: 0.015 },
-  ];
-  const records = [];
-  for (let y = ayYear - 6; y <= ayYear; y++) {
-    const yearIndex = y - (ayYear - 6);
-    for (const t of trends) {
-      const base = t.base * Math.pow(1 + t.growth, yearIndex) * (y === ayYear - 5 ? 0.88 : 1); // a pandemic-era dip
-      const first = Math.round(base * (0.95 + random() * 0.1));
-      const academicYear = `${y}-${y + 1}`;
-      records.push({ level: t.level, programId: t.program ? program[t.program] : null, academicYear, termType: "FIRST" as const, enrolled: first });
-      // College runs two semesters; the second has some attrition. The current second semester has not happened yet.
-      if (t.level === "COLLEGE" && !(y === ayYear && inFirstSemester)) {
-        records.push({ level: t.level, programId: program[t.program!], academicYear, termType: "SECOND" as const, enrolled: Math.round(first * (0.9 + random() * 0.05)) });
-      }
-    }
-  }
-  await prisma.enrollmentRecord.createMany({ data: records });
-  await prisma.enrollmentRecord.create({ data: { level: "COLLEGE", programId: program.BSIT, yearLevel: "FIRST", academicYear: `${ayYear}-${ayYear + 1}`, termType: collegeTerm.type, enrolled: 106 } });
-
-  // -------------------------------------------------------------------
   // System settings
   // -------------------------------------------------------------------
   await prisma.systemSetting.createMany({
     data: [
-      { key: "institution", value: { name: "GRANBY COLLEGES OF SCIENCE & TECHNOLOGY", location: "Naic, Cavite, Philippines" } },
+      { key: "institution", value: { name: "GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY", location: "Naic, Cavite, Philippines" } },
       { key: "workload", value: { measure: "HOURS", minimum: 12, maximum: 24, partTimeMinimum: 12, partTimeMaximum: 24, maxUnits: 30, tolerance: 6, crossDepartment: "BOTH_HEADS" } },
       { key: "booking", value: { bufferMinutes: 10, openMin: 420, closeMin: 1260, urgentCapPerUser: 4, urgentCapPerDepartment: 12 } },
     ],

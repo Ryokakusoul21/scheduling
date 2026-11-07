@@ -56,7 +56,7 @@ async function LevelCards() {
 }
 
 /**
- * School-wide Administrator analytics shown on the Analytics page. Filters live in the address
+ * School-wide Registrar analytics shown on the Analytics page. Filters live in the address
  * (semester, department, building); LiveRefresh re-renders everything when schedules change.
  */
 export async function AdminPanels({ params }: { params: { term?: string; department?: string; building?: string } }) {

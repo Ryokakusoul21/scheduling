@@ -1,6 +1,6 @@
 "use client";
 
-import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TOOLTIP_STYLE, CHART_SIZE } from "@/components/charts/utilization";
@@ -30,45 +30,6 @@ export function LoadDistributionChart({ data }: { data: { status: LoadStatus; co
             </Bar>
           </BarChart>
         </ResponsiveContainer>
-      </CardContent>
-    </Card>
-  );
-}
-
-export interface EnrollmentData {
-  points: { label: string; enrolled: number }[];
-  forecast: { label: string; value: number; low: number; high: number } | null;
-}
-
-export function EnrollmentChart({ data, title = "Enrollment trend and forecast", children }: { data: EnrollmentData; title?: string; children?: React.ReactNode }) {
-  const rows = [
-    ...data.points.map((p) => ({ label: p.label, actual: p.enrolled })),
-    ...(data.forecast ? [{ label: data.forecast.label, forecast: data.forecast.value, range: [data.forecast.low, data.forecast.high] }] : []),
-  ] as { label: string; actual?: number; forecast?: number; range?: number[] }[];
-  // Connect the forecast line to the last actual point.
-  const last = rows.filter((p) => p.actual !== undefined).at(-1);
-  if (last && data.forecast) Object.assign(last, { forecast: last.actual, range: [last.actual, last.actual] });
-  return (
-    <Card>
-      <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
-      <CardContent className="space-y-3">
-        <div className="h-60">
-          {rows.length === 0 ? <p className="text-sm text-muted-foreground">No enrollment history.</p> : (
-            <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_SIZE}>
-              <ComposedChart data={rows} margin={{ left: 0, right: 16, top: 8 }}>
-                <CartesianGrid vertical={false} stroke="currentColor" opacity={0.08} />
-                <XAxis dataKey="label" fontSize={10} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                <YAxis fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v, n) => [Array.isArray(v) ? `${v[0]} to ${v[1]}` : v, n]} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Area dataKey="range" name="Forecast range (80 percent)" stroke="none" fill="var(--chart-1)" fillOpacity={0.15} isAnimationActive={false} />
-                <Line dataKey="actual" name="Students enrolled" stroke="var(--chart-1)" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
-                <Line dataKey="forecast" name="Forecast" stroke="var(--chart-1)" strokeWidth={2} strokeDasharray="5 4" dot={{ r: 4 }} isAnimationActive={false} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-        {children}
       </CardContent>
     </Card>
   );

@@ -6,7 +6,7 @@ import type { PlanItem } from "@/lib/occupancy/adjust";
 import { PageHeader } from "@/components/ux/states";
 import { AdjustmentWorkspace, type BatchView, type ReportView } from "./adjustment-workspace";
 
-export const metadata = { title: "Schedule Adjustments · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Schedule Adjustments · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 const CAUSE_LABELS = {
   ROOM_BOOKING: "Room booking",

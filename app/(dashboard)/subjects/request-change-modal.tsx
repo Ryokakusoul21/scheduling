@@ -46,7 +46,7 @@ export function RequestChangeModal({ subject, faculty, assignment, onClose }: {
         <DialogHeader>
           <DialogTitle className="text-lg">{assignment ? "Request assignment" : "Request change"} for {subject.code}</DialogTitle>
           <DialogDescription className="text-sm">
-            {subject.name}{subject.departmentName ? ` is managed by ${subject.departmentName}.` : " is managed by another department."} The Head of Department who owns it decides in Schedule Requests; if it has no owning department, the Administrator does.
+            {subject.name}{subject.departmentName ? ` is managed by ${subject.departmentName}.` : " is managed by another department."} The Head of Department who owns it decides in Schedule Requests; if it has no owning department, the Registrar does.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

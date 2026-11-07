@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { ACADEMIC_LEVELS } from "@/lib/academics/levels";
 import { notifyUsers } from "@/lib/notify";
 
-/** Fields a Head of Department may ask the Administrator to change on a faculty record. */
+/** Fields a Head of Department may ask the Registrar to change on a faculty record. */
 export const facultyChangeSchema = z
   .object({
     fullName: z.string().trim().min(1).max(120),

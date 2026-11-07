@@ -9,7 +9,7 @@ import { BuildingBanner } from "./building-banner";
 
 export async function generateMetadata({ params }: { params: Promise<{ buildingId: string }> }) {
   const building = await prisma.building.findUnique({ where: { id: (await params).buildingId }, select: { name: true } });
-  return { title: `${building?.name ?? "Building"} · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY` };
+  return { title: `${building?.name ?? "Building"} · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY` };
 }
 
 export default async function BuildingPage({ params, searchParams }: { params: Promise<{ buildingId: string }>; searchParams: Promise<{ q?: string }> }) {

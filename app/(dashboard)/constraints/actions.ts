@@ -20,7 +20,7 @@ const schema = z.object({
 
 export type ConstraintInput = z.infer<typeof schema>;
 
-/** Administrator manages every constraint; a Head of Department only those of their own department. */
+/** Registrar manages every constraint; a Head of Department only those of their own department. */
 async function allowed(scope: Scope, id: string) {
   const row = await prisma.schedulingConstraint.findUnique({ where: { id }, select: { departmentId: true, kind: true } });
   return row && canManageDepartment(scope, row.departmentId) ? row : null;

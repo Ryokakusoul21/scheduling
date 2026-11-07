@@ -15,7 +15,7 @@ import { loadWorkload } from "@/lib/workload/load";
 import { loadReport } from "@/lib/workload/optimizer";
 import { activeTermIds } from "@/lib/workload/auto";
 
-export const metadata = { title: "Scheduler · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Scheduler · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 function location(r: { floor: { name: string; building: { name: string } } | null }) {
   return r.floor ? `${r.floor.building.name}, ${r.floor.name}` : "No building";
@@ -45,9 +45,8 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
   if (mode === "examinations") {
     return (
       <div data-viewport-lock className="flex flex-col gap-2 lg:h-full lg:min-h-0 lg:overflow-hidden">
-        <ModeSwitch mode={mode} academicYearId={academicYear.id} />
         <div className="lg:min-h-0 lg:flex-1">
-          <ExamMode scope={scope} academicYearId={academicYear.id} academicYearControl={<AcademicYearSwitcher key="academic-year-switcher" years={academicYears.map((y) => ({ id: y.id, name: y.name, isActive: y.isActive }))} currentId={academicYear.id} />} />
+          <ExamMode scope={scope} academicYearId={academicYear.id} modes={<ModeSwitch mode={mode} academicYearId={academicYear.id} />} academicYearControl={<AcademicYearSwitcher key="academic-year-switcher" years={academicYears.map((y) => ({ id: y.id, name: y.name, isActive: y.isActive }))} currentId={academicYear.id} />} />
         </div>
       </div>
     );
@@ -116,7 +115,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
   const programCode = new Map(programs.map((p) => [p.id, p.code]));
   const toEntry = (e: (typeof allEntries)[number]) => ({
     id: e.id, semesterId: e.semesterId, sectionId: e.sectionId, subjectId: e.subjectId, facultyId: e.facultyId, roomId: e.roomId,
-    component: e.component, dayOfWeek: e.dayOfWeek, startMin: e.startMin, endMin: e.endMin, status: e.status, notes: e.notes,
+    component: e.component, dayOfWeek: e.dayOfWeek, startMin: e.startMin, endMin: e.endMin, status: e.status, notes: e.notes, doNotMove: e.doNotMove,
   });
 
   const data: SchedulerData = {
@@ -214,11 +213,11 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
 
   return (
     <div data-viewport-lock className="flex flex-col gap-2 lg:h-full lg:min-h-0 lg:overflow-hidden">
-      {STAFF_ROLES.includes(role) && <ModeSwitch mode={mode} academicYearId={academicYear.id} />}
       <div className="lg:min-h-0 lg:flex-1">
       <SchedulerWorkspace
         // Remount when switching academic year so filters reset to that year's terms.
         key={academicYear.id}
+        modes={STAFF_ROLES.includes(role) ? <ModeSwitch mode={mode} academicYearId={academicYear.id} /> : undefined}
         data={data}
         permissions={{
           canEdit: STAFF_ROLES.includes(role),

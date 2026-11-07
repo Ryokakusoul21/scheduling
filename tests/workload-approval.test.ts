@@ -28,7 +28,7 @@ describe("workload approval permissions", () => {
     expect(approveRow(genedHead, waiting, "u2")).toEqual({ fromApprovedById: "u1", toApprovedById: "u2", ready: true });
   });
 
-  it("lets the Administrator approve both sides at once", () => {
+  it("lets the Registrar approve both sides at once", () => {
     expect(approveRow(admin, row({ toDepartmentId: "gened" }), "a1").ready).toBe(true);
   });
 

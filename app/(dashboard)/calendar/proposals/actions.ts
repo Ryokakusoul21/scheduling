@@ -61,7 +61,7 @@ async function validateInput(input: Input, departmentId: string, excludeProposal
 }
 
 export async function previewProposalAction(input: Input): Promise<Result> {
-  const scope = await requireScope("HEAD_OF_DEPARTMENT", "ADMINISTRATOR");
+  const scope = await requireScope("HEAD_OF_DEPARTMENT", "SUPER_ADMINISTRATOR", "REGISTRAR");
   if (!scope.departmentId && !scope.isAdmin) return { ok: false, error: "Your account is not linked to a department." };
   const departmentId = scope.isAdmin ? input.departmentId : scope.departmentId ?? "";
   if (!departmentId || (!scope.isAdmin && departmentId !== input.departmentId)) return { ok: false, error: "You can only prepare proposals for your department." };
@@ -72,7 +72,7 @@ export async function previewProposalAction(input: Input): Promise<Result> {
 }
 
 export async function saveProposalDraftAction(input: Input, proposalId?: string): Promise<Result> {
-  const scope = await requireScope("HEAD_OF_DEPARTMENT", "ADMINISTRATOR");
+  const scope = await requireScope("HEAD_OF_DEPARTMENT", "SUPER_ADMINISTRATOR", "REGISTRAR");
   const existing = proposalId ? await prisma.activityProposal.findUnique({ where: { id: proposalId }, include: { rows: true } }) : null;
   const departmentId = existing?.departmentId ?? (scope.isAdmin ? input.departmentId : scope.departmentId);
   if (!departmentId || (!scope.isAdmin && departmentId !== scope.departmentId)) return { ok: false, error: "You can only edit your department's proposal." };
@@ -111,7 +111,7 @@ export async function submitProposalAction(id: string): Promise<Result> {
 
 const reviewSchema = z.object({ proposalId: z.string(), decision: z.enum(["APPROVED", "REJECTED", "CHANGES_REQUESTED"]), note: z.string().trim().max(500).optional(), rowIds: z.array(z.string()).optional() }).refine((x) => x.decision === "APPROVED" || !!x.note, { message: "A reason is required." });
 export async function reviewProposalAction(input: z.input<typeof reviewSchema>): Promise<Result> {
-  const scope = await requireScope("ADMINISTRATOR"); const parsed = reviewSchema.safeParse(input);
+  const scope = await requireScope("SUPER_ADMINISTRATOR", "REGISTRAR"); const parsed = reviewSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid decision." };
   const p = await prisma.activityProposal.findUnique({ where: { id: parsed.data.proposalId }, include: { rows: true, semester: { include: { academicYear: true } }, department: true } });
   if (!p || p.status !== "PENDING_APPROVAL") return { ok: false, error: "This proposal is not awaiting review." };

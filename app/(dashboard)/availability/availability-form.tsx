@@ -55,7 +55,7 @@ export function AvailabilityForm({ reports, linked }: { reports: ReportRow[]; li
   }
 
   if (!linked) {
-    return <EmptyState title="Account not linked to a faculty record" description="Ask the Administrator to link your account in User Management so you can report unavailability." />;
+    return <EmptyState title="Account not linked to a faculty record" description="Ask the Registrar to link your account in User Management so you can report unavailability." />;
   }
 
   function submit(e: React.FormEvent) {
@@ -63,7 +63,7 @@ export function AvailabilityForm({ reports, linked }: { reports: ReportRow[]; li
     startTransition(async () => {
       const res = await reportUnavailabilityAction({ ...input(), reason: form.reason });
       if (!res.ok) return void toast.error(res.error);
-      toast.success("Reported. Your Head of Department and the Administrator were notified.");
+      toast.success("Reported. Your Head of Department and the Registrar were notified.");
       // Show right away how the report affects this faculty member's classes.
       const effect = await previewMyUnavailabilityAction(input());
       if (effect.ok) setImpact(effect.data);

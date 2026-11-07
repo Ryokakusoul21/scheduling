@@ -22,7 +22,7 @@ export async function addArchiveAndApprovalSamples(db: PrismaClient, passwordHas
   const room = Object.fromEntries((await db.room.findMany()).map((r) => [r.roomNumber, r.id]));
   const userId = async (email: string) => (await db.user.findUniqueOrThrow({ where: { email } })).id;
   const facultyId = async (employeeId: string) => (await db.faculty.findUniqueOrThrow({ where: { employeeId } })).id;
-  const adminId = await userId("administrator@granby.edu.ph");
+  const adminId = await userId("registrar@granby.edu.ph");
   const account = { status: "ACTIVE" as const, emailVerified: new Date(), termsAcceptedAt: new Date(), passwordHash };
 
   // Two more Heads of Department so submissions come from several departments.
@@ -46,7 +46,7 @@ export async function addArchiveAndApprovalSamples(db: PrismaClient, passwordHas
   await audit('Archived user account "Rosario Lacson"', "User account", lacsonUser.id, 24, resigned);
 
   const retired = "Retired from the Registrar's Office.";
-  const ventura = await db.user.create({ data: { ...account, email: "ventura@granby.edu.ph", name: "Helen Ventura", role: "ADMINISTRATOR", ...archived(40, retired) } });
+  const ventura = await db.user.create({ data: { ...account, email: "ventura@granby.edu.ph", name: "Helen Ventura", role: "REGISTRAR", ...archived(40, retired) } });
   await audit('Archived user account "Helen Ventura"', "User account", ventura.id, 40, retired);
 
   const transferred = "Transferred to another school.";
@@ -135,7 +135,7 @@ export async function addArchiveAndApprovalSamples(db: PrismaClient, passwordHas
       },
     });
   }
-  // Rooms for activities the Administrator added in the main seed.
+  // Rooms for activities the Registrar added in the main seed.
   await db.activity.updateMany({ where: { title: "Faculty General Assembly" }, data: { roomId: room["4102"], participants: "All faculty members" } });
 
   const waiting = submissions.filter((s) => s.status === "PENDING").length;

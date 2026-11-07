@@ -53,7 +53,7 @@ async function authorize(scope: Scope, req: AdjustmentRequest): Promise<string |
     const r = await prisma.room.findUnique({ where: { id: req.roomId }, select: { departmentId: true } });
     return canManageDepartment(scope, r?.departmentId) ? null : "You can only close rooms that belong to your department.";
   }
-  if (req.sectionIds.length === 0) return "Choose the sections to suspend; only the Administrator can suspend every section.";
+  if (req.sectionIds.length === 0) return "Choose the sections to suspend; only the Registrar can suspend every section.";
   const outside = await prisma.section.count({ where: { id: { in: req.sectionIds }, NOT: { departmentId: scope.manageDepartmentId } } });
   return outside ? "You can only suspend classes of sections in your department." : null;
 }

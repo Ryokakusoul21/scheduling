@@ -6,7 +6,7 @@ import { loadWorkload } from "@/lib/workload/load";
 import { loadReport } from "@/lib/workload/optimizer";
 import { activeTermIds } from "@/lib/workload/auto";
 
-export const metadata = { title: "Faculty · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Faculty · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function FacultyPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const scope = await requireScope(...STAFF_ROLES);

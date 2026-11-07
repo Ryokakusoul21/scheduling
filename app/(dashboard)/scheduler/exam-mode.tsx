@@ -10,7 +10,7 @@ import { ExamWorkspace, type ExamData } from "@/components/scheduler/exam-worksp
 const day = (d: Date) => d.toISOString().slice(0, 10);
 
 /** Loads the Examination Schedule mode of the Scheduler, scoped on the server to the person's department and programs. */
-export async function ExamMode({ scope, academicYearId, academicYearControl }: { scope: Scope; academicYearId: string; academicYearControl: React.ReactNode }) {
+export async function ExamMode({ scope, academicYearId, academicYearControl, modes }: { scope: Scope; academicYearId: string; academicYearControl: React.ReactNode; modes?: React.ReactNode }) {
   const hod = scope.role === "HEAD_OF_DEPARTMENT";
   const termIds = (await prisma.semester.findMany({ where: { academicYearId }, select: { id: true } })).map((t) => t.id);
   const examScope = departmentWhere.examination(scope);
@@ -20,7 +20,7 @@ export async function ExamMode({ scope, academicYearId, academicYearControl }: {
     prisma.section.findMany({ where: { ...departmentWhere.section(scope), archivedAt: null, semesterId: { in: termIds } }, orderBy: [{ level: "asc" }, { sortOrder: "asc" }, { name: "asc" }] }),
     // The teacher of a class is its default proctor, even when the teacher belongs to another department (a shared General Education class).
     prisma.faculty.findMany({ where: { status: "ACTIVE", archivedAt: null, OR: [departmentWhere.faculty(scope), { schedules: { some: { semesterId: { in: termIds }, ...departmentWhere.schedule(scope) } } }] }, orderBy: { fullName: "asc" } }),
-    // Rooms stay campus-wide for availability; another department's room can only be requested from the Administrator.
+    // Rooms stay campus-wide for availability; another department's room can only be requested from the Registrar.
     prisma.room.findMany({ where: { archivedAt: null, status: "AVAILABLE" }, orderBy: [{ sortOrder: "asc" }, { roomName: "asc" }] }),
     prisma.examination.findMany({ where: { AND: [examScope, { semesterId: { in: termIds } }] }, orderBy: [{ date: "asc" }, { startMin: "asc" }] }),
     hod
@@ -64,5 +64,5 @@ export async function ExamMode({ scope, academicYearId, academicYearControl }: {
     canSubmit: hod,
     isAdmin: scope.isAdmin,
   };
-  return <ExamWorkspace data={data} academicYearControl={academicYearControl} />;
+  return <ExamWorkspace data={data} academicYearControl={academicYearControl} modes={modes} />;
 }

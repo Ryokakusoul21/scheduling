@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/ux/states";
 import { LiveRefresh } from "@/components/ux/live-refresh";
 import { WorkloadBoard } from "./workload-board";
 
-export const metadata = { title: "Faculty Workload · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Faculty Workload · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function WorkloadPage() {
   const scope = await getScope();

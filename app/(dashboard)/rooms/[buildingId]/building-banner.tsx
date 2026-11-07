@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { BuildingDialog, PhotoDialog } from "../building-dialogs";
 import type { LoadedBuilding } from "@/lib/rooms/load";
 
-/** Header of a building page: photo or illustration, details, and Administrator edit actions. */
+/** Header of a building page: photo or illustration, details, and Registrar edit actions. */
 export function BuildingBanner({ building: b, isAdmin }: { building: LoadedBuilding; isAdmin: boolean }) {
   const [editing, setEditing] = useState(false);
   const [photo, setPhoto] = useState(false);

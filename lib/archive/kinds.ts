@@ -11,4 +11,4 @@ export const ARCHIVE_LABELS: Record<ArchiveKind, string> = {
 };
 
 export const ARCHIVE_CONFIRM_TEXT =
-  "The record is kept, not deleted. It is hidden from new schedules and choices, its past schedules and reports stay viewable, and the Administrator can restore it from the Archived list.";
+  "The record is kept, not deleted. It is hidden from new schedules and choices, its past schedules and reports stay viewable, and the Registrar can restore it from the Archived list.";

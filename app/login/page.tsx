@@ -5,7 +5,7 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import { auth } from "@/auth";
 import { homePath } from "@/lib/permissions/roles";
 
-export const metadata = { title: "Sign In · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Sign In · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 const NOTICES: Record<string, string> = {
   registered: "Account created. Check your email for a verification link.",

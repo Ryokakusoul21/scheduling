@@ -135,7 +135,7 @@ export function SettingsManager({
         <CardContent>
           <form action={handleBooking}>
             <FieldGroup>
-              <p className="text-xs text-muted-foreground">Buffer time is kept free between two bookings of the same room. Urgent overrides beyond the monthly caps are refused (the Administrator is not capped).</p>
+              <p className="text-xs text-muted-foreground">Buffer time is kept free between two bookings of the same room. Urgent overrides beyond the monthly caps are refused (the Registrar is not capped).</p>
               <div className="grid grid-cols-2 gap-3">
                 <Field><FieldLabel htmlFor="openTime">Rooms open</FieldLabel><input type="time" step={1800} name="openTime" id="openTime" defaultValue={hhmm(booking.openMin)} required className={inputClass} /></Field>
                 <Field><FieldLabel htmlFor="closeTime">Rooms close</FieldLabel><input type="time" step={1800} name="closeTime" id="closeTime" defaultValue={hhmm(booking.closeMin)} required className={inputClass} /></Field>
@@ -154,9 +154,9 @@ export function SettingsManager({
         <CardContent>
           <div className="flex items-center justify-between gap-4 rounded-md border p-3 text-sm">
             <div>
-              <p className="font-medium">Require Administrator approval</p>
+              <p className="font-medium">Require Registrar approval</p>
               <p className="text-xs text-muted-foreground">
-                Self-registered accounts stay pending until an Administrator approves them in User Management.
+                Self-registered accounts stay pending until a Registrar approves them in User Management.
               </p>
             </div>
             <Switch

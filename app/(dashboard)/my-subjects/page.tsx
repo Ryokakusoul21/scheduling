@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState, PageHeader } from "@/components/ux/states";
 
-export const metadata = { title: "My Assigned Subjects · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "My Assigned Subjects · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 /** Read-only list of the subjects the signed-in faculty member is assigned to teach. */
 export default async function MySubjectsPage() {

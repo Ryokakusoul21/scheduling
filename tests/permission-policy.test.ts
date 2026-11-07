@@ -9,12 +9,12 @@ const hod: PolicyUser = { id: "hod", role: "HEAD_OF_DEPARTMENT", status: "ACTIVE
 describe("central permission policy", () => {
   it("denies unauthenticated and inactive users", () => {
     expect(can(null, "view", own)).toBe(false);
-    expect(can({ role: "ADMINISTRATOR", status: "ARCHIVED" }, "edit", own)).toBe(false);
+    expect(can({ role: "REGISTRAR", status: "ARCHIVED" }, "edit", own)).toBe(false);
     expect(can({ role: "HEAD_OF_DEPARTMENT", status: "SUSPENDED", departmentIds: ["computer"] }, "view", own)).toBe(false);
   });
 
-  it("allows the Administrator and limits a Head of Department to assigned departments", () => {
-    expect(can({ role: "ADMINISTRATOR", status: "ACTIVE" }, "archive", other)).toBe(true);
+  it("allows the Registrar and limits a Head of Department to assigned departments", () => {
+    expect(can({ role: "REGISTRAR", status: "ACTIVE" }, "archive", other)).toBe(true);
     expect(can(hod, "edit", own)).toBe(true);
     expect(can(hod, "edit", other)).toBe(false);
     expect(can(hod, "view", other)).toBe(false);
@@ -31,7 +31,7 @@ describe("central permission policy", () => {
     expect(can(hod, "requestChange", shared)).toBe(true);
   });
 
-  it("reserves every approval and rejection for the Administrator", () => {
+  it("reserves every approval and rejection for the Registrar", () => {
     expect(can(hod, "approve", { type: "scheduleRequest", departmentId: "computer" })).toBe(false);
     expect(can({ role: "FACULTY", status: "ACTIVE" }, "reject", { type: "roomBooking" })).toBe(false);
   });
@@ -52,7 +52,7 @@ describe("central permission policy", () => {
   it("builds database filters that exclude other departments", () => {
     expect(scopeQuery(hod, "program")).toEqual({ departmentId: { in: ["computer"] } });
     expect(scopeQuery(hod, "subject")).toEqual({ OR: [{ departmentId: { in: ["computer"] } }, { departmentId: null }] });
-    expect(scopeQuery({ role: "ADMINISTRATOR", status: "ACTIVE" }, "program")).toEqual({});
+    expect(scopeQuery({ role: "REGISTRAR", status: "ACTIVE" }, "program")).toEqual({});
     expect(scopeQuery(null, "program")).toEqual({ id: { equals: "__denied__" } });
   });
 });
@@ -61,7 +61,7 @@ describe("program catalog and department rename", () => {
   const program: PolicyResource = { type: "programCatalog", id: "bsit", departmentId: "computer" };
   const foreign: PolicyResource = { type: "programCatalog", id: "bsba", departmentId: "business" };
   const dept = (id: string): PolicyResource => ({ type: "department", id, departmentId: id });
-  const admin: PolicyUser = { role: "ADMINISTRATOR", status: "ACTIVE" };
+  const admin: PolicyUser = { role: "REGISTRAR", status: "ACTIVE" };
 
   it("lets a Head of Department view own programs but never change them", () => {
     expect(can(hod, "view", program)).toBe(true);
@@ -73,7 +73,7 @@ describe("program catalog and department rename", () => {
     expect(can(hod, "rename", dept("business"))).toBe(false);
     expect(can({ role: "FACULTY", status: "ACTIVE", departmentId: "computer" }, "rename", dept("computer"))).toBe(false);
   });
-  it("keeps the Administrator unrestricted", () => {
+  it("keeps the Registrar unrestricted", () => {
     expect(can(admin, "create", program)).toBe(true);
     expect(can(admin, "rename", dept("business"))).toBe(true);
   });

@@ -1,6 +1,6 @@
 /**
  * Who may approve which side of a proposed reassignment, and when a proposal is finished. A same-department
- * row needs its Head of Department (or the Administrator); a cross-department row also needs the receiving
+ * row needs its Head of Department (or the Registrar); a cross-department row also needs the receiving
  * department's Head. Pure (tests/workload-approval.test.ts).
  */
 
@@ -19,7 +19,7 @@ export interface ReviewRow {
 
 export const isCrossDepartment = (r: Pick<ReviewRow, "fromDepartmentId" | "toDepartmentId">) => (r.fromDepartmentId ?? null) !== (r.toDepartmentId ?? null);
 
-/** The sides of a row this reviewer speaks for; a side without a department belongs to the Administrator. */
+/** The sides of a row this reviewer speaks for; a side without a department belongs to the Registrar. */
 export function sidesFor(actor: Reviewer, r: Pick<ReviewRow, "fromDepartmentId" | "toDepartmentId">) {
   const owns = (d: string | null) => actor.isAdmin || (!!d && actor.departmentIds.includes(d));
   return { from: owns(r.fromDepartmentId), to: isCrossDepartment(r) && owns(r.toDepartmentId) };
@@ -39,7 +39,7 @@ export function canReject(actor: Reviewer, r: ReviewRow) {
   return isOpen(r) && (s.from || s.to);
 }
 
-/** Only the giving department's Head (or the Administrator) picks a different receiver. */
+/** Only the giving department's Head (or the Registrar) picks a different receiver. */
 export const canEdit = (actor: Reviewer, r: ReviewRow) => r.status === "PENDING" && sidesFor(actor, r).from;
 
 /** Records this reviewer's approval; the row is ready to apply once every required side has approved. */

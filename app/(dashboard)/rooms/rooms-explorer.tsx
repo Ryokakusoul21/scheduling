@@ -57,7 +57,7 @@ export function RoomsExplorer({
   allFloors: Option[];
   initialQuery: string;
   isAdmin: boolean;
-  /** A Head of Department edits only rooms their department owns; shared rooms are the Administrator's. */
+  /** A Head of Department edits only rooms their department owns; shared rooms are the Registrar's. */
   ownDepartmentId?: string | null;
   termLabel: string;
   departments: Option[];
@@ -153,7 +153,7 @@ export function RoomsExplorer({
           name: "departmentId",
           label: "Owning department",
           type: "select",
-          options: isAdmin ? [{ value: "", label: "Shared room (Administrator)" }, ...departments] : departments,
+          options: isAdmin ? [{ value: "", label: "Shared room (Registrar)" }, ...departments] : departments,
           wide: true,
           help: "The Head of Department of the owning department can manage and close this room.",
         },

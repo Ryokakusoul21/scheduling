@@ -150,7 +150,7 @@ export async function saveRoomAction(id: string | null, formData: FormData): Pro
   if (programIds.length && (await prisma.program.count({ where: { id: { in: programIds } } })) !== programIds.length) {
     return { ok: false, error: "A selected program or strand no longer exists. Refresh and try again." };
   }
-  // Rooms of a Head of Department always belong to their department; shared rooms are managed by the Administrator.
+  // Rooms of a Head of Department always belong to their department; shared rooms are managed by the Registrar.
   const departmentId = scope.isAdmin ? d.departmentId || null : scope.departmentId;
   if (!canManageDepartment(scope, departmentId)) return { ok: false, error: OWN_ROOMS };
   if (id) {

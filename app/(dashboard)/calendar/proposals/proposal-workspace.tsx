@@ -99,7 +99,7 @@ export function ProposalWorkspace({ isAdmin, ownDepartmentId, selectedId, propos
         {active?.status === "APPROVED" && <ReportButtons doc={exportDoc} />}
       </CardContent></Card>
 
-      {active?.reviewNote && <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm"><strong>Administrator note:</strong> {active.reviewNote}</div>}
+      {active?.reviewNote && <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm"><strong>Registrar note:</strong> {active.reviewNote}</div>}
       {editable && !isAdmin && <Card><CardHeader><CardTitle className="text-base">Bulk entry</CardTitle></CardHeader><CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">Paste spreadsheet rows in this order: Date, Activity, Time, Location, School Level.</p>
         <Textarea value={paste} onChange={(e) => setPaste(e.target.value)} placeholder={"July 28, 2026\tFreshmen Orientation\t8:00 AM-10:00 AM\tAuditorium\tCOLLEGE"} rows={3} />
@@ -139,7 +139,7 @@ function OfficialPreview({ department, term, preparedBy, designation, rows }: { 
   return <div className="rounded-sm border bg-white p-6 font-serif text-black shadow-sm">
     <div className="grid grid-cols-[72px_1fr_72px] items-center border-b-2 border-black pb-3 text-center">
       <Image src="/branding/logo.jpg" alt="School seal" width={64} height={64} className="size-16 object-contain" />
-      <div><p className="text-sm font-bold">GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY</p><p className="text-lg font-bold">{department}</p><p className="text-xs">Naic, Cavite, Philippines</p><p className="text-xs">Tel: (046) 412-0437</p></div>
+      <div><p className="text-sm font-bold">GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY</p><p className="text-lg font-bold">{department}</p><p className="text-xs">Naic, Cavite, Philippines</p><p className="text-xs">Tel: (046) 412-0437</p></div>
       <Image src="/branding/logo.jpg" alt={`${department} seal`} width={64} height={64} className="size-16 object-contain" />
     </div>
     <div className="my-5 text-center font-bold uppercase"><p>SCHOOL ACTIVITIES FOR S.Y. {schoolYear}</p><p>{department}</p><p>{semester}</p></div>

@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { FinishReason, ThinkingLevel } from "@google/genai";
 import { getGeminiClient, SCHEDULING_MODEL } from "./geminiClient";
-import { isStaff, type AppRole } from "@/lib/permissions/roles";
+import { isAdmin, isStaff, type AppRole } from "@/lib/permissions/roles";
 import { departmentWhere } from "@/lib/permissions/department";
 import { activeOverlapConflicts } from "@/lib/scheduler/term-conflicts";
 import { levelLabel, termLabel } from "@/lib/academics/levels";
@@ -106,8 +106,8 @@ async function buildContext(userId: string, role: AppRole): Promise<string> {
   // A Head of Department's (and faculty member's) assistant only knows their own department's data.
   const userDepartmentId = user?.faculty?.departmentId ?? null;
   const who = {
-    isAdmin: role === "ADMINISTRATOR",
-    manageDepartmentId: role === "ADMINISTRATOR" ? null : (userDepartmentId ?? "__none__"),
+    isAdmin: isAdmin(role),
+    manageDepartmentId: isAdmin(role) ? null : (userDepartmentId ?? "__none__"),
     role,
     status: "ACTIVE",
     departmentId: userDepartmentId,
@@ -174,7 +174,7 @@ async function buildContext(userId: string, role: AppRole): Promise<string> {
   return parts.join("\n\n");
 }
 
-/** Scheduling data for staff: the whole school for the Administrator, one department for a Head of Department. */
+/** Scheduling data for staff: the whole school for the Registrar, one department for a Head of Department. */
 async function buildStaffOverview(termIds: string[], who: { isAdmin: boolean; manageDepartmentId: string | null; role: AppRole; status: string; departmentId: string | null; departmentIds: string[] }): Promise<string[]> {
   const activeOnly = { semesterId: { in: termIds }, status: { not: "ARCHIVED" as const } };
   const ownClasses = { ...activeOnly, ...departmentWhere.schedule(who) };
@@ -269,7 +269,7 @@ function redactSecrets(text: string) {
 
 function systemInstruction(context: string, role: AppRole) {
   const staff = isStaff(role);
-  return `You are the Scheduling Assistant, a helpful chat assistant inside the scheduling system of GRANBY COLLEGES OF SCIENCE & TECHNOLOGY (Naic, Cavite).
+  return `You are the Scheduling Assistant, a helpful chat assistant inside the scheduling system of GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY (Naic, Cavite).
 
 Your job is to answer questions about this scheduling system: ${
     staff

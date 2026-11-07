@@ -1,27 +1,31 @@
-export const ROLES = ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT", "FACULTY", "STUDENT"] as const;
+export const ROLES = ["SUPER_ADMINISTRATOR", "REGISTRAR", "HEAD_OF_DEPARTMENT", "FACULTY", "STUDENT"] as const;
 
 export type AppRole = (typeof ROLES)[number];
 
 /** Roles that manage academic structure, rooms, faculty, and schedules (Head of Department within their department). */
-export const STAFF_ROLES: AppRole[] = ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT"];
+export const STAFF_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR", "HEAD_OF_DEPARTMENT"];
 
 /** Roles that can build timetables and run automatic adjustments. */
-export const SCHEDULING_ROLES: AppRole[] = ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT"];
+export const SCHEDULING_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR", "HEAD_OF_DEPARTMENT"];
 
 /** Roles whose schedule edits apply immediately, with no review step. */
-export const DIRECT_EDIT_ROLES: AppRole[] = ["ADMINISTRATOR"];
+export const DIRECT_EDIT_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR"];
 
 /** Roles that approve and publish schedules and workload reassignments. */
-export const PUBLISH_ROLES: AppRole[] = ["ADMINISTRATOR"];
+export const PUBLISH_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR"];
 
-/** Roles that manage users, every department, and system settings. */
-export const ADMIN_ROLES: AppRole[] = ["ADMINISTRATOR"];
+/** Roles with school-wide access to every department, term, room, schedule, and report. */
+export const ADMIN_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR"];
+
+/** Roles that manage user accounts, system settings, and audit logs. */
+export const SUPER_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR"];
 
 /** Roles that teach classes and so have their own load and can report unavailability. */
 export const TEACHING_ROLES: AppRole[] = ["HEAD_OF_DEPARTMENT", "FACULTY"];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
-  ADMINISTRATOR: "Administrator",
+  SUPER_ADMINISTRATOR: "Super Administrator",
+  REGISTRAR: "Registrar",
   HEAD_OF_DEPARTMENT: "Head of Department",
   FACULTY: "Faculty",
   STUDENT: "Student",
@@ -35,8 +39,12 @@ export function canManageScheduling(role: AppRole) {
   return SCHEDULING_ROLES.includes(role);
 }
 
-export function isAdmin(role: AppRole) {
-  return ADMIN_ROLES.includes(role);
+export function isAdmin(role: AppRole | string | undefined) {
+  return ADMIN_ROLES.includes(role as AppRole);
+}
+
+export function isSuperRegistrar(role: AppRole | string | undefined) {
+  return role === "SUPER_ADMINISTRATOR";
 }
 
 export function roleLabel(role: AppRole) {

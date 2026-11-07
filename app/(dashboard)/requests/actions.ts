@@ -68,7 +68,7 @@ export async function createRequestAction(input: RequestFormInput): Promise<{ ok
   const request = await prisma.scheduleRequest.create({
     data: { type: d.type, scheduleId: d.scheduleId, reason: d.reason, requestedById: scope.userId, departmentId: prepared.departmentId, details: prepared.details as never },
   });
-  // Routed to the requester's own Head of Department and the Administrator only.
+  // Routed to the requester's own Head of Department and the Registrar only.
   await notifyManagers(scope.departmentId, {
     title: "New scheduling request submitted",
     message: `${scope.name} submitted a ${label(d.type).toLowerCase()} request.`,
@@ -119,7 +119,7 @@ export async function cancelRequestAction(id: string): Promise<Result> {
   return { ok: true };
 }
 
-/** A Head of Department asks the Administrator to change a faculty record of their department. */
+/** A Head of Department asks the Registrar to change a faculty record of their department. */
 export async function requestFacultyChangeAction(facultyId: string, changes: unknown, reason: string): Promise<Result> {
   const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const faculty = await prisma.faculty.findUnique({ where: { id: facultyId }, select: { fullName: true, departmentId: true } });

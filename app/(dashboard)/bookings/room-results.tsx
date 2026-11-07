@@ -20,7 +20,7 @@ const typeLabel = (v: string) => ROOM_TYPES.find((t) => t.value === v)?.label ??
 const classes = (n: number) => `${n} ${n === 1 ? "class" : "classes"}`;
 
 /** Ranked rooms; blocked rooms that an urgent booking could take offer "Urgent override". */
-export function RoomResults({ options, caps, request, pending, canOverride, onBook, onOverride }: {
+export function RoomResults({ options, caps, request, pending, canOverride, onBook, onOverride, onAnyRoom }: {
   options: RoomOption[] | null;
   caps: Caps;
   request: SearchRequest | null;
@@ -28,8 +28,10 @@ export function RoomResults({ options, caps, request, pending, canOverride, onBo
   canOverride: boolean;
   onBook: (o: RoomOption) => void;
   onOverride: () => void;
+  onAnyRoom: () => void;
 }) {
   const [freeOnly, setFreeOnly] = useState(false);
+  const [byBuilding, setByBuilding] = useState(false);
 
   if (pending && !options) return <ResultsSkeleton />;
   if (!options || !request) return null;
@@ -40,6 +42,11 @@ export function RoomResults({ options, caps, request, pending, canOverride, onBo
   const blocked = options.length - free - moves;
   const overridable = options.filter((o) => o.status === "BLOCKED" && o.overridable).length;
   const shown = options.filter((o) => (freeOnly ? o.status === "FREE" : true));
+  // Options arrive ranked, so the first one that is not blocked is the best match; it is only called that when there is a choice.
+  const best = !request.roomId && free + moves > 1 ? options.find((o) => o.status !== "BLOCKED")?.roomId : undefined;
+  const groups: [string, RoomOption[]][] = byBuilding
+    ? [...shown.reduce((m, o) => m.set(o.location.split(", ")[0], [...(m.get(o.location.split(", ")[0]) ?? []), o]), new Map<string, RoomOption[]>())]
+    : [["", shown]];
   const capWarning = caps && [caps.user, caps.department].find((c) => c && (c.near || c.reached));
 
   return (
@@ -47,7 +54,7 @@ export function RoomResults({ options, caps, request, pending, canOverride, onBo
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h2 id="results-title" className="text-base font-semibold">
-            Rooms for {formatDay(request.date)}, {formatRange(request.startMin, request.endMin)}
+            {request.roomId ? (options[0]?.name ?? "That room") : "Rooms"} for {formatDay(request.date)}, {formatRange(request.startMin, request.endMin)}
             {urgent && <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger"><Siren className="size-3.5" /> Urgent</span>}
           </h2>
           <p className="text-sm text-muted-foreground" aria-live="polite">
@@ -55,14 +62,20 @@ export function RoomResults({ options, caps, request, pending, canOverride, onBo
             {blocked > 0 && ` · ${blocked} unavailable`}
           </p>
         </div>
-        <div className="flex gap-2" role="group" aria-label="Filter rooms">
+        {request.roomId ? (
+          <Button size="sm" variant="outline" onClick={onAnyRoom}><DoorOpen className="size-4" /> Find other rooms for this time</Button>
+        ) : <div className="flex gap-2" role="group" aria-label="Filter rooms">
           {[{ value: true, label: "Free only" }, { value: false, label: "Show all" }].map((f) => (
             <button key={f.label} type="button" aria-pressed={freeOnly === f.value} onClick={() => setFreeOnly(f.value)}
               className="h-8 rounded-full border px-3 text-[13px] font-medium transition-colors duration-150 hover:bg-muted aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background">
               {f.label}
             </button>
           ))}
-        </div>
+          <button type="button" aria-pressed={byBuilding} onClick={() => setByBuilding(!byBuilding)}
+            className="h-8 rounded-full border px-3 text-[13px] font-medium transition-colors duration-150 hover:bg-muted aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background">
+            Group by building
+          </button>
+        </div>}
       </header>
 
       {capWarning && (
@@ -89,24 +102,28 @@ export function RoomResults({ options, caps, request, pending, canOverride, onBo
       {free + moves === 0 || shown.length === 0 ? (
         <EmptyState
           icon={DoorOpen}
-          title={freeOnly && free + moves > 0 ? "No free rooms for this time" : "No rooms available for this time"}
+          title={request.roomId && options.length === 0 ? "That room is not open to a regular booking" : request.roomId ? "This room is not available at that time" : freeOnly && free + moves > 0 ? "No free rooms for this time" : "No rooms available for this time"}
           description={<span className="block text-left">Try {freeOnly && moves > 0 ? "Show all, or " : ""}a different time or date, fewer attendees, or another room type{!urgent && canOverride && overridable > 0 ? ", or use Urgent override" : ""}.</span>}
           className="py-8"
         />
       ) : (
-        <ul className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-          {shown.map((o) => (
+        <div className="space-y-4">
+          {groups.map(([building, list]) => (
+            <div key={building || "all"} className="space-y-2">
+              {byBuilding && <h3 className="text-sm font-semibold text-muted-foreground">{building} <span className="font-normal">· {list.length}</span></h3>}
+              <ul className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+          {list.map((o) => (
             <li key={o.roomId} className={cn("flex flex-col gap-3 rounded-xl border p-4", o.status === "BLOCKED" && "bg-muted/40")}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-semibold">{o.name}</p>
+                  <p className="font-semibold">{o.name}{o.roomId === best && <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Best match</span>}</p>
                   <p className="text-[13px] text-muted-foreground">{o.location}{o.ownership === "OWN" ? " · Your department" : o.ownership === "SHARED" ? " · Shared" : ""}</p>
                 </div>
                 <Availability option={o} />
               </div>
               <dl className="flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
                 <div><dt className="sr-only">Room type</dt><dd>{typeLabel(o.roomType)}</dd></div>
-                <div><dt className="sr-only">Capacity</dt><dd className="tabular-nums">Fits {request.attendees} · capacity {o.capacity}</dd></div>
+                <div><dt className="sr-only">Capacity</dt><dd className="tabular-nums">{o.capacity} seats · {o.capacity >= request.attendees ? `${o.capacity - request.attendees} spare` : `${request.attendees - o.capacity} short`}</dd></div>
                 {o.equipment.length > 0 && <div className="w-full"><dt className="sr-only">Equipment</dt><dd className="text-muted-foreground">{o.equipment.join(", ")}</dd></div>}
               </dl>
               {o.needsApproval && o.status !== "BLOCKED" && <p className="rounded-md bg-warning/10 p-2 text-[13px] text-warning">Needs approval from {o.needsApproval}; nothing moves until they approve.</p>}
@@ -118,7 +135,10 @@ export function RoomResults({ options, caps, request, pending, canOverride, onBo
               )}
             </li>
           ))}
-        </ul>
+              </ul>
+            </div>
+          ))}
+        </div>
       )}
     </section>
   );

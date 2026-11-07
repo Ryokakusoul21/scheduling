@@ -5,7 +5,7 @@ import { loadBuildings, roomFormOptions } from "@/lib/rooms/load";
 import { designation, ROOM_TYPES, STATUSES } from "@/lib/rooms/rooms";
 import { BuildingsOverview } from "./buildings-overview";
 
-export const metadata = { title: "Buildings and Rooms · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Buildings and Rooms · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function RoomsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const scope = await requireScope(...STAFF_ROLES);

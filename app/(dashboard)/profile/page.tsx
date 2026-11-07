@@ -12,7 +12,7 @@ import { SessionList } from "@/components/profile/session-list";
 import { TwoFactorCard } from "@/components/profile/two-factor-card";
 
 export const metadata = {
-  title: "Profile and Security · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY",
+  title: "Profile and Security · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY",
 };
 
 const SECTIONS = [

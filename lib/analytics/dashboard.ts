@@ -5,7 +5,6 @@ import { levelLabel, termLabel } from "@/lib/academics/levels";
 import { isoDate } from "@/lib/occupancy/engine";
 import { detectConflictsForTerms } from "@/lib/scheduler/term-conflicts";
 import { isOverlapConflict } from "@/lib/scheduler/conflictDetector";
-import { predict, type HistoryPoint } from "@/lib/forecast/forecast";
 import { loadWorkload } from "@/lib/workload/load";
 import { loadReport, type LoadStatus } from "@/lib/workload/optimizer";
 import { byGroup, facultyUtilization, overall, peakHeatmap, roomUtilization, type RateRow } from "./timetable";
@@ -35,8 +34,7 @@ const pctText = (n: number) => `${n}%`;
 async function termFigures(term: Semester, f: DashboardFilters) {
   const inDept = f.departmentId ? { section: { departmentId: f.departmentId } } : {};
   const inBuilding = f.buildingId ? { room: { floor: { buildingId: f.buildingId } } } : {};
-  const academicYear = await prisma.academicYear.findUnique({ where: { id: term.academicYearId }, select: { name: true } });
-  const [schedules, rooms, facultyRows, records, programs, termSections, conflicts, workload] = await Promise.all([
+  const [schedules, rooms, facultyRows, termSections, conflicts, workload] = await Promise.all([
     prisma.schedule.findMany({
       where: { semesterId: term.id, status: { not: "ARCHIVED" }, ...inDept, ...inBuilding },
       select: { id: true, roomId: true, facultyId: true, sectionId: true, subjectId: true, dayOfWeek: true, startMin: true, endMin: true },
@@ -46,19 +44,12 @@ async function termFigures(term: Semester, f: DashboardFilters) {
       include: { availability: true, floor: { select: { building: { select: { name: true } } } } },
     }),
     prisma.faculty.findMany({ where: { archivedAt: null, ...(f.departmentId ? { departmentId: f.departmentId } : {}) }, include: { department: { select: { name: true } } } }),
-    prisma.enrollmentRecord.findMany({
-      where: { level: term.level, academicYear: academicYear?.name ?? "", termType: term.type.startsWith("QUARTER") ? "FIRST" : term.type },
-    }),
-    prisma.program.findMany({ select: { id: true, departmentId: true } }),
-    prisma.section.findMany({ where: { semesterId: term.id, archivedAt: null, ...(f.departmentId ? { departmentId: f.departmentId } : {}) }, select: { id: true } }),
+    prisma.section.findMany({ where: { semesterId: term.id, archivedAt: null, ...(f.departmentId ? { departmentId: f.departmentId } : {}) }, select: { id: true, studentCount: true } }),
     detectConflictsForTerms([term.id]),
     loadWorkload([term.id], f.departmentId),
   ]);
 
-  const deptOfProgram = new Map(programs.map((p) => [p.id, p.departmentId]));
-  const students = records
-    .filter((r) => !f.departmentId || (r.programId ? deptOfProgram.get(r.programId) === f.departmentId : false))
-    .reduce((s, r) => s + r.enrolled, 0);
+  const students = termSections.reduce((s, r) => s + r.studentCount, 0);
 
   const usedRooms = new Set(schedules.map((s) => s.roomId));
   const roomRows = roomUtilization(
@@ -141,7 +132,7 @@ export async function dashboardAnalytics(f: DashboardFilters) {
   horizon.setUTCDate(horizon.getUTCDate() + 14);
   const end = [isoDate(term.endDate), isoDate(horizon)].sort()[0];
 
-  const [now, before, bookings, enrollment, upcomingItems] = await Promise.all([
+  const [now, before, bookings, upcomingItems] = await Promise.all([
     termFigures(term, f),
     prev ? termFigures(prev, f) : Promise.resolve(null),
     prisma.roomBooking.findMany({
@@ -153,14 +144,13 @@ export async function dashboardAnalytics(f: DashboardFilters) {
       },
       select: { date: true },
     }),
-    enrollmentTrend(term.level, f.departmentId),
     upcoming(f),
   ]);
   const p = before?.hasData ? before : null;
   const prevLabel = prev ? `${termLabel(prev.type)} ${prev.academicYear.name}` : null;
 
   const cards: Card[] = [
-    { key: "students", label: "Students enrolled", value: now.students.toLocaleString(), raw: now.students, change: countChange(now.students, before?.students || null), hint: "From enrollment records for this term" },
+    { key: "students", label: "Students enrolled", value: now.students.toLocaleString(), raw: now.students, change: countChange(now.students, before?.students || null), hint: "Total learners across this term's sections" },
     { key: "sections", label: "Sections", value: String(now.sections), raw: now.sections, change: countChange(now.sections, p?.sections ?? null), hint: "Sections with classes this term" },
     { key: "faculty", label: "Faculty teaching", value: String(now.faculty), raw: now.faculty, change: countChange(now.faculty, p?.faculty ?? null), hint: "Faculty with at least one class" },
     { key: "subjects", label: "Subjects offered", value: String(now.subjects), raw: now.subjects, change: countChange(now.subjects, p?.subjects ?? null), hint: "Subjects with classes this term" },
@@ -202,51 +192,7 @@ export async function dashboardAnalytics(f: DashboardFilters) {
       { status: "OVERLOADED" as const, count: now.overloaded },
     ],
     weekly,
-    enrollment,
     upcoming: upcomingItems,
-  };
-}
-
-/** Total enrollment per past term for the level, plus a forecast for the next term. */
-async function enrollmentTrend(level: Semester["level"], departmentId: string | null) {
-  const [records, programs] = await Promise.all([
-    prisma.enrollmentRecord.findMany({ where: { level } }),
-    prisma.program.findMany({ select: { id: true, departmentId: true } }),
-  ]);
-  const dept = new Map(programs.map((p) => [p.id, p.departmentId]));
-  const scoped = records.filter((r) => !departmentId || (r.programId && dept.get(r.programId) === departmentId));
-  const order = (t: string) => (t === "SECOND" ? 1 : t === "SUMMER" ? 2 : 0);
-  const totals = new Map<string, { year: number; termType: string; enrolled: number }>();
-  for (const r of scoped) {
-    const k = `${r.academicYear}|${r.termType}`;
-    const t = totals.get(k) ?? { year: Number(r.academicYear.slice(0, 4)), termType: r.termType, enrolled: 0 };
-    t.enrolled += r.enrolled;
-    totals.set(k, t);
-  }
-  const points = [...totals.values()].sort((a, b) => a.year - b.year || order(a.termType) - order(b.termType));
-  const last = points.at(-1);
-  if (!last) return { points: [], forecast: null };
-
-  const twoTerms = points.some((p) => p.termType === "SECOND");
-  const next = twoTerms && last.termType === "FIRST" ? { year: last.year, termType: "SECOND" } : { year: last.year + 1, termType: "FIRST" };
-  // Forecast each program separately, then add them up.
-  const series = new Map<string, HistoryPoint[]>();
-  for (const r of scoped) {
-    const k = r.programId ?? "level";
-    series.set(k, [...(series.get(k) ?? []), { year: Number(r.academicYear.slice(0, 4)), termType: r.termType, enrolled: r.enrolled }]);
-  }
-  const predictions = [...series.values()].map((h) => predict(h, next.year, next.termType)).filter(Boolean);
-  const label = (p: { year: number; termType: string }) => `${termLabel(p.termType)} ${p.year}-${p.year + 1}`;
-  return {
-    points: points.map((p) => ({ label: label(p), enrolled: p.enrolled })),
-    forecast: predictions.length
-      ? {
-          label: label(next),
-          value: predictions.reduce((s, p) => s + p!.value, 0),
-          low: predictions.reduce((s, p) => s + p!.low, 0),
-          high: predictions.reduce((s, p) => s + p!.high, 0),
-        }
-      : null,
   };
 }
 

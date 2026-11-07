@@ -6,6 +6,7 @@ import { CircleNotch, Copy, Trash } from "@phosphor-icons/react/ssr";
 import { ConflictAlert, NoConflict } from "@/components/ux/conflict";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ux/native-select";
@@ -32,6 +33,7 @@ export interface ClassDraft {
   endMin: number;
   status?: ScheduleStatus;
   notes?: string;
+  doNotMove?: boolean;
   source?: "CURRICULUM_QUEUE";
 }
 
@@ -314,6 +316,13 @@ function ClassForm({
           <FieldLabel htmlFor="cls-notes">Notes</FieldLabel>
           <Textarea id="cls-notes" rows={2} value={form.notes ?? ""} onChange={(e) => set("notes", e.target.value)} maxLength={500} />
         </Field>
+        <label className="flex cursor-pointer items-start gap-2.5 text-sm sm:col-span-2">
+          <Checkbox checked={!!form.doNotMove} onCheckedChange={(on) => set("doNotMove", !!on)} className="mt-0.5" />
+          <span>
+            <span className="font-medium">Do not move for urgent bookings</span>
+            <span className="block text-[13px] text-muted-foreground">For example a laboratory with fixed equipment. An urgent booking cannot take this room at class time unless the Registrar confirms.</span>
+          </span>
+        </label>
       </FieldGroup>
 
       <div className="mt-4 space-y-2" aria-live="polite">

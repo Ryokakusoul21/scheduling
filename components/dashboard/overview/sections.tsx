@@ -1,10 +1,10 @@
 import Link from "next/link";
 import {
   CalendarBlank,
+  CheckCircle,
   CalendarCheck,
   ClipboardText,
   Clock,
-  Gauge,
   SealCheck,
   TrendDown,
   TrendUp,
@@ -17,12 +17,10 @@ import {
 } from "@phosphor-icons/react/ssr";
 import type { Scope } from "@/lib/permissions/scope";
 import { formatRange } from "@/lib/scheduler/timetable";
-import { getAdminCounts, getRecentActivity, getToday, getWorkload } from "./data";
+import { getAdminCounts, getRecentActivity, getToday, getUrgentMoves, getWorkload } from "./data";
 import { AttentionList, KpiRow, LINK_CLASS, QuietState, Section, type AttentionItem } from "./kit";
-import { LatestFixes } from "./latest-fixes";
 import { PendingFixes } from "./pending-fixes";
 import { RecentActivity } from "./recent-activity";
-import { WorkloadChart } from "./workload-chart";
 
 /** Async dashboard sections; each streams in behind its own skeleton. */
 
@@ -59,7 +57,7 @@ export async function AdminAttention({ scope }: { scope: Scope }) {
     { key: "reports", icon: UserMinus, tone: "warning" as const, title: "Faculty unavailability reports", detail: "Reassign or cancel the affected classes", count: c.pendingReports, href: "/adjustments" },
     { key: "publish", icon: UploadSimple, tone: "info" as const, title: "Classes awaiting approval", detail: "Drafts and edits sent for review in the Scheduler", count: c.toPublish, href: "/scheduler" },
     { key: "requests", icon: ClipboardText, tone: "info" as const, title: "Pending schedule requests", detail: "Faculty waiting for a decision", count: c.pendingRequests, href: "/requests" },
-    { key: "accounts", icon: UserCheck, tone: "info" as const, title: "Accounts awaiting approval", detail: "Verified registrations need the Administrator", count: c.pendingAccounts, href: "/admin/users" },
+    { key: "accounts", icon: UserCheck, tone: "info" as const, title: "Accounts awaiting approval", detail: "Verified registrations need the Registrar", count: c.pendingAccounts, href: "/admin/users" },
     { key: "sections", icon: CalendarBlank, tone: "neutral" as const, title: "Sections with no classes", detail: "Nothing scheduled yet in the active terms", count: c.unscheduledSections, href: "/scheduler" },
   ].filter((a) => a.count > 0);
 
@@ -77,6 +75,13 @@ export async function AdminAttention({ scope }: { scope: Scope }) {
 export async function PendingFixesSection({ scope }: { scope: Scope }) {
   const workload = await getWorkload(scope);
   const proposals = workload.proposals.filter((p) => p.status === "PENDING");
+  if (proposals.length === 0) {
+    return (
+      <p className="flex items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
+        <CheckCircle className="size-4 text-emerald-600" aria-hidden /> No workload fixes awaiting approval.
+      </p>
+    );
+  }
   return (
     <Section id="pending-fixes" title="Fixes awaiting approval" count={proposals.length} href="/workload">
       <PendingFixes proposals={proposals} unit={unitOf(workload.limits.measure)} />
@@ -84,32 +89,33 @@ export async function PendingFixesSection({ scope }: { scope: Scope }) {
   );
 }
 
-export async function WorkloadSection({ scope, title = "Faculty workload" }: { scope: Scope; title?: string }) {
-  const workload = await getWorkload(scope);
-  const checkedAt = workload.status?.checkedAt;
+/** What urgent room bookings moved in the last seven days, so overuse is easy to spot. */
+export async function UrgentMovesSection() {
+  const m = await getUrgentMoves();
   return (
-    <Section
-      id="faculty-workload"
-      title={title}
-      count={workload.rows.length}
-      actions={
-        <span className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
-          <Gauge className="size-4" />
-          Head of Department approval required
-          {checkedAt && ` · Checked ${new Date(checkedAt).toLocaleTimeString("en-PH", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit" })}`}
-        </span>
-      }
-    >
-      <WorkloadChart rows={workload.rows} unit={unitOf(workload.limits.measure)} />
-    </Section>
-  );
-}
-
-export async function LatestFixesSection({ scope }: { scope: Scope }) {
-  const workload = await getWorkload(scope);
-  return (
-    <Section id="latest-fixes" title="Latest fixes" href="/workload">
-      <LatestFixes fixes={workload.fixes} />
+    <Section id="urgent-moves" title="Moved by urgent bookings" count={m.classes} href="/bookings" linkLabel="Open Room Booking">
+      {m.bookings === 0 ? (
+        <QuietState icon={CheckCircle} title="No classes moved">Urgent bookings have not moved any class in the last 7 days.</QuietState>
+      ) : (
+        <div className="space-y-3">
+          <p>
+            {m.classes} {plural(m.classes, "class", "classes")} moved by {m.bookings} urgent {plural(m.bookings, "booking")} in the last 7 days.
+          </p>
+          <ul className="flex flex-wrap gap-2" aria-label="Reasons given">
+            {m.reasons.map((r) => (
+              <li key={r.label} className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium">{r.label} · {r.count}</li>
+            ))}
+          </ul>
+          <ul className="divide-y rounded-lg border">
+            {m.latest.map((b, i) => (
+              <li key={i} className="flex flex-wrap items-center justify-between gap-2 p-3 text-[13px]">
+                <span className="min-w-0"><span className="font-medium">{b.purpose}</span> · {b.room}</span>
+                <span className="text-muted-foreground">{b.moved} {plural(b.moved, "class", "classes")} moved</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </Section>
   );
 }

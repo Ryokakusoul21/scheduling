@@ -8,7 +8,7 @@ import { SETTING_REQUIRE_APPROVAL } from "@/lib/auth/config";
 import { SETTING_BOOKING, SETTING_WORKLOAD } from "@/lib/settings";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
 
-const ADMIN = ["ADMINISTRATOR"] as const;
+const ADMIN = ["SUPER_ADMINISTRATOR"] as const;
 
 const schema = z.object({
   name: z.string().min(1),
@@ -71,7 +71,7 @@ export async function setRequireApprovalAction(enabled: boolean) {
   await prisma.auditLog.create({
     data: {
       userId: admin.id,
-      action: `${enabled ? "Enabled" : "Disabled"} Administrator approval for new registrations`,
+      action: `${enabled ? "Enabled" : "Disabled"} Registrar approval for new registrations`,
       entity: "SystemSetting",
       entityId: SETTING_REQUIRE_APPROVAL,
     },

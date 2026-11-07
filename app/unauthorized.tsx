@@ -1,6 +1,6 @@
 import { StatusPage } from "@/components/errors/status-page";
 
-export const metadata = { title: "Sign In Required · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Sign In Required · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default function Unauthorized() {
   return (

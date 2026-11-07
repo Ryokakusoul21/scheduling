@@ -11,12 +11,12 @@ import { accountApprovedEmail } from "@/lib/email/templates";
 import { passwordSchema } from "@/lib/validation/auth";
 import { deleteAvatarFiles } from "@/lib/avatar/storage";
 
-const ADMIN = ["ADMINISTRATOR"] as const;
+const ADMIN = ["SUPER_ADMINISTRATOR"] as const;
 
 const createSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
-  role: z.enum(["ADMINISTRATOR", "HEAD_OF_DEPARTMENT", "FACULTY"]),
+  role: z.enum(["SUPER_ADMINISTRATOR", "REGISTRAR", "HEAD_OF_DEPARTMENT", "FACULTY"]),
   facultyId: z.string().optional(),
   password: passwordSchema,
 });
@@ -55,7 +55,7 @@ export async function createUserAction(formData: FormData) {
 
 const updateSchema = z.object({
   name: z.string().min(1),
-  role: z.enum(["ADMINISTRATOR", "HEAD_OF_DEPARTMENT", "FACULTY"]),
+  role: z.enum(["SUPER_ADMINISTRATOR", "REGISTRAR", "HEAD_OF_DEPARTMENT", "FACULTY"]),
   status: z.enum(["PENDING", "ACTIVE", "INACTIVE", "SUSPENDED"]),
   facultyId: z.string().optional(),
 });

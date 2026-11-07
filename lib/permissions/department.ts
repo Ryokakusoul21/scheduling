@@ -7,7 +7,7 @@ import { scopeQuery } from "./policy";
 type Who = Pick<Scope, "isAdmin" | "manageDepartmentId"> & Partial<Pick<Scope, "userId" | "role" | "status" | "archivedAt" | "departmentId" | "departmentIds" | "actingDepartmentIds" | "programIds" | "facultyId">>;
 const toPolicyUser = (scope: Who) => ({
   id: scope.userId,
-  role: scope.role ?? (scope.isAdmin ? "ADMINISTRATOR" : "DENIED"),
+  role: scope.role ?? (scope.isAdmin ? "REGISTRAR" : "DENIED"),
   status: scope.status ?? (scope.isAdmin ? "ACTIVE" : "INACTIVE"),
   archivedAt: scope.archivedAt,
   departmentId: scope.departmentId,
@@ -18,7 +18,7 @@ const toPolicyUser = (scope: Who) => ({
 });
 
 /**
- * Query filters that limit a Head of Department to the department they handle; the Administrator sees
+ * Query filters that limit a Head of Department to the department they handle; the Registrar sees
  * everything. Records of other departments are left out of the query, so they never reach the page.
  * Shared rooms and General Education subjects (no department) stay visible to every department.
  */
@@ -62,7 +62,7 @@ export async function logBlocked(scope: Pick<Scope, "userId" | "role" | "departm
   const since = new Date(Date.now() - 15 * 60_000);
   const repeated = await prisma.auditLog.count({ where: { userId: scope.userId, action: { startsWith: "Blocked:" }, createdAt: { gte: since } } });
   if (repeated >= 5 && repeated % 5 === 0) {
-    const administrators = await prisma.user.findMany({ where: { role: "ADMINISTRATOR", status: "ACTIVE", archivedAt: null }, select: { id: true } });
+    const administrators = await prisma.user.findMany({ where: { role: { in: ["SUPER_ADMINISTRATOR", "REGISTRAR"] }, status: "ACTIVE", archivedAt: null }, select: { id: true } });
     await prisma.notification.createMany({
       data: administrators.map((administrator) => ({
         userId: administrator.id,

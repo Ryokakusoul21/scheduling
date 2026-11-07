@@ -3,11 +3,14 @@
  * Pages still call requireRole() as a second line of defense; this map lets the
  * proxy answer with a real 403 before any HTML streams.
  */
-import { ADMIN_ROLES, STAFF_ROLES, TEACHING_ROLES, type AppRole } from "./roles";
+import { ADMIN_ROLES, STAFF_ROLES, SUPER_ROLES, TEACHING_ROLES, type AppRole } from "./roles";
 
 export const ROUTE_ROLES: { prefix: string; roles: AppRole[] }[] = [
-  { prefix: "/calendar/proposals", roles: ["ADMINISTRATOR", "HEAD_OF_DEPARTMENT"] },
-    { prefix: "/admin", roles: ADMIN_ROLES },
+  { prefix: "/calendar/proposals", roles: STAFF_ROLES },
+  { prefix: "/admin/users", roles: SUPER_ROLES },
+  { prefix: "/admin/audit-logs", roles: SUPER_ROLES },
+  { prefix: "/admin/settings", roles: SUPER_ROLES },
+  { prefix: "/admin", roles: ADMIN_ROLES },
   { prefix: "/academic-years", roles: ADMIN_ROLES },
   { prefix: "/programs", roles: STAFF_ROLES },
   { prefix: "/subjects", roles: STAFF_ROLES },
@@ -17,7 +20,6 @@ export const ROUTE_ROLES: { prefix: string; roles: AppRole[] }[] = [
   { prefix: "/import", roles: STAFF_ROLES },
   { prefix: "/reports", roles: STAFF_ROLES },
   { prefix: "/analytics", roles: STAFF_ROLES },
-  { prefix: "/forecast", roles: STAFF_ROLES },
   { prefix: "/adjustments", roles: STAFF_ROLES },
   { prefix: "/constraints", roles: STAFF_ROLES },
   { prefix: "/availability", roles: TEACHING_ROLES },

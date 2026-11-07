@@ -29,6 +29,8 @@ describe("timetable analytics", () => {
     expect(countChange(110, 100)).toMatchObject({ value: 10, unit: "percent" });
     expect(countChange(5, null).value).toBeNull();
     expect(countChange(5, 0).value).toBeNull();
+    expect(countChange(486, 35).value).toBeNull();
+    expect(countChange(100, 30).value).toBe(233.3);
     expect(rateChange(42.5, 40, true)).toMatchObject({ value: 2.5, unit: "points" });
   });
 

@@ -1,8 +1,9 @@
 "use client";
 
 import { toast } from "sonner";
-import { FilePdf, FileXls, Printer } from "@phosphor-icons/react/ssr";
+import { CaretDown, DownloadSimple, FilePdf, FileXls, Printer } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { downloadText, toCsv, type Column } from "@/lib/export/csv";
 import { activitiesDoc, downloadReportCsv, printReport, timetableDoc, type ActivityRow, type ReportDoc, type TimetableRow } from "@/lib/export/report";
 
@@ -23,11 +24,30 @@ export function ExportButtons<T>({ filename, rows, columns }: { filename: string
   );
 }
 
+/** The same spreadsheet and PDF export in one menu, for crowded toolbars. */
+export function ExportMenu<T>({ filename, rows, columns }: { filename: string; rows: T[]; columns: Column<T>[] }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button size="sm" variant="outline" className="print:hidden" />}>
+        <DownloadSimple className="size-4" /> Export <CaretDown className="size-3.5" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem disabled={rows.length === 0} onClick={() => downloadText(`${filename}.csv`, toCsv(rows, columns))}>
+          <FileXls className="size-4" /> Spreadsheet
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => window.print()}>
+          <FilePdf className="size-4" /> PDF
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /** Institution header shown only when printing or saving as PDF. */
 export function PrintHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="mb-4 hidden text-center print:block">
-      <p className="font-semibold">GRANBY COLLEGES OF SCIENCE &amp; TECHNOLOGY</p>
+      <p className="font-semibold">GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY</p>
       <p className="text-sm">{title}</p>
       {subtitle && <p className="text-xs">{subtitle}</p>}
     </div>

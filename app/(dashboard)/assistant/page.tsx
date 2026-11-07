@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { AssistantChat, AssistantHeader } from "@/components/assistant/assistant-chat";
 import { getAssistantHistory } from "./actions";
 
-export const metadata = { title: "Scheduling Assistant · GRANBY COLLEGES OF SCIENCE & TECHNOLOGY" };
+export const metadata = { title: "Scheduling Assistant · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function AssistantPage() {
   const user = await requireUser();

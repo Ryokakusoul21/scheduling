@@ -75,7 +75,7 @@ export async function undoFixAction(id: string): Promise<Result> {
   if (!fix) return { ok: false, error: "This fix no longer exists." };
   if (!scope.isAdmin) {
     const both = await prisma.faculty.findMany({ where: { id: { in: [fix.fromFacultyId, fix.toFacultyId] } }, select: { departmentId: true } });
-    if (!both.every((f) => canManageDepartment(scope, f.departmentId))) return { ok: false, error: "Only the Administrator can undo fixes that cross departments." };
+    if (!both.every((f) => canManageDepartment(scope, f.departmentId))) return { ok: false, error: "Only the Registrar can undo fixes that cross departments." };
   }
   const problem = await undoFix(id, scope.userId);
   if (problem) return { ok: false, error: problem };
