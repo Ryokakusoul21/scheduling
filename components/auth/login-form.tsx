@@ -19,7 +19,7 @@ import { loginSchema, type LoginInput } from "@/lib/validation/auth";
 import type { LoginErrorCode } from "@/lib/auth/errors";
 
 // Demo shortcuts are a development aid only and never ship to production.
-const SHOW_DEMO = process.env.NODE_ENV !== "production";
+const SHOW_DEMO = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_SHOW_DEMO === "true";
 const DEMO_PASSWORD = "Passw0rd!";
 
 const DEMO_ACCOUNTS: Record<Audience, { label: string; email: string }[]> = { staff: DEMO_STAFF, student: DEMO_STUDENTS };
