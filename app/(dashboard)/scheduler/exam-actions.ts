@@ -5,14 +5,13 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { EXAM_TYPES } from "@/lib/examinations/types";
 import { departmentWhere, isForeign } from "@/lib/permissions/department";
-import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { requireScope, type Scope } from "@/lib/permissions/scope";
 import { refuseSection, sectionAccess } from "@/lib/permissions/section-access";
 import { loadPlan } from "@/lib/occupancy/load";
 import { describeClash, findClashes } from "@/lib/occupancy/engine";
 import { loadExamContext } from "@/lib/examinations/context";
 import { checkExaminations, hasHardConflict, type ExamSlot } from "@/lib/examinations/rules";
-import { notifyManagers } from "@/lib/notify";
+import { LOCKED_MESSAGE, createSubmission, lockingSubmission, notifySuperAdministrators } from "@/lib/scheduler/submissions";
 
 type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -82,7 +81,7 @@ async function resourcesAllowed(scope: Scope, d: ExamInput) {
 }
 
 export async function saveExamAction(input: ExamInput, id?: string): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const parsed = examSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid examination details." };
   const d = parsed.data;
@@ -91,6 +90,7 @@ export async function saveExamAction(input: ExamInput, id?: string): Promise<Res
   for (const sectionId of [d.sectionId, current?.sectionId]) {
     const access = sectionId ? await sectionAccess(scope, sectionId) : "ok";
     if (access !== "ok") return { ok: false, error: await refuseSection(scope, access, "Examination", id) };
+    if (sectionId && (await lockingSubmission(sectionId, d.semesterId, d.type))) return { ok: false, error: LOCKED_MESSAGE };
   }
   const scheduled = await prisma.schedule.count({ where: { semesterId: d.semesterId, sectionId: d.sectionId, subjectId: d.subjectId, status: { not: "ARCHIVED" } } });
   if (!scheduled) return { ok: false, error: "An examination must belong to a class in the class schedule." };
@@ -115,7 +115,7 @@ const moveSchema = z.object({ id: z.string().min(1), date: z.string().regex(/^\d
 
 /** Drag-and-drop move: changes only the date and time, with the same checks as a save. */
 export async function moveExamAction(input: z.infer<typeof moveSchema>): Promise<Result> {
-  await requireScope(...STAFF_ROLES);
+  await requireScope("HEAD_OF_DEPARTMENT");
   const parsed = moveSchema.safeParse(input);
   if (!parsed.success || parsed.data.endMin <= parsed.data.startMin) return { ok: false, error: "Invalid move." };
   const { id, ...slot } = parsed.data;
@@ -126,11 +126,12 @@ export async function moveExamAction(input: z.infer<typeof moveSchema>): Promise
 
 /** Removes the examination slot; the class returns to the Unscheduled tab because that list is derived from what is placed. */
 export async function removeExamAction(id: string): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const exam = await prisma.examination.findUnique({ where: { id } });
   if (!exam) return { ok: true, data: undefined };
   const access = await sectionAccess(scope, exam.sectionId);
   if (access !== "ok") return { ok: false, error: await refuseSection(scope, access, "Examination", id) };
+  if (await lockingSubmission(exam.sectionId, exam.semesterId, exam.type)) return { ok: false, error: LOCKED_MESSAGE };
   await prisma.examination.delete({ where: { id } });
   await prisma.auditLog.create({ data: { userId: scope.userId, role: scope.role, departmentId: exam.departmentId, action: "Moved examination to Unscheduled", entity: "Examination", entityId: id, oldValue: exam } });
   refresh();
@@ -144,7 +145,7 @@ export async function submitExamsAction(ids: string[]): Promise<Result<{ count: 
   if (!parsed.success) return { ok: false, error: "Select at least one examination." };
   const selected = await prisma.examination.findMany({
     where: { id: { in: parsed.data }, ...departmentWhere.examination(scope), status: "DRAFT" },
-    include: { section: { select: { studentCount: true, name: true } }, room: { select: { capacity: true } } },
+    include: { section: { select: { studentCount: true, name: true, departmentId: true } }, room: { select: { capacity: true } } },
   });
   if (selected.length !== new Set(parsed.data).size) return { ok: false, error: "One or more examinations were not found or are not drafts." };
 
@@ -158,9 +159,24 @@ export async function submitExamsAction(ids: string[]): Promise<Result<{ count: 
     );
     if (hasHardConflict(issues)) return { ok: false, error: `Resolve the conflicts in the ${type.toLowerCase().replace("_", "-")} examinations before submitting.` };
   }
-  const { count } = await prisma.examination.updateMany({ where: { id: { in: parsed.data }, status: "DRAFT" }, data: { status: "REVIEW", submittedAt: new Date() } });
-  await prisma.auditLog.create({ data: { userId: scope.userId, role: scope.role, departmentId: scope.departmentId, action: `Submitted ${count} examination(s) for Registrar review`, entity: "Examination" } });
-  await notifyManagers(null, { title: "Examination schedule submitted", message: `${count} examination(s) await your review.`, link: "/admin/review-center?queue=examinations" });
+  // One package per department, term, and examination period.
+  const groups = new Map<string, { departmentId: string; semesterId: string; examType: (typeof selected)[number]["type"]; ids: string[] }>();
+  for (const e of selected) {
+    const departmentId = e.section.departmentId ?? scope.departmentId;
+    if (!departmentId) return { ok: false, error: "This section has no department, so its examinations cannot be submitted." };
+    const key = `${departmentId}:${e.semesterId}:${e.type}`;
+    const g = groups.get(key) ?? { departmentId, semesterId: e.semesterId, examType: e.type, ids: [] };
+    g.ids.push(e.id);
+    groups.set(key, g);
+  }
+  let count = 0;
+  for (const g of groups.values()) {
+    const created = await createSubmission({ kind: "EXAMINATION", ...g, userId: scope.userId });
+    if (!created) return { ok: false, error: `${count ? `${count} examination(s) were submitted. ` : ""}This examination period is already waiting for the Super Administrator's decision.` };
+    count += created.classCount;
+  }
+  await prisma.auditLog.create({ data: { userId: scope.userId, role: scope.role, departmentId: scope.departmentId, action: `Submitted ${count} examination(s) for Super Administrator approval`, entity: "Examination" } });
+  await notifySuperAdministrators({ title: "Examination timetable submitted", message: `${count} examination(s) in ${groups.size} timetable(s) await your decision.`, link: "/admin/review-center?queue=examinations" });
   refresh();
   revalidatePath("/admin/review-center");
   return { ok: true, data: { count } };

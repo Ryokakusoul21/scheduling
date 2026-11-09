@@ -60,7 +60,7 @@ export async function ExamMode({ scope, academicYearId, academicYearControl, mod
     classes,
     windows: contexts.map((c) => ({ type: c.type, window: c.window })),
     blocked: [...(contexts[0]?.blockedDates ?? new Map<string, string>())],
-    canEdit: true,
+    canEdit: hod,
     canSubmit: hod,
     isAdmin: scope.isAdmin,
   };

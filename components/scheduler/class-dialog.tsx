@@ -53,6 +53,7 @@ export function ClassDialog({
   buildContext,
   canPublish,
   directEdit,
+  readOnly = false,
   onSave,
   onDelete,
 }: {
@@ -64,6 +65,7 @@ export function ClassDialog({
   buildContext: ConflictContextBuilder;
   canPublish: boolean;
   directEdit: boolean;
+  readOnly?: boolean;
   onSave: (input: ClassInput) => Promise<boolean>;
   onDelete: (id: string) => Promise<boolean>;
 }) {
@@ -80,6 +82,7 @@ export function ClassDialog({
             buildContext={buildContext}
             canPublish={canPublish}
             directEdit={directEdit}
+            readOnly={readOnly}
             onSave={onSave}
             onDelete={onDelete}
             onClose={() => onOpenChange(false)}
@@ -97,6 +100,7 @@ function ClassForm({
   buildContext,
   canPublish,
   directEdit,
+  readOnly,
   onSave,
   onDelete,
   onClose,
@@ -107,6 +111,7 @@ function ClassForm({
   buildContext: ConflictContextBuilder;
   canPublish: boolean;
   directEdit: boolean;
+  readOnly: boolean;
   onSave: (input: ClassInput) => Promise<boolean>;
   onDelete: (id: string) => Promise<boolean>;
   onClose: () => void;
@@ -213,14 +218,17 @@ function ClassForm({
   return (
     <form onSubmit={submit}>
       <DialogHeader>
-        <DialogTitle>{form.id ? "Edit class" : "Add class"}</DialogTitle>
+        <DialogTitle>{readOnly ? "Class details" : form.id ? "Edit class" : "Add class"}</DialogTitle>
         <DialogDescription>
-          {directEdit
+          {readOnly
+            ? "View only. The Head of Department of this section makes changes."
+            : directEdit
             ? "Changes are saved and applied immediately."
             : "Changes to published classes are sent for review before they go live."}
         </DialogDescription>
       </DialogHeader>
 
+      <fieldset disabled={readOnly} className="contents">
       <FieldGroup className="mt-4 grid gap-4 sm:grid-cols-2">
         <Field>
           <FieldLabel htmlFor="cls-section">Section</FieldLabel>
@@ -337,9 +345,11 @@ function ClassForm({
         {preview.length === 0 && form.facultyId && form.roomId && <NoConflict>No conflicts for this time slot.</NoConflict>}
       </div>
 
+      </fieldset>
+
       <DialogFooter className="mt-6 flex-wrap gap-2 sm:justify-between">
         <div className="flex gap-2">
-          {form.id && (
+          {form.id && !readOnly && (
             <>
               <Button
                 type="button"
@@ -367,13 +377,15 @@ function ClassForm({
           )}
         </div>
         <div className="flex gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            Cancel
+          <Button type="button" variant={readOnly ? "outline" : "ghost"} onClick={onClose}>
+            {readOnly ? "Close" : "Cancel"}
           </Button>
-          <Button type="submit" disabled={pending}>
-            {pending && <CircleNotch className="size-4 animate-spin" />}
-            {overlaps.length ? "Save anyway" : form.id ? "Save changes" : "Add class"}
-          </Button>
+          {!readOnly && (
+            <Button type="submit" disabled={pending}>
+              {pending && <CircleNotch className="size-4 animate-spin" />}
+              {overlaps.length ? "Save anyway" : form.id ? "Save changes" : "Add class"}
+            </Button>
+          )}
         </div>
       </DialogFooter>
     </form>

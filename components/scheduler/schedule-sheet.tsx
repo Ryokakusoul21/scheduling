@@ -109,7 +109,8 @@ export interface SheetSource {
 }
 
 /** One printable "Schedule of Classes" page for a section, laid out like the paper schedule. */
-export function SectionSheet({ source, className }: { source: SheetSource; className?: string }) {
+/** highlight outlines classes in blue (for example, those in a submission); flagged outlines conflicts in red. */
+export function SectionSheet({ source, className, highlight, flagged }: { source: SheetSource; className?: string; highlight?: ReadonlySet<string>; flagged?: ReadonlySet<string> }) {
   const { section, entries, subjects, faculty, rooms } = source;
   const rows = useMemo(() => {
     const classes = entries.filter((e) => e.sectionId === section.id && e.status !== "ARCHIVED");
@@ -169,7 +170,7 @@ export function SectionSheet({ source, className }: { source: SheetSource; class
             return (
               <div
                 key={e.id}
-                className={cn("z-[1] flex flex-col items-center justify-center gap-0 overflow-hidden border-b border-r border-black px-1 text-center text-[10px] leading-[1.2]", fillOf(e.subjectId))}
+                className={cn("z-[1] flex flex-col items-center justify-center gap-0 overflow-hidden border-b border-r border-black px-1 text-center text-[10px] leading-[1.2]", fillOf(e.subjectId), highlight?.has(e.id) && "ring-2 ring-inset ring-blue-600", flagged?.has(e.id) && "ring-[3px] ring-inset ring-red-600")}
                 style={{ gridRow: `${first} / span ${span}`, gridColumn: DAYS.findIndex(([d]) => d === e.dayOfWeek) + 3 }}
                 title={`${subject?.code ?? ""} ${formatRange(e.startMin, e.endMin)}`}
               >

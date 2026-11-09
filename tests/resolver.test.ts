@@ -98,7 +98,7 @@ describe("solve", () => {
     expectNoHardIntroduced(input, p.changes);
   });
 
-  it("trims hours over the requirement, and flags a likely data problem instead of trimming", () => {
+  it("trims hours over the requirement, noting a likely data problem when far over", () => {
     const over = fixture({ entries: [entry("a", { endMin: 570 }), entry("b", { dayOfWeek: "TUESDAY", endMin: 570 }), entry("c", { dayOfWeek: "WEDNESDAY", endMin: 570 })] });
     over.sections[0].curriculum = [{ subjectId: "ge101", component: "LECTURE", requiredMin: 180 }];
     const trimmed = solve(over, options());
@@ -108,9 +108,8 @@ describe("solve", () => {
     const double = fixture({ entries: [entry("a", { endMin: 480 + 360 })] });
     double.sections[0].curriculum = [{ subjectId: "ge101", component: "LECTURE", requiredMin: 180 }];
     const flagged = solve(double, options());
-    expect(flagged.changes).toHaveLength(0);
-    expect(flagged.unresolved[0].issue.dataProblem).toBe(true);
-    expect(flagged.unresolved[0].link?.href).toBe("/subjects");
+    expect(flagged.unresolved).toHaveLength(0);
+    expect(flagged.changes.some((c) => c.type === "HOURS_ADJUSTED" && c.reason.includes("Subjects"))).toBe(true);
   });
 
   it("reports an impossible placement as unresolved without breaking a hard rule", () => {

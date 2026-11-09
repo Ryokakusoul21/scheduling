@@ -11,8 +11,8 @@ export const SCHEDULING_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR", 
 /** Roles whose schedule edits apply immediately, with no review step. */
 export const DIRECT_EDIT_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR"];
 
-/** Roles that approve and publish schedules and workload reassignments. */
-export const PUBLISH_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR"];
+/** Roles that approve and publish class and examination schedules. */
+export const PUBLISH_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR"];
 
 /** Roles with school-wide access to every department, term, room, schedule, and report. */
 export const ADMIN_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR"];

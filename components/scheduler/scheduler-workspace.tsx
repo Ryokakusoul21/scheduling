@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePersisted } from "@/hooks/use-persisted";
@@ -22,8 +23,6 @@ import {
   Lightning,
   MagicWand,
   Plus,
-  Rows,
-  SquaresFour,
   UploadSimple,
   WarningOctagon,
   X,
@@ -56,12 +55,13 @@ import { rankFaculty, rankRooms } from "@/lib/scheduler/suggest";
 import { assignedFor } from "@/lib/subjects/assignment-rules";
 import type { DayOfWeek, SchedEntry } from "@/lib/scheduler/types";
 import { levelLabel, stageLabel } from "@/lib/academics/levels";
+import { SubmitTimetableDialog, type SubmitSummary } from "./submit-timetable-dialog";
 import { deleteClassAction, moveClassAction, publishClassesAction, saveClassAction, submitClassesAction, type ClassInput } from "@/app/(dashboard)/scheduler/actions";
 
 import { collision, gridKeyboardCoordinates } from "./dnd-grid";
 import { Timetable, PALETTE, type BlockInfo, type DropPreview } from "./timetable";
 import { ClassDialog, type ClassDraft } from "./class-dialog";
-import { ChecksHeading, ChecksRail, FilterCard, FilterSelect, PanelSection, ScheduleHeader, ViewToggle } from "./schedule-chrome";
+import { ChecksHeading, ChecksRail, FilterCard, FilterSelect, PanelSection, ScheduleHeader } from "./schedule-chrome";
 import { ConflictsPanel, SectionNeedsSummary, UnscheduledPanel, WarningsPanel } from "./side-panels";
 import { ResolveIssues, type ResolveRequest } from "./resolve-issues";
 import { buildResolverInput } from "@/lib/scheduler/resolver/client-input";
@@ -73,7 +73,7 @@ import { checkSlot, slotMap, suggestRooms } from "@/lib/scheduler/slot-check";
 import { UnscheduledTray } from "./unscheduled-tray";
 import { ConstraintReportPanel, useOverridePrompt } from "./constraint-feedback";
 import { useWorkloadOverride } from "./workload-override";
-import { ScheduleList, type RowInfo } from "./schedule-list";
+import type { RowInfo } from "./schedule-list";
 import { ACTIVE_TERMS, useSchedulerFilters, type Filters } from "./use-scheduler-filters";
 import type { SchedulerData, SchedulerEntry, SchedulerPermissions } from "./types";
 
@@ -117,7 +117,9 @@ export function SchedulerWorkspace({
   );
 
   const dndId = useId();
-  const [view, setView] = useState<"timetable" | "table">("timetable");
+  const router = useRouter();
+  const [submitSummary, setSubmitSummary] = useState<SubmitSummary | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   // Open side panel sections and the hidden panel are remembered per browser.
   const [openPanels, setOpenPanels] = usePersisted<Partial<Record<PanelKey, boolean>>>("scheduler-panels", {});
   const [panelHidden, setPanelHidden] = usePersisted("scheduler-panel-hidden", false);
@@ -309,6 +311,20 @@ export function SchedulerWorkspace({
   // Totals across every section in the current filter, so the panel never shows a placeholder.
   const allNeeds = useMemo(() => allSectionNeeds(options.sections, data.subjects, entries, termOf), [options.sections, data.subjects, entries, termOf]);
   const [ruleCount, setRuleCount] = useState<number | null>(null);
+  // Sections that need a look, busiest first, for the "Where to look" helper.
+  const conflictSections = useMemo(() => {
+    const sectionOf = new Map(scopeEntries.map((e) => [e.id, e.sectionId]));
+    const counts = new Map<string, number>();
+    for (const c of scopedConflicts.filter(isOverlapConflict)) {
+      for (const id of new Set([c.entryA.id, c.entryB?.id].map((x) => (x ? sectionOf.get(x) : undefined)).filter((x): x is string => !!x))) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    return [...counts].sort((a, b) => b[1] - a[1]);
+  }, [scopeEntries, scopedConflicts]);
+  const unscheduledSections = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const n of allNeeds) counts.set(n.sectionId, (counts.get(n.sectionId) ?? 0) + 1);
+    return [...counts].sort((a, b) => b[1] - a[1]);
+  }, [allNeeds]);
   const issueTotal = (focusedSection ? needs.length : allNeeds.length) + warningCount + overlapCount;
 
 
@@ -427,8 +443,9 @@ export function SchedulerWorkspace({
   }
 
   // ---------------------------------------------------------------------------
+  /** Submits the department's whole timetable for the terms with drafts, whatever the filters show. */
   async function submitVisible() {
-    const drafts = visibleEntries.filter((e) => e.status === "DRAFT");
+    const drafts = entries.filter((e) => e.status === "DRAFT" && !e.busy);
     if (!drafts.length) return;
     const missing = facultyNotAssigned(drafts, activeFacultyIds);
     if (missing.length) {
@@ -437,18 +454,44 @@ export function SchedulerWorkspace({
         description: missing.slice(0, 5).map((c) => describe(c.entryA)).join("; "),
       });
     }
-    const ids = drafts.map((e) => e.id);
-    let res = await submitClassesAction(ids);
-    // Unbalanced loads block the submission unless the Head of Department gives a reason.
-    if (!res.ok && "imbalance" in res) {
-      const reason = await workloadOverride.prompt(res.imbalance);
-      if (!reason) return;
-      res = await submitClassesAction(ids, reason);
+    // The package: every draft or published class of the department in the terms that have drafts.
+    const terms = new Set(drafts.map((e) => e.semesterId));
+    const lineup = entries.filter((e) => !e.busy && terms.has(e.semesterId) && (e.status === "DRAFT" || e.status === "PUBLISHED"));
+    const sections = [...new Set(lineup.map((e) => e.sectionId))].map((id) => maps.section.get(id)).filter((x): x is NonNullable<typeof x> => !!x);
+    const byProgram = Map.groupBy(sections, (x) => (x.programId ? maps.program.get(x.programId)?.code : null) ?? levelLabel(x.level));
+    const department = data.departments.find((d) => d.id === sections[0]?.departmentId)?.name ?? "Your department";
+    setSubmitSummary({
+      department,
+      terms: [...terms].map((id) => maps.term.get(id)?.label ?? "this term"),
+      programs: [...byProgram].sort(([a], [b]) => a.localeCompare(b)).map(([code, list]) => ({ code, sections: list.length, years: [...new Set(list.map((x) => stageLabel(x)))].sort() })),
+      sections: sections.length,
+      classes: lineup.length,
+      drafts: drafts.length,
+    });
+  }
+
+  /** Sends the package after the Head of Department confirms in the dialog. */
+  async function confirmSubmit() {
+    const ids = entries.filter((e) => e.status === "DRAFT" && !e.busy).map((e) => e.id);
+    setSubmitting(true);
+    try {
+      let res = await submitClassesAction(ids);
+      // Unbalanced loads block the submission unless the Head of Department gives a reason.
+      if (!res.ok && "imbalance" in res) {
+        setSubmitSummary(null);
+        const reason = await workloadOverride.prompt(res.imbalance);
+        if (!reason) return;
+        res = await submitClassesAction(ids, reason);
+      }
+      if (!res.ok) return void toast.error(res.error);
+      const selected = new Set(ids);
+      setEntries((prev) => prev.map((e) => (selected.has(e.id) ? { ...e, status: "REVIEW" } : e)));
+      setSubmitSummary(null);
+      toast.success(`Submitted the whole timetable (${res.data.count} classes) for Super Administrator approval.`);
+      router.refresh();
+    } finally {
+      setSubmitting(false);
     }
-    if (!res.ok) return void toast.error(res.error);
-    const selected = new Set(ids);
-    setEntries((prev) => prev.map((e) => (selected.has(e.id) ? { ...e, status: "REVIEW" } : e)));
-    toast.success(`Submitted ${res.data.count} class schedule${res.data.count === 1 ? "" : "s"} for Registrar review.`);
   }
   // Opening the dialog
   // ---------------------------------------------------------------------------
@@ -723,12 +766,6 @@ export function SchedulerWorkspace({
     permissions.canEdit && !permissions.queueOnly ? { keys: "n", description: "Add a class", group: "Scheduler", handler: () => openNew() } : null
   );
   useShortcut({
-    keys: "t",
-    description: "Switch timetable / table view",
-    group: "Scheduler",
-    handler: () => setView((v) => (v === "timetable" ? "table" : "timetable")),
-  });
-  useShortcut({
     keys: "c",
     description: "Go to the conflicts list",
     group: "Scheduler",
@@ -924,18 +961,14 @@ export function SchedulerWorkspace({
               <WarningOctagon className="size-4" /> Conflicts
               {overlapCount > 0 && <Badge variant="destructive">{overlapCount}</Badge>}
             </Button>
-            <div role="radiogroup" aria-label="View" className="inline-flex rounded-lg border bg-card p-0.5">
-              <ViewToggle active={view === "timetable"} onClick={() => setView("timetable")} icon={SquaresFour} label="Timetable" />
-              <ViewToggle active={view === "table"} onClick={() => setView("table")} icon={Rows} label="Table" />
-            </div>
             {permissions.canPublish && pendingPublish > 0 && (
               <Button variant="outline" onClick={publishVisible}>
-                <UploadSimple className="size-4" /> Publish {pendingPublish}
+                <UploadSimple className="size-4" /> Approve and publish {pendingPublish}
               </Button>
             )}
-            {permissions.canSubmit && visibleEntries.some((e) => e.status === "DRAFT") && (
-              <Button variant="outline" onClick={submitVisible}>
-                <UploadSimple className="size-4" /> Submit for Approval
+            {permissions.canSubmit && entries.some((e) => e.status === "DRAFT" && !e.busy) && (
+              <Button variant="outline" onClick={submitVisible} title="Sends the whole department timetable: every program, year, and section">
+                <UploadSimple className="size-4" /> Submit Timetable for Approval
               </Button>
             )}
             {permissions.canEdit && (
@@ -1001,8 +1034,8 @@ export function SchedulerWorkspace({
         </FilterCard>
 
         <div className={cn("grid gap-3 lg:min-h-0 lg:flex-1 lg:overflow-hidden", panelHidden ? "lg:grid-cols-[minmax(0,1fr)_48px]" : "lg:grid-cols-[minmax(0,1fr)_320px]")}>
-          <section aria-label={view === "timetable" ? "Timetable" : "Class list"} className="flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto pr-1">
-            {focusTitle && view === "timetable" && (
+          <section aria-label="Timetable" className="flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto pr-1">
+            {focusTitle && (
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <CalendarDots className="size-4 text-primary" />
                 <span className="font-semibold">{focusTitle}</span>
@@ -1018,9 +1051,15 @@ export function SchedulerWorkspace({
               </div>
             )}
 
-            {view === "table" ? (
-              <ScheduleList entries={visibleEntries} info={rowInfo} conflictIndex={conflictIndex} highlightId={highlightId} onOpen={openEntry} />
-            ) : focus ? (
+            {!focus && (
+              <WhereToLook
+                conflicts={conflictSections}
+                unscheduled={unscheduledSections}
+                name={(id) => maps.section.get(id)?.name ?? "Section"}
+                onPick={(id) => update({ sectionId: id })}
+              />
+            )}
+            {focus ? (
               visibleTimetable.length === 0 && !permissions.canEdit ? (
                 <EmptyState icon={CalendarDots} title="No classes scheduled" description="Nothing is scheduled for this selection yet." />
               ) : (
@@ -1035,7 +1074,7 @@ export function SchedulerWorkspace({
                   heatmap={dragHeatmap}
                   slots={dragSlots}
                   onOpen={openEntry}
-                  onEmptySlot={permissions.queueOnly ? undefined : (day, start) => openNew({ dayOfWeek: day, startMin: start, endMin: start + 60 })}
+                  onEmptySlot={!permissions.canEdit || permissions.queueOnly ? undefined : (day, start) => openNew({ dayOfWeek: day, startMin: start, endMin: start + 60 })}
                   grid={GRID}
                 />
               )
@@ -1048,10 +1087,11 @@ export function SchedulerWorkspace({
                 data={data}
                 termOf={termOf}
                 onPick={(id) => update({ sectionId: id })}
+                canEdit={permissions.canEdit}
                 onResolve={permissions.canEdit ? (id) => setResolveRequest({ scope: "selected", sectionIds: [id] }) : undefined}
               />
             )}
-            {focusedSection && view === "timetable" && (
+            {focusedSection && (
               <UnscheduledTray
                 needs={needs}
                 editable={permissions.canEdit}
@@ -1059,7 +1099,7 @@ export function SchedulerWorkspace({
                 label={(n) => `${maps.subject.get(n.subjectId)?.code ?? "Subject"}${n.component === "LABORATORY" ? " (Laboratory)" : ""}`}
               />
             )}
-            {focus && view === "timetable" && permissions.canEdit && !permissions.queueOnly && (
+            {focus && permissions.canEdit && !permissions.queueOnly && (
               <p className="text-xs text-muted-foreground">
                 Tip: double-click an empty slot to add a class there · focus a class and press <kbd className="rounded border px-1">Space</kbd> to
                 move it with the arrow keys · <kbd className="rounded border px-1">?</kbd> for all shortcuts
@@ -1116,6 +1156,7 @@ export function SchedulerWorkspace({
         />
       )}
 
+      <SubmitTimetableDialog summary={submitSummary} open={!!submitSummary} pending={submitting} onOpenChange={(o) => !o && setSubmitSummary(null)} onConfirm={() => void confirmSubmit()} />
       <ClassDialog
         open={!!dialog}
         onOpenChange={(o) => !o && setDialog(null)}
@@ -1125,6 +1166,7 @@ export function SchedulerWorkspace({
         buildContext={buildContext}
         canPublish={permissions.canPublish}
         directEdit={permissions.directEdit}
+        readOnly={!permissions.canEdit}
         onSave={saveClass}
         onDelete={deleteClass}
       />
@@ -1143,6 +1185,7 @@ function SectionPicker({
   data,
   termOf,
   onPick,
+  canEdit,
   onResolve,
 }: {
   sections: SchedulerData["sections"];
@@ -1152,6 +1195,7 @@ function SectionPicker({
   data: SchedulerData;
   termOf: (sectionId: string) => string;
   onPick: (id: string) => void;
+  canEdit: boolean;
   onResolve?: (id: string) => void;
 }) {
   const [tab, setTab] = useState<string>("");
@@ -1229,7 +1273,7 @@ function SectionPicker({
                   {onResolve && s.editable && (remaining > 0 || clash > 0) && (
                     <Button size="sm" variant="outline" onClick={() => onResolve(s.id)} aria-label={`Resolve issues in ${s.name}`}><MagicWand className="size-3.5" /> Resolve</Button>
                   )}
-                  <Button size="sm" onClick={() => onPick(s.id)}>Open timetable editor</Button>
+                  {canEdit && <Button size="sm" onClick={() => onPick(s.id)}>Open timetable editor</Button>}
                 </span>
               </div>
               <SectionSheet source={sourceOf(s)} />
@@ -1238,5 +1282,37 @@ function SectionPicker({
         })}
       </div>
     </div>
+  );
+}
+
+const SHOWN_SECTIONS = 8;
+
+/** Lists the sections with double bookings and with unscheduled subjects, so viewers know where to look first. */
+function WhereToLook({ conflicts, unscheduled, name, onPick }: { conflicts: [string, number][]; unscheduled: [string, number][]; name: (id: string) => string; onPick: (id: string) => void }) {
+  if (!conflicts.length && !unscheduled.length) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm">
+        <CheckCircle className="size-5 text-emerald-600" weight="fill" aria-hidden /> Every section is complete with no conflicts.
+      </div>
+    );
+  }
+  const group = (title: string, hint: string, rows: [string, number][], tone: string, unit: string) => rows.length > 0 && (
+    <div className="space-y-2">
+      <p className="text-sm font-semibold">{title} <span className="font-normal text-muted-foreground">· {rows.length} section{rows.length === 1 ? "" : "s"} · {hint}</span></p>
+      <div className="flex flex-wrap gap-1.5">
+        {rows.slice(0, SHOWN_SECTIONS).map(([id, count]) => (
+          <button key={id} type="button" onClick={() => onPick(id)} className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors", tone)}>
+            {name(id)} <span className="rounded-full bg-background/80 px-1.5 tabular-nums">{count} {unit}</span>
+          </button>
+        ))}
+        {rows.length > SHOWN_SECTIONS && <span className="self-center text-xs text-muted-foreground">and {rows.length - SHOWN_SECTIONS} more in Schedule checks</span>}
+      </div>
+    </div>
+  );
+  return (
+    <section aria-label="Where to look" className="grid gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
+      {group("Conflicts", "double bookings of a room, faculty member, or section", conflicts, "border-red-500/40 bg-red-500/5 text-red-700 hover:bg-red-500/10 dark:text-red-400", "conflicts")}
+      {group("Unscheduled subjects", "subjects not yet placed on the timetable", unscheduled, "border-amber-500/40 bg-amber-500/5 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400", "left")}
+    </section>
   );
 }

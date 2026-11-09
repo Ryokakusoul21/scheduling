@@ -1,5 +1,8 @@
 import { Suspense } from "react";
 import { prisma } from "@/lib/db/prisma";
+import type { AppRole } from "@/lib/permissions/roles";
+import { ViewAsBanner } from "@/components/layout/view-as";
+import { publishDueSubmissions } from "@/lib/scheduler/submissions";
 import { requireStudent } from "@/lib/auth/session";
 import { Sidebar } from "@/components/layout/sidebar";
 import { MobileNav } from "@/components/layout/mobile-nav";
@@ -11,6 +14,8 @@ import { AppBreadcrumbs } from "@/components/ux/breadcrumbs";
 /** Student portal shell: the same sidebar, top bar, and breadcrumbs as the staff dashboards, limited to student pages. */
 export default async function StudentPortalLayout({ children }: { children: React.ReactNode }) {
   const user = await requireStudent();
+  // Approved timetables whose publish time has passed go live on the next page load.
+  await publishDueSubmissions();
   const [unread, account] = await Promise.all([
     prisma.notification.count({ where: { userId: user.id, isRead: false } }),
     prisma.user.findUnique({ where: { id: user.id }, select: { name: true, image: true, student: { select: { studentNumber: true } } } }),
@@ -19,13 +24,14 @@ export default async function StudentPortalLayout({ children }: { children: Reac
 
   return (
     <ShortcutProvider allowedHrefs={[]}>
+      {user.realId && <ViewAsBanner name={user.name ?? user.email ?? "Account"} role={ROLE_LABELS[user.role as AppRole]} realName={user.realName ?? "Super Administrator"} />}
       <a
         href="#main-content"
         className="sr-only z-50 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
       >
         Skip to content
       </a>
-      <div className="fixed inset-0 flex overflow-clip bg-background print:static print:block print:overflow-visible">
+      <div className={`fixed inset-x-0 bottom-0 ${user.realId ? "top-12" : "top-0"} flex overflow-clip bg-background print:static print:block print:overflow-visible`}>
         <div className="contents print:hidden">
           <Sidebar role="STUDENT" name={account?.name ?? user.name ?? user.email ?? "Student"} image={account?.image} />
         </div>

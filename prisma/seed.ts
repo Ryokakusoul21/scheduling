@@ -497,7 +497,11 @@ async function main() {
   // One automatic class-schedule proposal and one ordinary request keep the Registrar Review Center populated.
   const automaticReview = await prisma.schedule.findFirst({ where: { semesterId: collegeTerm.id, section: { departmentId: dept.CCS } }, orderBy: { createdAt: "asc" } });
   if (automaticReview) {
-    await prisma.schedule.update({ where: { id: automaticReview.id }, data: { status: "REVIEW", generatedBy: "AI", notes: "Automatically generated conflict-free placement submitted by the Head of Department for Registrar review." } });
+    // Sent as a whole-timetable submission so the Super Administrator has one to decide on.
+    const submission = await prisma.timetableSubmission.create({
+      data: { departmentId: dept.CCS, semesterId: collegeTerm.id, version: 1, classCount: 1, submittedById: user["head.computing@granby.edu.ph"] },
+    });
+    await prisma.schedule.update({ where: { id: automaticReview.id }, data: { status: "REVIEW", submissionId: submission.id, generatedBy: "AI", notes: "Automatically generated conflict-free placement submitted by the Head of Department for Super Administrator approval." } });
     await prisma.scheduleRequest.create({
       data: {
         type: "CHANGE_ROOM", status: "PENDING", scheduleId: automaticReview.id, requestedById: user["faculty@granby.edu.ph"],

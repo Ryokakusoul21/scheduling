@@ -11,6 +11,7 @@ import type { SchedulerData } from "@/components/scheduler/types";
 import { EmptyState } from "@/components/ux/states";
 import { ModeSwitch } from "@/components/scheduler/mode-switch";
 import { ExamMode } from "./exam-mode";
+import { HeadNotices } from "@/components/scheduler/head-notices";
 import { loadWorkload } from "@/lib/workload/load";
 import { loadReport } from "@/lib/workload/optimizer";
 import { activeTermIds } from "@/lib/workload/auto";
@@ -45,6 +46,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
   if (mode === "examinations") {
     return (
       <div data-viewport-lock className="flex flex-col gap-2 lg:h-full lg:min-h-0 lg:overflow-hidden">
+        {role === "HEAD_OF_DEPARTMENT" && <HeadNotices departmentIds={scope.departmentIds} academicYearId={academicYear.id} kind="EXAMINATION" />}
         <div className="lg:min-h-0 lg:flex-1">
           <ExamMode scope={scope} academicYearId={academicYear.id} modes={<ModeSwitch mode={mode} academicYearId={academicYear.id} />} academicYearControl={<AcademicYearSwitcher key="academic-year-switcher" years={academicYears.map((y) => ({ id: y.id, name: y.name, isActive: y.isActive }))} currentId={academicYear.id} />} />
         </div>
@@ -213,6 +215,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
 
   return (
     <div data-viewport-lock className="flex flex-col gap-2 lg:h-full lg:min-h-0 lg:overflow-hidden">
+      {role === "HEAD_OF_DEPARTMENT" && <HeadNotices departmentIds={scope.departmentIds} academicYearId={academicYear.id} kind="CLASS" />}
       <div className="lg:min-h-0 lg:flex-1">
       <SchedulerWorkspace
         // Remount when switching academic year so filters reset to that year's terms.
@@ -220,7 +223,8 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
         modes={STAFF_ROLES.includes(role) ? <ModeSwitch mode={mode} academicYearId={academicYear.id} /> : undefined}
         data={data}
         permissions={{
-          canEdit: STAFF_ROLES.includes(role),
+          // Registrar and Super Administrator only view and approve; Heads of Department build schedules.
+          canEdit: role === "HEAD_OF_DEPARTMENT",
           canPublish: PUBLISH_ROLES.includes(role),
           canSubmit: role === "HEAD_OF_DEPARTMENT",
           directEdit: DIRECT_EDIT_ROLES.includes(role),

@@ -300,6 +300,9 @@ enum NotificationType {
 // ---------------------------------------------------------------------------
 
 model User {
+  timetableComments   TimetableComment[]    @relation("TimetableCommentAuthor")
+  timetablesSubmitted TimetableSubmission[] @relation("TimetableSubmitter")
+  timetablesDecided   TimetableSubmission[] @relation("TimetableDecider")
   id           String     @id @default(cuid())
   email        String     @unique
   passwordHash String
@@ -385,6 +388,7 @@ model LoginAttempt {
 // ---------------------------------------------------------------------------
 
 model Department {
+  timetableSubmissions TimetableSubmission[]
   id   String @id @default(cuid())
   code String @unique
   name String
@@ -476,6 +480,7 @@ model AcademicYear {
 
 /// A term: a College semester (optionally per program) or a basic-education quarter.
 model Semester {
+  timetableSubmissions TimetableSubmission[]
   id             String        @id @default(cuid())
   academicYearId String
   academicYear   AcademicYear  @relation(fields: [academicYearId], references: [id])
@@ -841,6 +846,9 @@ model Schedule {
   doNotMove    Boolean        @default(false)
   /// Ownership snapshot used for scope-safe reads and exports.
   departmentId String?
+  /// The whole-timetable submission this class was last sent in.
+  submissionId String?
+  submission   TimetableSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
 
   requests    ScheduleRequest[]
   adjustments ScheduleAdjustment[]
@@ -854,6 +862,73 @@ model Schedule {
   @@index([sectionId])
   @@index([departmentId])
   @@index([dayOfWeek])
+  @@index([submissionId])
+}
+
+enum TimetableSubmissionStatus {
+  SUBMITTED
+  APPROVED
+  PUBLISHED
+  RETURNED
+  REJECTED
+  /// Pulled back by the Head of Department before a decision.
+  WITHDRAWN
+}
+
+enum SubmissionKind {
+  CLASS
+  EXAMINATION
+}
+
+/// A department's full class timetable for one term, sent by the Head of Department and decided by the Super Administrator.
+model TimetableSubmission {
+  id             String                    @id @default(cuid())
+  departmentId   String
+  department     Department                @relation(fields: [departmentId], references: [id])
+  semesterId     String
+  semester       Semester                  @relation(fields: [semesterId], references: [id])
+  kind           SubmissionKind            @default(CLASS)
+  /// Examination period, for examination submissions only.
+  examType       ExaminationType?
+  version        Int
+  status         TimetableSubmissionStatus @default(SUBMITTED)
+  /// When an approved timetable goes live; empty means publish only on request.
+  publishAt      DateTime?
+  /// Rows as they were when submitted, used to show changes between versions.
+  snapshot       Json?
+  classCount     Int
+  overrideReason String?
+  submittedById  String
+  submittedBy    User                      @relation("TimetableSubmitter", fields: [submittedById], references: [id])
+  submittedAt    DateTime                  @default(now())
+  decidedById    String?
+  decidedBy      User?                     @relation("TimetableDecider", fields: [decidedById], references: [id])
+  decidedAt      DateTime?
+  /// Reason for returning or rejecting.
+  reason         String?
+  schedules      Schedule[]
+  examinations   Examination[]
+  comments       TimetableComment[]
+
+  @@index([departmentId, semesterId])
+  @@index([status])
+}
+
+/// A reviewer's note on a submitted timetable, optionally about one class or examination.
+model TimetableComment {
+  id           String              @id @default(cuid())
+  submissionId String
+  submission   TimetableSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  /// Class or examination id the note is about; empty for the whole timetable.
+  rowId        String?
+  /// Readable label of that row, kept even if the row changes later.
+  rowLabel     String?
+  authorId     String
+  author       User                @relation("TimetableCommentAuthor", fields: [authorId], references: [id])
+  body         String
+  createdAt    DateTime            @default(now())
+
+  @@index([submissionId])
 }
 
 /// A scheduling rule checked on every save; departmentId null applies to every department.
@@ -910,12 +985,15 @@ model Examination {
   batch        ExamBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
   /// Ownership snapshot derived from the stored section, never from request input.
   departmentId String?
+  submissionId String?
+  submission   TimetableSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([date])
   @@index([batchId])
+  @@index([submissionId])
   @@index([departmentId])
 }
 

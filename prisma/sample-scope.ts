@@ -60,8 +60,14 @@ export async function addScopeAndExamSamples(db: PrismaClient) {
     ],
   });
 
-  // Seeded examinations count as approved; one stays submitted so the Registrar Review Center has an examination to review.
+  // Seeded examinations count as approved; one stays in a submitted examination timetable for the Super Administrator to decide on.
   await db.examination.updateMany({ data: { status: "PUBLISHED" } });
-  const review = await db.examination.findFirst({ where: { section: { name: "Information Technology 2-B" } }, select: { id: true } });
-  if (review) await db.examination.update({ where: { id: review.id }, data: { status: "REVIEW", submittedAt: new Date() } });
+  const review = await db.examination.findFirst({ where: { section: { name: "Information Technology 2-B" } }, select: { id: true, semesterId: true, type: true, section: { select: { departmentId: true } } } });
+  const head = review?.section.departmentId ? await db.user.findFirst({ where: { role: "HEAD_OF_DEPARTMENT", faculty: { departmentId: review.section.departmentId } }, select: { id: true } }) : null;
+  if (review && head && review.section.departmentId) {
+    const submission = await db.timetableSubmission.create({
+      data: { kind: "EXAMINATION", examType: review.type, departmentId: review.section.departmentId, semesterId: review.semesterId, version: 1, classCount: 1, submittedById: head.id },
+    });
+    await db.examination.update({ where: { id: review.id }, data: { status: "REVIEW", submittedAt: new Date(), submissionId: submission.id } });
+  }
 }

@@ -48,7 +48,7 @@ export function StatCard({ label, value, hint, change, previous, icon: CardIcon,
           <p className="text-[13px] leading-tight font-medium text-muted-foreground">{label}</p>
         </div>
         <div className="flex items-baseline justify-between gap-2">
-          <p className="text-3xl font-bold tracking-tight tabular-nums">{value}</p>
+          <p className={cn("font-bold tracking-tight tabular-nums", typeof value === "string" && value.length > 12 ? "text-xl" : "text-3xl")}>{value}</p>
           {change && <ChangeBadge change={change} previous={previous ?? null} />}
         </div>
         {progress !== undefined && (

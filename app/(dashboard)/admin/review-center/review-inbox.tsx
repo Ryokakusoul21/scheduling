@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckCircle, XCircle, NotePencil } from "@phosphor-icons/react/ssr";
+import { CheckCircle, XCircle, NotePencil, UploadSimple } from "@phosphor-icons/react/ssr";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,10 +24,10 @@ export function ReviewInbox({ rows, tabs, active }: { rows: ReviewRow[]; tabs: R
   const selectedRows = rows.filter((row) => selected.includes(row.id));
   const oneKind = selectedRows.length > 0 && selectedRows.every((row) => row.kind === selectedRows[0].kind) && selectedRows[0].kind !== "READ_ONLY";
 
-  function decide(decision: "APPROVE" | "REJECT" | "REQUEST_CHANGES") {
+  function decide(decision: "APPROVE" | "PUBLISH" | "REJECT" | "REQUEST_CHANGES") {
     if (!oneKind) return void toast.error("Select reviewable items from one queue.");
-    const reason = decision === "APPROVE" ? undefined : window.prompt(decision === "REJECT" ? "Reason for rejection (required)" : "Describe the required changes");
-    if (decision !== "APPROVE" && !reason?.trim()) return;
+    const reason = decision === "APPROVE" || decision === "PUBLISH" ? undefined : window.prompt(decision === "REJECT" ? "Reason for rejection (required)" : "Describe the required changes");
+    if (decision !== "APPROVE" && decision !== "PUBLISH" && !reason?.trim()) return;
     startTransition(async () => {
       const result = await bulkReviewAction({ kind: selectedRows[0].kind as Exclude<ReviewKind, "READ_ONLY">, ids: selected, decision, reason: reason ?? undefined });
       if (!result.ok) return void toast.error(result.error);
@@ -47,6 +47,7 @@ export function ReviewInbox({ rows, tabs, active }: { rows: ReviewRow[]; tabs: R
       <CardContent className="space-y-3 p-3">
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" disabled={!oneKind || pending} onClick={() => decide("APPROVE")}><CheckCircle className="size-4" /> Approve selected</Button>
+          {(active === "class-schedules" || active === "examinations") && <Button size="sm" disabled={!oneKind || pending} onClick={() => decide("PUBLISH")}><UploadSimple className="size-4" /> Approve and publish</Button>}
           <Button size="sm" variant="outline" disabled={!oneKind || pending} onClick={() => decide("REQUEST_CHANGES")}><NotePencil className="size-4" /> Request changes</Button>
           <Button size="sm" variant="destructive" disabled={!oneKind || pending} onClick={() => decide("REJECT")}><XCircle className="size-4" /> Reject selected</Button>
           <span className="text-xs text-muted-foreground">{selected.length} selected. Rejections and corrections require a reason and are audited.</span>

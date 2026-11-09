@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight } from "@phosphor-icons/react/ssr";
+import { ArrowRight, ChalkboardTeacher, ClipboardText, Warning } from "@phosphor-icons/react/ssr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { DashboardAnalytics } from "@/lib/analytics/dashboard";
 import type { DepartmentExtras } from "@/lib/analytics/department";
 import { analyticsBlocks } from "./admin-analytics";
 import { DashboardToolbar, StatCards } from "./kit";
-import { UpcomingList } from "./charts";
+import { HoursBars, LoadDistributionChart, UpcomingList } from "./charts";
+import { cn } from "@/lib/utils";
 
 type Option = { value: string; label: string };
 
@@ -61,23 +62,34 @@ export function DepartmentAnalyticsView({
         {toggle}
       </DashboardToolbar>
 
+      <StatCards cards={cards} previous={data.previousLabel} />
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <FacultyHours rows={data.facultyRates} />
+        <div className="grid gap-4">
+          <LoadDistributionChart data={data.loadDistribution} />
+          <HoursBars title="Rooms used most by department classes" rows={data.topRooms.map((r) => ({ name: r.name, hours: r.usedHours }))} />
+        </div>
+      </div>
+
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-muted-foreground">Needs your attention</h3>
+        <h3 className="flex items-center gap-2 text-base font-semibold">
+          <Warning className="size-5 text-amber-500" weight="fill" aria-hidden /> Needs your attention
+          {pendingCount > 0 && <Badge>{pendingCount} waiting</Badge>}
+        </h3>
         {workloadPanel}
         <Card>
           <CardHeader className="flex-row items-center justify-between gap-2">
-            <CardTitle className="text-base">Pending approvals</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-base"><ClipboardText className="size-5 text-primary" aria-hidden /> Pending approvals</CardTitle>
             <Badge variant={pendingCount ? "default" : "outline"}>{pendingCount}</Badge>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm">
+          <CardContent className="grid gap-5 text-sm lg:grid-cols-3">
             <ApprovalGroup title="Schedule changes awaiting approval" href="/scheduler" total={totals.schedules} empty="No drafts or edited classes waiting." items={extras.approvals.schedules.map((s) => ({ id: s.id, title: s.label, detail: `${s.status} · ${s.detail}` }))} />
             <ApprovalGroup title="Room booking changes to review" href="/bookings" total={totals.bookingChanges} empty="No classes moved by bookings in the last two weeks." items={extras.approvals.bookingChanges.map((b) => ({ id: b.id, title: b.summary, detail: `${b.moved} class meeting(s) moved; undo from Room Booking or Schedule Adjustments if needed` }))} />
             <ApprovalGroup title="Unavailability reports" href="/adjustments" total={totals.reports} empty="No pending reports." items={extras.approvals.reports.map((r) => ({ id: r.id, title: r.name, detail: `${r.dates}: ${r.reason}`, href: `/adjustments?report=${r.id}` }))} />
           </CardContent>
         </Card>
       </div>
-
-      <StatCards cards={cards} previous={data.previousLabel} />
 
       <UpcomingList items={data.upcoming} title="Upcoming department examinations and activities" />
 
@@ -113,5 +125,43 @@ function ApprovalGroup({ title, href, total, empty, items }: { title: string; hr
         <Link href={href} className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">View all {total} <ArrowRight className="size-3" /></Link>
       )}
     </div>
+  );
+}
+
+type RateRow = DashboardAnalytics["facultyRates"][number];
+
+/** Bar color for teaching hours against the maximum: red above it, amber when light, green otherwise. */
+const hoursTone = (rate: number) => (rate > 100 ? "bg-red-500" : rate < 50 ? "bg-amber-500" : "bg-emerald-500");
+
+/** Every department faculty member's weekly teaching hours against their maximum, heaviest first. */
+function FacultyHours({ rows }: { rows: RateRow[] }) {
+  return (
+    <Card className="h-full">
+      <CardHeader className="flex-row items-center justify-between gap-2">
+        <CardTitle className="flex items-center gap-2 text-base"><ChalkboardTeacher className="size-5 text-primary" aria-hidden /> Faculty teaching hours</CardTitle>
+        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+          {[["bg-red-500", "Over maximum"], ["bg-emerald-500", "Healthy"], ["bg-amber-500", "Light"]].map(([c, l]) => (
+            <span key={l} className="flex items-center gap-1.5"><span className={cn("size-2.5 rounded-full", c)} />{l}</span>
+          ))}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? <p className="text-sm text-muted-foreground">No faculty in this department yet.</p> : (
+          <ul className="space-y-3">
+            {rows.map((r) => (
+              <li key={r.id} className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)_auto] items-center gap-3 text-sm">
+                <Link href="/workload" className="truncate font-medium hover:underline" title={r.name}>{r.name}</Link>
+                <div role="progressbar" aria-label={`${r.name} teaching hours`} aria-valuenow={Math.round(r.rate)} aria-valuemin={0} aria-valuemax={100} className="h-2.5 overflow-hidden rounded-full bg-muted">
+                  <div className={cn("h-full rounded-full", hoursTone(r.rate))} style={{ width: `${Math.min(100, r.rate)}%` }} />
+                </div>
+                <span className="w-28 text-right text-xs text-muted-foreground tabular-nums">
+                  <span className="font-semibold text-foreground">{r.usedHours}</span> of {r.capacityHours} hours
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }

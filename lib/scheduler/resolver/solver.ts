@@ -253,15 +253,16 @@ function attempt(run: Run, task: Task): Cause | null {
       .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || DAYS.indexOf(b.dayOfWeek) - DAYS.indexOf(a.dayOfWeek) || b.startMin - a.startMin);
     let excess = task.excessMin;
     const group = nextId(run, "g");
+    const check = task.issue.dataProblem ? " The hours were far above the requirement; if the subject's hours are set up wrong, correct them in Subjects and undo this." : "";
     const changes: Change[] = [];
     for (const e of list) {
       if (excess <= 0) break;
       const duration = e.endMin - e.startMin;
       if (duration <= excess) {
-        changes.push(change(run, "REMOVED", task.issue, group, e, null, "Removed a meeting so the hours match the subject requirement."));
+        changes.push(change(run, "REMOVED", task.issue, group, e, null, `Removed a meeting so the hours match the subject requirement.${check}`));
         excess -= duration;
       } else if (duration - excess >= run.input.step) {
-        changes.push(change(run, "HOURS_ADJUSTED", task.issue, group, e, { ...e, endMin: e.endMin - excess }, "Shortened so the hours match the subject requirement."));
+        changes.push(change(run, "HOURS_ADJUSTED", task.issue, group, e, { ...e, endMin: e.endMin - excess }, `Shortened so the hours match the subject requirement.${check}`));
         excess = 0;
       }
     }
@@ -358,7 +359,8 @@ function plan(run: Run, issues: Issue[], unresolved: Unresolved[]): Task[] {
       unresolved.push(explain(issue, "NOT_EDITABLE", input));
       continue;
     }
-    if (issue.kind === "UNSCHEDULED" || (issue.kind === "HOURS" && !issue.dataProblem && issue.subjectId && issue.component)) {
+    // Hours far above the requirement are still trimmed; the change note asks to check the subject in case its hours are wrong.
+    if (issue.kind === "UNSCHEDULED" || (issue.kind === "HOURS" && issue.subjectId && issue.component)) {
       const subject = subjectOf(run, issue.subjectId!);
       const required = Math.round(((issue.component === "LECTURE" ? subject?.lectureHours : subject?.labHours) ?? 0) * 60);
       const have = plotted([...run.state.values()], section.id, issue.subjectId!, issue.component!);

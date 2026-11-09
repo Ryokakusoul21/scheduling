@@ -10,6 +10,7 @@ export const ROUTE_ROLES: { prefix: string; roles: AppRole[] }[] = [
   { prefix: "/admin/users", roles: SUPER_ROLES },
   { prefix: "/admin/audit-logs", roles: SUPER_ROLES },
   { prefix: "/admin/settings", roles: SUPER_ROLES },
+  { prefix: "/admin/view-as", roles: SUPER_ROLES },
   { prefix: "/admin", roles: ADMIN_ROLES },
   { prefix: "/academic-years", roles: ADMIN_ROLES },
   { prefix: "/programs", roles: STAFF_ROLES },

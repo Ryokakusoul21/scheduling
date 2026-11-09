@@ -46,7 +46,7 @@ function isDatabaseUnreachable(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && ["P1001", "P1002", "P1008", "P1017"].includes(error.code);
 }
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+export const { handlers, signIn, signOut, auth, unstable_update } = NextAuth({
   ...authConfig,
   providers: [
     Credentials({
@@ -173,6 +173,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       token.role = current.role;
       token.status = current.status;
+
+      // View as: started or stopped by /api/view-as; only a Super Administrator may view, never as another one.
+      if (params.trigger === "update" && params.session && typeof params.session === "object" && "viewAs" in params.session) {
+        const target = (params.session as { viewAs: unknown }).viewAs;
+        token.viewAsId = typeof target === "string" && current.role === "SUPER_ADMINISTRATOR" && target !== token.id ? target : undefined;
+      }
+      if (token.viewAsId) {
+        const viewed = current.role === "SUPER_ADMINISTRATOR"
+          ? await prisma.user.findUnique({ where: { id: token.viewAsId }, select: { role: true, status: true, archivedAt: true, name: true, email: true } })
+          : null;
+        if (!viewed || viewed.status !== "ACTIVE" || viewed.archivedAt || viewed.role === "SUPER_ADMINISTRATOR") {
+          token.viewAsId = undefined;
+        } else {
+          token.role = viewed.role;
+          token.viewAsName = viewed.name;
+          token.viewAsEmail = viewed.email;
+        }
+      }
 
       // A revoked device is signed out on its next request; active ones are touched at most every 5 minutes.
       if (token.sid) {

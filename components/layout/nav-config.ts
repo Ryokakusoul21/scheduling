@@ -111,6 +111,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "User Management", href: "/admin/users", icon: Users, roles: SUPER, tabGroup: "system" },
       { label: "Audit Logs", href: "/admin/audit-logs", icon: History, roles: SUPER, tabGroup: "system" },
       { label: "System Settings", href: "/admin/settings", icon: Settings, roles: SUPER, tabGroup: "system" },
+      { label: "View as Another Role", href: "/admin/view-as", icon: UserCircle, roles: SUPER, tabGroup: "system" },
     ],
   },
 ];

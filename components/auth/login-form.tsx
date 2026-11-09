@@ -14,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel, FieldError } from "@/components/ui/field";
 import { Captcha, captchaEnabled } from "@/components/auth/captcha";
 import { resendVerificationAction, type Audience } from "@/actions/auth";
+import { DEMO_STAFF, DEMO_STUDENTS } from "@/lib/auth/demo-accounts";
 import { loginSchema, type LoginInput } from "@/lib/validation/auth";
 import type { LoginErrorCode } from "@/lib/auth/errors";
 
@@ -21,19 +22,7 @@ import type { LoginErrorCode } from "@/lib/auth/errors";
 const SHOW_DEMO = process.env.NODE_ENV !== "production";
 const DEMO_PASSWORD = "Passw0rd!";
 
-const DEMO_ACCOUNTS: Record<Audience, { label: string; email: string }[]> = {
-  staff: [
-    { label: "Super Administrator", email: "superadministrator@granby.edu.ph" },
-    { label: "Registrar", email: "registrar@granby.edu.ph" },
-    { label: "Head of Department", email: "head.computing@granby.edu.ph" },
-    { label: "Faculty (overloaded)", email: "faculty@granby.edu.ph" },
-    { label: "Faculty (underloaded)", email: "alonzo@granby.edu.ph" },
-  ],
-  student: [
-    { label: "Senior High School student", email: "student.stem@granby.edu.ph" },
-    { label: "College student", email: "student.college@granby.edu.ph" },
-  ],
-};
+const DEMO_ACCOUNTS: Record<Audience, { label: string; email: string }[]> = { staff: DEMO_STAFF, student: DEMO_STUDENTS };
 
 const ERROR_MESSAGES: Record<LoginErrorCode, string> = {
   invalid: "Incorrect email or password.",

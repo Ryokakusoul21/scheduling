@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { DndContext, DragOverlay, KeyboardSensor, useDraggable, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragMoveEvent } from "@dnd-kit/core";
-import { CalendarBlank, CaretLeft, CaretRight, CheckCircle, DotsSixVertical, Lightning, Plus, Rows, SquaresFour, UploadSimple, UsersThree, Warning, WarningOctagon } from "@phosphor-icons/react/ssr";
+import { CalendarBlank, CaretLeft, CaretRight, CheckCircle, DotsSixVertical, Lightning, Plus, UploadSimple, UsersThree, Warning, WarningOctagon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -22,8 +22,7 @@ import { DEFAULT_GRID, clampStart, formatRange, formatTime, timeOptions, yToMinu
 import type { DayOfWeek } from "@/lib/scheduler/types";
 import { moveExamAction, removeExamAction, saveExamAction, submitExamsAction, type ExamInput } from "@/app/(dashboard)/scheduler/exam-actions";
 import { Timetable, type BlockInfo, type DropPreview } from "./timetable";
-import { ScheduleList, type RowInfo } from "./schedule-list";
-import { ChecksHeading, ChecksRail, FilterCard, FilterSelect, PanelSection, ScheduleHeader, ViewToggle, type Perspective } from "./schedule-chrome";
+import { ChecksHeading, ChecksRail, FilterCard, FilterSelect, PanelSection, ScheduleHeader, type Perspective } from "./schedule-chrome";
 import { collision, gridKeyboardCoordinates } from "./dnd-grid";
 import type { SchedulerEntry } from "./types";
 
@@ -117,7 +116,6 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
   const [roomId, setRoomId] = useState(initial.room);
   const [openPanels, setOpenPanels] = usePersisted<Partial<Record<Panel, boolean>>>("exam-panels", {});
   const [panelHidden, setPanelHidden] = usePersisted("scheduler-panel-hidden", false);
-  const [view, setView] = useState<"timetable" | "table">("timetable");
   const [perspective, setPerspective] = useState<Perspective>("section");
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -182,7 +180,6 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
 
   // The Unscheduled list is derived: the term's classes (one per section and subject) minus the examinations already placed for this period.
   const termClasses = useMemo(() => uniqueClasses(data.classes.filter((c) => c.semesterId === termId)), [data.classes, termId]);
-  const classByKey = useMemo(() => new Map(termClasses.map((c) => [classKey(c), c])), [termClasses]);
   const unscheduled = useMemo(() => {
     const placed = new Set(allPeriod.map(classKey));
     return termClasses.filter((c) => sectionIds.has(c.sectionId) && (!sectionId || c.sectionId === sectionId) && !placed.has(classKey(c)));
@@ -215,10 +212,6 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
   const isOpen = (key: Panel, count: number) => openPanels[key] ?? count > 0;
   const togglePanel = (key: Panel, count: number) => setOpenPanels({ ...openPanels, [key]: !isOpen(key, count) });
   const focusName = sectionId ? maps.section.get(sectionId)?.name : proctorId ? maps.faculty.get(proctorId)?.fullName : roomId ? maps.room.get(roomId)?.roomName : null;
-  const rowInfo = useCallback((e: SchedulerEntry): RowInfo => ({
-    subject: maps.subject.get(e.subjectId)?.code ?? "?", subjectName: maps.subject.get(e.subjectId)?.name ?? "",
-    section: maps.section.get(e.sectionId)?.name ?? "?", faculty: maps.faculty.get(e.facultyId)?.fullName ?? "?", room: maps.room.get(e.roomId)?.roomName ?? "?",
-  }), [maps]);
   // Cards shown until a section, proctor, or room is chosen, each with its examination count.
   const picks = useMemo(() => {
     const count = (key: "sectionId" | "proctorId" | "roomId", id: string) => allPeriod.filter((e) => e[key] === id).length;
@@ -323,10 +316,6 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
             <div className="min-w-40"><NativeSelect aria-label="Term" value={termId} onChange={(e) => { setTermId(e.target.value); setSectionId(""); }} options={data.terms.map((t) => ({ value: t.id, label: t.label }))} /></div>
           </>}
         >
-          <div role="radiogroup" aria-label="View" className="inline-flex rounded-lg border bg-card p-0.5">
-            <ViewToggle active={view === "timetable"} onClick={() => setView("timetable")} icon={SquaresFour} label="Timetable" />
-            <ViewToggle active={view === "table"} onClick={() => setView("table")} icon={Rows} label="Table" />
-          </div>
           {data.canEdit && <Button variant="outline" disabled title="Planned for the next step: places an examination for every class inside the approved window."><Lightning className="size-4" /> Auto-Schedule</Button>}
           {data.canSubmit && <Button variant="outline" disabled={!drafts.length} onClick={() => setSubmitOpen(true)}><UploadSimple className="size-4" /> Submit for Approval{drafts.length ? ` (${drafts.length})` : ""}</Button>}
           {data.isAdmin && <Button variant="outline" nativeButton={false} render={<Link href="/admin/review-center?queue=examinations" />}>Registrar Review Center</Button>}
@@ -370,10 +359,8 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
         </FilterCard>
 
         <div className={cn("grid gap-3 lg:min-h-[30rem] lg:flex-1 lg:overflow-hidden", panelHidden ? "lg:grid-cols-[minmax(0,1fr)_48px]" : "lg:grid-cols-[minmax(0,1fr)_320px]")}>
-          <section aria-label={view === "timetable" ? "Timetable" : "Examination list"} className="flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto pr-1">
-            {view === "table" ? (
-              <ScheduleList entries={entries} info={rowInfo} conflictIndex={issueIndex} onOpen={openExam} />
-            ) : focused ? (
+          <section aria-label="Timetable" className="flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto pr-1">
+            {focused ? (
               <Timetable days={DAYS} entries={entries} info={info} conflictIndex={issueIndex} editable={data.canEdit} highlightId={highlight} preview={preview} heatmap={heatmap} onOpen={openExam} onEmptySlot={data.canEdit ? (day, start) => openNew({ date: dates[DAYS.indexOf(day)], startMin: start, endMin: start + 120 }) : undefined} grid={GRID} />
             ) : (
               <div className="space-y-2">

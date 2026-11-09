@@ -1,12 +1,14 @@
 "use server";
 
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { loadWorkload } from "@/lib/workload/load";
 import { loadReport } from "@/lib/workload/optimizer";
 import { activeTermIds } from "@/lib/workload/auto";
 import { prisma } from "@/lib/db/prisma";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { PUBLISH_ROLES, STAFF_ROLES } from "@/lib/permissions/roles";
+import { LOCKED_MESSAGE, createSubmission, decideSubmissions, lockingSubmission, notifySuperAdministrators, withdrawSubmission } from "@/lib/scheduler/submissions";
 import { requireScope, type Scope } from "@/lib/permissions/scope";
 import { refuseSection, sectionAccess } from "@/lib/permissions/section-access";
 import { departmentWhere, logBlocked } from "@/lib/permissions/department";
@@ -51,6 +53,7 @@ async function saveScoped(scope: Scope, d: ClassData, overrideSoft: boolean, act
   for (const id of [d.sectionId, current?.sectionId]) {
     const access = id ? await sectionAccess(scope, id) : "ok";
     if (access !== "ok") return { ok: false, error: await refuseSection(scope, access, "Schedule", d.id) };
+    if (id && (await lockingSubmission(id, d.semesterId))) return { ok: false, error: LOCKED_MESSAGE };
   }
   if (!scope.isAdmin && !(await prisma.subject.count({ where: { id: d.subjectId, ...departmentWhere.subject(scope) } }))) {
     return { ok: false, error: "Choose a subject of your department or a shared General Education subject." };
@@ -80,7 +83,7 @@ async function validateCurriculumQueue(scope: Scope, d: ClassData & { source?: "
 }
 
 export async function saveClassAction(input: ClassInput, overrideSoft = false): Promise<SaveResult> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const parsed = classSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid class details." };
   const queueProblem = await validateCurriculumQueue(scope, parsed.data);
@@ -101,7 +104,7 @@ const moveSchema = z
 
 /** Drag-and-drop move: changes only the day and time, with the same checks as a save. */
 export async function moveClassAction(input: z.infer<typeof moveSchema>, overrideSoft = false): Promise<SaveResult> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const parsed = moveSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid move." };
   const { id, ...slot } = parsed.data;
@@ -116,11 +119,12 @@ export async function moveClassAction(input: z.infer<typeof moveSchema>, overrid
 }
 
 export async function deleteClassAction(id: string): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const existing = await prisma.schedule.findUnique({ where: { id } });
   if (!existing) return { ok: true, data: undefined };
   const access = await sectionAccess(scope, existing.sectionId);
   if (access !== "ok") return { ok: false, error: await refuseSection(scope, access, "Schedule", id) };
+  if (await lockingSubmission(existing.sectionId, existing.semesterId)) return { ok: false, error: LOCKED_MESSAGE };
   await prisma.schedule.update({ where: { id }, data: { status: "ARCHIVED" } });
   await prisma.auditLog.create({
     data: { userId: scope.userId, role: scope.role, departmentId: existing.departmentId, action: "Archived class schedule", entity: "Schedule", entityId: id, oldValue: existing },
@@ -133,46 +137,58 @@ export async function deleteClassAction(id: string): Promise<Result> {
 /** Bulk publish (e.g. everything visible in the current filter). */
 export async function publishClassesAction(ids: string[]): Promise<Result<{ count: number }>> {
   const scope = await requireScope(...PUBLISH_ROLES);
-
   const parsed = z.array(z.string().min(1)).max(2000).safeParse(ids);
   if (!parsed.success) return { ok: false, error: "Invalid selection." };
-  const { count } = await prisma.schedule.updateMany({
-    where: { id: { in: parsed.data }, status: "REVIEW" },
-    data: { status: "PUBLISHED" },
-  });
-  await prisma.auditLog.create({
-    data: { userId: scope.userId, action: `Published ${count} class schedule(s)`, entity: "Schedule" },
-  });
+  const rows = await prisma.schedule.findMany({ where: { id: { in: parsed.data }, submissionId: { not: null } }, select: { submissionId: true } });
+  const submissionIds = [...new Set(rows.map((r) => r.submissionId!))];
+  if (!submissionIds.length) return { ok: false, error: "None of these classes belong to a submitted timetable." };
+  const count = await decideSubmissions(submissionIds, "PUBLISH", scope.userId);
   revalidate();
   return { ok: true, data: { count } };
 }
 
-/** Sends a department's draft timetable to the Registrar as one review batch; unbalanced loads need an override reason. */
+/**
+ * Sends the department's whole timetable for each term of the given drafts (every program, year, and section,
+ * drafts and already published classes) as one package; unbalanced loads need an override reason.
+ */
 export async function submitClassesAction(ids: string[], overrideReason?: string): Promise<Result<{ count: number }> | { ok: false; error: string; imbalance: string[] }> {
   const scope = await requireScope("HEAD_OF_DEPARTMENT");
-  const parsed = z.array(z.string().min(1)).min(1).max(2000).safeParse(ids);
-  if (!parsed.success) return { ok: false, error: "Select at least one class schedule." };
-  const selected = await prisma.schedule.findMany({
-    where: { id: { in: parsed.data }, ...departmentWhere.schedule(scope), status: "DRAFT" },
-    select: { id: true, sectionId: true, semesterId: true },
+  const parsed = z.array(z.string().min(1)).min(1).max(5000).safeParse(ids);
+  if (!parsed.success) return { ok: false, error: "There are no draft classes to submit." };
+  const seeds = await prisma.schedule.findMany({ where: { id: { in: parsed.data }, ...departmentWhere.schedule(scope), status: "DRAFT" }, select: { semesterId: true } });
+  if (!seeds.length) return { ok: false, error: "There are no draft classes to submit." };
+  const termIds = [...new Set(seeds.map((e) => e.semesterId))];
+  // The whole timetable of the department for those terms, not only what the filters show.
+  const timetable = await prisma.schedule.findMany({
+    where: { semesterId: { in: termIds }, status: { in: ["DRAFT", "PUBLISHED"] }, section: { departmentId: { in: scope.departmentIds } } },
+    select: { id: true, status: true, sectionId: true, semesterId: true, section: { select: { departmentId: true } } },
   });
-  if (selected.length !== new Set(parsed.data).size) return { ok: false, error: "One or more class schedules were not found." };
+  const drafts = timetable.filter((e) => e.status === "DRAFT").map((e) => e.id);
   const unassigned = await prisma.schedule.findMany({
-    where: { id: { in: parsed.data }, faculty: { archivedAt: { not: null } } },
+    where: { id: { in: drafts }, faculty: { archivedAt: { not: null } } },
     select: { subject: { select: { code: true } }, section: { select: { name: true } } },
   });
   if (unassigned.length) return { ok: false, error: `Assign faculty before submitting: ${unassigned.map((u) => `${u.subject.code} ${u.section.name}`).join(", ")}.` };
-  const sectionIds = [...new Set(selected.map((entry) => entry.sectionId))];
+  // Every section of the department in those terms must have its required hours, including sections with no classes yet.
+  const sections = await prisma.section.findMany({
+    where: { departmentId: { in: scope.departmentIds }, archivedAt: null, OR: [{ semesterId: { in: termIds } }, { id: { in: timetable.map((e) => e.sectionId) } }] },
+    select: { id: true, name: true },
+  });
+  const sectionIds = sections.map((x) => x.id);
   const [placeholders, plotted] = await Promise.all([
     prisma.sectionClassPlaceholder.findMany({ where: { sectionId: { in: sectionIds } }, include: { subject: { select: { code: true, lectureHours: true, labHours: true } } } }),
-    prisma.schedule.findMany({ where: { sectionId: { in: sectionIds }, status: { not: "ARCHIVED" } }, select: { sectionId: true, subjectId: true, component: true, startMin: true, endMin: true } }),
+    prisma.schedule.findMany({ where: { sectionId: { in: sectionIds }, semesterId: { in: termIds }, status: { not: "ARCHIVED" } }, select: { sectionId: true, subjectId: true, component: true, startMin: true, endMin: true } }),
   ]);
   const incomplete = placeholders.filter((placeholder) => {
     const required = (placeholder.component === "LECTURE" ? placeholder.subject.lectureHours : placeholder.subject.labHours) * 60;
     const actual = plotted.filter((entry) => entry.sectionId === placeholder.sectionId && entry.subjectId === placeholder.subjectId && entry.component === placeholder.component).reduce((sum, entry) => sum + entry.endMin - entry.startMin, 0);
     return actual !== required;
   });
-  if (incomplete.length) return { ok: false, error: `Complete the required hours before submitting: ${[...new Set(incomplete.map((item) => item.subject.code))].join(", ")}.` };
+  if (incomplete.length) {
+    const names = new Map(sections.map((x) => [x.id, x.name]));
+    const where = [...new Set(incomplete.map((item) => `${item.subject.code} (${names.get(item.sectionId) ?? "section"})`))];
+    return { ok: false, error: `The whole timetable must be complete before submitting. Missing hours: ${where.slice(0, 8).join(", ")}${where.length > 8 ? `, and ${where.length - 8} more` : ""}.` };
+  }
   const workload = await loadWorkload(await activeTermIds(), null);
   const unit = workload.limits.measure === "HOURS" ? "hours" : "units";
   const off = loadReport(workload.faculty.filter((f) => scope.departmentIds.includes(f.departmentId ?? "")), workload.assignments, workload.limits).filter((r) => r.status !== "BALANCED");
@@ -180,14 +196,26 @@ export async function submitClassesAction(ids: string[], overrideReason?: string
   if (off.length && !reason) {
     return { ok: false, error: `${off.length} faculty member(s) are outside the allowed load.`, imbalance: off.map((r) => `${r.name}: ${r.load} ${unit}, ${r.status === "OVERLOADED" ? `above the maximum of ${r.maximum}` : `below the minimum of ${r.minimum}`}`) };
   }
-  const { count } = await prisma.schedule.updateMany({
-    where: { id: { in: parsed.data }, status: "DRAFT", ...departmentWhere.schedule(scope) },
-    data: { status: "REVIEW" },
-  });
+  // One package per department and term; a term already waiting for a decision cannot be sent again.
+  const groups = new Map<string, { departmentId: string; semesterId: string; ids: string[]; linkIds: string[] }>();
+  for (const e of timetable) {
+    const departmentId = e.section.departmentId!;
+    const key = `${departmentId}:${e.semesterId}`;
+    const g = groups.get(key) ?? { departmentId, semesterId: e.semesterId, ids: [], linkIds: [] };
+    (e.status === "DRAFT" ? g.ids : g.linkIds).push(e.id);
+    groups.set(key, g);
+  }
+  let count = 0;
+  for (const g of groups.values()) {
+    const created = await createSubmission({ kind: "CLASS", ...g, userId: scope.userId, overrideReason: off.length ? reason : null });
+    if (!created) return { ok: false, error: `${count ? `${count} class(es) were submitted. ` : ""}A timetable for this term is already waiting for the Super Administrator's decision.` };
+    count += created.classCount;
+  }
+  await notifySuperAdministrators({ title: "Timetable submitted", message: `${count} class(es) in ${groups.size} timetable(s) await your decision.`, link: "/admin/review-center?queue=class-schedules" });
   await prisma.auditLog.create({
     data: {
       userId: scope.userId, role: scope.role, departmentId: scope.departmentId, entity: "Schedule",
-      action: `Submitted ${count} class schedule(s) for Registrar review${off.length ? ` with a workload override (${off.length} faculty out of range)` : ""}`,
+      action: `Submitted ${count} class schedule(s) for Super Administrator approval${off.length ? ` with a workload override (${off.length} faculty out of range)` : ""}`,
       ...(off.length ? { reason, oldValue: { outOfRange: off.map((r) => ({ name: r.name, load: r.load, minimum: r.minimum, maximum: r.maximum, status: r.status })) } } : {}),
     },
   });
@@ -199,4 +227,13 @@ export async function constraintReportAction(termId: string): Promise<Result<Vio
   const scope = await requireScope(...STAFF_ROLES);
   if (!termId) return { ok: false, error: "Choose a term first." };
   return { ok: true, data: await termConstraintReport(termId, scope.manageDepartmentId) };
+}
+
+/** Pulls back a class or examination timetable that is still waiting for a decision, so it can be edited again. */
+export async function withdrawSubmissionAction(id: string): Promise<Result> {
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
+  if (!(await withdrawSubmission(id, scope.departmentIds, scope.userId))) return { ok: false, error: "Only a timetable still waiting for a decision can be withdrawn." };
+  revalidate();
+  revalidatePath("/admin/review-center");
+  return { ok: true, data: undefined };
 }

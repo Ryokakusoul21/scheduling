@@ -70,6 +70,7 @@ function parentTrail(pathname: string): BreadcrumbItem[] {
   if (/^\/academic-years\/[^/]+$/.test(pathname)) return [{ label: PAGE_LABELS["/academic-years"], href: "/academic-years" }];
   if (/^\/programs\/[^/]+$/.test(pathname)) return [{ label: PAGE_LABELS["/programs"], href: "/programs" }];
   if (/^\/rooms\/[^/]+$/.test(pathname)) return [{ label: PAGE_LABELS["/rooms"], href: "/rooms" }];
+  if (/^\/admin\/review-center\/timetables\/[^/]+$/.test(pathname)) return [{ label: PAGE_LABELS["/admin/review-center"], href: "/admin/review-center" }];
   return [];
 }
 
@@ -78,6 +79,7 @@ function pageLabel(pathname: string) {
   if (/^\/academic-years\/[^/]+$/.test(pathname)) return "Academic Year Details";
   if (/^\/programs\/[^/]+$/.test(pathname)) return "Program Details";
   if (/^\/rooms\/[^/]+$/.test(pathname)) return "Building Details";
+  if (/^\/admin\/review-center\/timetables\/[^/]+$/.test(pathname)) return "Timetable Review";
   return pathname.split("/").filter(Boolean).at(-1)?.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) ?? "Page";
 }
 
