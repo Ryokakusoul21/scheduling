@@ -31,9 +31,7 @@ export function programFields(level: "COLLEGE" | "SENIOR_HIGH", departments: { v
     { name: "level", label: "", type: "hidden" },
     { name: "code", label: level === "COLLEGE" ? "Course code" : "Strand code", type: "text", required: true, placeholder: level === "COLLEGE" ? "BSIT" : "STEM" },
     { name: "name", label: "Full name", type: "text", required: true, placeholder: level === "COLLEGE" ? "BS Information Technology" : "Science, Technology, Engineering and Mathematics" },
-    ...(level === "COLLEGE"
-      ? [{ name: "departmentId", label: "Department", type: "select" as const, required: true, options: [{ value: "", label: "Select department" }, ...departments] }]
-      : []),
+    { name: "departmentId", label: "Department", type: "select", required: true, options: [{ value: "", label: "Select department" }, ...departments] },
   ];
 }
 
@@ -56,7 +54,7 @@ export function ProgramsManager({ programs, departments }: { programs: ProgramRo
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Programs and Strands"
+        title="Academic Programs"
         description="Manage College courses and Senior High strands. Drag the handle (or focus it and press Space) to reorder."
         actions={
           <>

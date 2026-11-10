@@ -5,13 +5,13 @@ import { prisma } from "@/lib/db/prisma";
 
 const body = z.object({ userId: z.string().min(1).nullable() });
 
-/** Starts (userId) or stops (null) viewing the system as another account; Super Administrator only, audited. */
+/** Starts (userId) or stops (null) viewing the system as another account; Administrator only, audited. */
 export async function POST(request: Request) {
   const session = await auth();
   const realId = session?.user?.realId ?? session?.user?.id;
   if (!realId) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   const real = await prisma.user.findUnique({ where: { id: realId }, select: { role: true } });
-  if (real?.role !== "SUPER_ADMINISTRATOR") return NextResponse.json({ error: "Only the Super Administrator can view as another account." }, { status: 403 });
+  if (real?.role !== "SUPER_ADMINISTRATOR") return NextResponse.json({ error: "Only the Administrator can view as another account." }, { status: 403 });
 
   const parsed = body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Choose an account." }, { status: 400 });

@@ -7,10 +7,10 @@ import { ViewAsButton } from "@/components/layout/view-as";
 
 export const metadata = { title: "View as Another Role · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
-/** Super Administrator tool to see the system exactly as each sample account does, read-only. */
+/** Administrator tool to see the system exactly as each sample account does, read-only. */
 export default async function ViewAsPage() {
   await requireRole("SUPER_ADMINISTRATOR");
-  const accounts = [...DEMO_STAFF, ...DEMO_STUDENTS].filter((a) => !a.label.startsWith("Super Administrator"));
+  const accounts = [...DEMO_STAFF, ...DEMO_STUDENTS].filter((a) => !a.label.startsWith("Administrator"));
   const users = await prisma.user.findMany({ where: { email: { in: accounts.map((a) => a.email) }, status: "ACTIVE", archivedAt: null }, select: { id: true, email: true, name: true, role: true } });
   const byEmail = new Map(users.map((u) => [u.email, u]));
 

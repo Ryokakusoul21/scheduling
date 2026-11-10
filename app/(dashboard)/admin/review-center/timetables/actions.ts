@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { requireScope } from "@/lib/permissions/scope";
+import { PUBLISH_ROLES } from "@/lib/permissions/roles";
 import { decideSubmissions, submissionTitle } from "@/lib/scheduler/submissions";
 import { notifyUsers } from "@/lib/notify";
 
@@ -17,9 +18,9 @@ const decisionSchema = z.object({
   publishAt: z.string().optional(),
 }).refine((v) => v.decision === "APPROVE" || v.decision === "PUBLISH" || !!v.reason, { message: "Give a reason for returning or rejecting." });
 
-/** The Super Administrator's decision on one whole timetable, with an optional publish date for approvals. */
+/** The Registrar's decision on one whole timetable, with an optional publish date for approvals. */
 export async function decideTimetableAction(input: z.input<typeof decisionSchema>): Promise<Result> {
-  const scope = await requireScope("SUPER_ADMINISTRATOR");
+  const scope = await requireScope(...PUBLISH_ROLES);
   const parsed = decisionSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the decision." };
   const { id, decision, reason, publishAt } = parsed.data;
@@ -36,7 +37,7 @@ const commentSchema = z.object({ submissionId: z.string().min(1), rowId: z.strin
 
 /** A note for the Head of Department, about the whole timetable or one class or examination. */
 export async function addTimetableCommentAction(input: z.input<typeof commentSchema>): Promise<Result> {
-  const scope = await requireScope("SUPER_ADMINISTRATOR");
+  const scope = await requireScope(...PUBLISH_ROLES);
   const parsed = commentSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Write a comment first." };
   const submission = await prisma.timetableSubmission.findUnique({ where: { id: parsed.data.submissionId }, include: { department: { select: { name: true } } } });

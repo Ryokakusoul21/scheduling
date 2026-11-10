@@ -20,7 +20,7 @@ export interface SubmissionNoticeRow {
 }
 
 const STYLE: Record<TimetableSubmissionStatus, { icon: typeof Hourglass; tone: string; text: string }> = {
-  SUBMITTED: { icon: LockSimple, tone: "border-blue-500/30 bg-blue-500/5", text: "Submitted and waiting for the Super Administrator. Editing is locked; withdraw it to make changes." },
+  SUBMITTED: { icon: LockSimple, tone: "border-blue-500/30 bg-blue-500/5", text: "Submitted and waiting for the Registrar. Editing is locked; withdraw it to make changes." },
   APPROVED: { icon: Hourglass, tone: "border-blue-500/30 bg-blue-500/5", text: "Approved and waiting to be published; editing stays locked." },
   PUBLISHED: { icon: CheckCircle, tone: "border-emerald-500/30 bg-emerald-500/5", text: "Published and visible to faculty and students." },
   RETURNED: { icon: WarningCircle, tone: "border-amber-500/40 bg-amber-500/5", text: "Returned for revision. Make the changes below and submit again." },

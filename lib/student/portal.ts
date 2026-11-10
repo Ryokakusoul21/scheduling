@@ -37,6 +37,7 @@ export interface PortalClass {
 /** A class meeting of the student's section that was moved or taken online, within the next two weeks. */
 export interface PortalMove {
   id: string;
+  scheduleId?: string;
   subjectCode: string;
   subjectName: string;
   /** The regular meeting date that changed. */
@@ -150,7 +151,7 @@ export const loadStudentPortal = cache(async () => {
     },
     orderBy: { date: "asc" },
     select: {
-      id: true, kind: true, date: true, newDate: true, roomId: true, startMin: true, endMin: true,
+      id: true, scheduleId: true, kind: true, date: true, newDate: true, roomId: true, startMin: true, endMin: true,
       batch: { select: { cause: true } },
       schedule: { select: { startMin: true, endMin: true, subject: { select: { code: true, name: true } }, room: { select: { roomName: true } } } },
     },
@@ -160,6 +161,7 @@ export const loadStudentPortal = cache(async () => {
   );
   const moves: PortalMove[] = adjustments.map((a) => ({
     id: a.id,
+    scheduleId: a.scheduleId,
     subjectCode: a.schedule.subject.code,
     subjectName: a.schedule.subject.name,
     date: isoDate(a.date),

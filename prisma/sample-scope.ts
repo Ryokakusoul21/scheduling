@@ -21,11 +21,9 @@ export async function addScopeAndExamSamples(db: PrismaClient) {
   const user = Object.fromEntries(users.map((u) => [u.email, u.id]));
   const fac = Object.fromEntries(faculty.map((f) => [f.employeeId, f.id]));
 
-  // Basic Education head handles only STEM and ICT; the business head handles BSBA and BSTM (an old BSA row has ended).
+  // Basic Education uses department scope; the business head handles BSBA and BSTM (an old BSA row has ended).
   await db.headProgramAssignment.createMany({
     data: [
-      { userId: user["head.basiceducation@granby.edu.ph"], programId: program.STEM, startDate: day(-60) },
-      { userId: user["head.basiceducation@granby.edu.ph"], programId: program.ICT, startDate: day(-60) },
       { userId: user["head.business@granby.edu.ph"], programId: program.BSBA, startDate: day(-60) },
       { userId: user["head.business@granby.edu.ph"], programId: program.BSTM, startDate: day(-60), isActing: true, endDate: day(120) },
       { userId: user["head.business@granby.edu.ph"], programId: program.BSA, startDate: day(-200), endDate: day(-30) },

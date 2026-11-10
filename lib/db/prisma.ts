@@ -14,7 +14,7 @@ const adapter =
 
 const WRITES = new Set(["create", "createMany", "createManyAndReturn", "update", "updateMany", "updateManyAndReturn", "upsert", "delete", "deleteMany"]);
 
-/** True inside a server action sent while a Super Administrator views as another account (header set by the proxy). */
+/** True inside a server action sent while the Administrator views as another account (header set by the proxy). */
 async function viewingAsInAction() {
   try {
     const { headers } = await import("next/headers");

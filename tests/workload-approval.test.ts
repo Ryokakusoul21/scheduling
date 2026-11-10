@@ -28,8 +28,11 @@ describe("workload approval permissions", () => {
     expect(approveRow(genedHead, waiting, "u2")).toEqual({ fromApprovedById: "u1", toApprovedById: "u2", ready: true });
   });
 
-  it("lets the Registrar approve both sides at once", () => {
-    expect(approveRow(admin, row({ toDepartmentId: "gened" }), "a1").ready).toBe(true);
+  it("denies administrative approval even with department assignments", () => {
+    expect(approveRow(admin, row({ toDepartmentId: "gened" }), "a1").ready).toBe(false);
+    expect(canApprove({ ...admin, departmentIds: ["ccs", "gened"] }, row())).toBe(false);
+    expect(canReject(admin, row())).toBe(false);
+    expect(canEdit(admin, row())).toBe(false);
   });
 
   it("lets only the giving department change the receiver", () => {

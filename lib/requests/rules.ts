@@ -89,28 +89,29 @@ export type RequestRow = {
 };
 
 type Reviewer = { role: string; userId: string; departmentIds: readonly string[] };
-type Reviewable = { status: string; type: string; requestedById: string; requesterRole?: string; departmentId: string | null; targetDepartmentId: string | null };
+type Reviewable = { status: string; type: string; requestedById: string; requesterRole?: string; departmentId: string | null; targetDepartmentId: string | null; details?: unknown };
 
 const ORDINARY = new Set(["NEW_SCHEDULE", "CHANGE_TIME", "CHANGE_ROOM", "CHANGE_FACULTY", "CANCEL_SCHEDULE"]);
 
 /** True when a Head of Department of the owning department could decide it (never the person who filed it). */
 function headCanDecide(r: Reviewable, departmentIds: readonly string[]) {
-  if (r.type === "FACULTY_CHANGE" || r.requesterRole === "HEAD_OF_DEPARTMENT") return false;
+  const details = r.details as { requiredDepartmentIds?: string[]; approvedDepartmentIds?: string[] } | null;
+  if (r.type === "CROSS_DEPARTMENT" && details?.requiredDepartmentIds?.length) {
+    return details.requiredDepartmentIds.some((id) => departmentIds.includes(id) && !details.approvedDepartmentIds?.includes(id));
+  }
   if (r.targetDepartmentId) return departmentIds.includes(r.targetDepartmentId);
-  return ORDINARY.has(r.type) && !!r.departmentId && departmentIds.includes(r.departmentId);
+  if (r.type === "CROSS_DEPARTMENT") return false;
+  return !!r.departmentId && departmentIds.includes(r.departmentId);
 }
 
 /**
- * Who may approve or reject: the Head of Department who owns the request, and nobody else. The Registrar watches
- * everything but decides only what no Head of Department can: faculty-record changes, requests with no owning
- * department, and requests filed by a Head of Department (who cannot approve their own).
+ * Only a head assigned to the responsible department can decide requests, including record changes.
+ * Requesters cannot approve their own requests; administrators and registrars have no access.
  */
 export function canReviewRequest(who: Reviewer, r: Reviewable) {
   if (r.status !== "PENDING" || r.requestedById === who.userId) return false;
   if (who.role === "HEAD_OF_DEPARTMENT") return headCanDecide(r, who.departmentIds);
-  if (who.role !== "SUPER_ADMINISTRATOR" && who.role !== "REGISTRAR") return false;
-  const owned = r.type !== "FACULTY_CHANGE" && r.requesterRole !== "HEAD_OF_DEPARTMENT" && (!!r.targetDepartmentId || (ORDINARY.has(r.type) && !!r.departmentId));
-  return !owned;
+  return false;
 }
 
 /** The Head of Department who owns a pending request, or who filed it themselves, is the only one who can change or withdraw it. */

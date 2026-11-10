@@ -15,7 +15,7 @@ import { PriorityBadge, StatusBadge } from "./bookings-list";
 const ACK: Record<string, string> = { PENDING: "Waiting for a response", ACKNOWLEDGED: "Acknowledged", ALTERNATIVE_REQUESTED: "Asked for an alternative" };
 
 /** Everything about one booking: details, moved classes, displaced bookings, acknowledgements, approval, and the timeline. */
-export function BookingDrawer({ booking: b, onClose, onCancel, onDuplicate, pending }: { booking: BookingRow | null; onClose: () => void; onCancel: (id: string, restore: boolean) => void; onDuplicate: (b: BookingRow) => void; pending: boolean }) {
+export function BookingDrawer({ readOnly = false, booking: b, onClose, onCancel, onDuplicate, pending }: { readOnly?: boolean; booking: BookingRow | null; onClose: () => void; onCancel: (id: string, restore: boolean) => void; onDuplicate: (b: BookingRow) => void; pending: boolean }) {
   const router = useRouter();
   const [timeline, setTimeline] = useState<{ id: string; at: string; who: string; action: string }[] | null>(null);
   const [note, setNote] = useState("");
@@ -33,7 +33,7 @@ export function BookingDrawer({ booking: b, onClose, onCancel, onDuplicate, pend
     start(async () => {
       const r = await reviewOverrideAction(b.id, approve, note.trim() || undefined);
       if (!r.ok) return void toast.error(r.error, { duration: 12000 });
-      toast.success(approve ? "Override approved; displaced classes were moved and everyone notified." : "Override rejected; the requester was notified.");
+      toast.success(approve ? "Booking approved; affected people were notified." : "Booking rejected; the requester was notified.");
       setNote("");
       router.refresh();
       onClose();
@@ -60,11 +60,11 @@ export function BookingDrawer({ booking: b, onClose, onCancel, onDuplicate, pend
 
             {b.canApprove && (
               <section className="space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3">
-                <p className="text-sm font-medium">This urgent override takes a room of your department.</p>
-                <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note to the requester (optional)" maxLength={500} rows={2} />
+                <p className="text-sm font-medium">This booking needs your department’s approval.</p>
+                <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Reason required for rejection" maxLength={500} rows={2} />
                 <div className="flex gap-2">
                   <Button size="sm" disabled={deciding} onClick={() => decide(true)}>{deciding ? <CircleNotch className="size-4 animate-spin" /> : <CheckCircle className="size-4" />} Approve and apply</Button>
-                  <Button size="sm" variant="outline" disabled={deciding} onClick={() => decide(false)}>Reject</Button>
+                  <Button size="sm" variant="outline" disabled={deciding || !note.trim()} onClick={() => decide(false)}>Reject</Button>
                 </div>
               </section>
             )}
@@ -122,7 +122,7 @@ export function BookingDrawer({ booking: b, onClose, onCancel, onDuplicate, pend
             </section>
 
             <div className="flex flex-wrap gap-2 border-t pt-4">
-              <Button size="sm" variant="outline" onClick={() => { onDuplicate(b); onClose(); }}><Copy className="size-4" /> Duplicate</Button>
+              {!readOnly && <Button size="sm" variant="outline" onClick={() => { onDuplicate(b); onClose(); }}><Copy className="size-4" /> Duplicate</Button>}
               {b.canCancel && <Button size="sm" variant="outline" className="text-destructive" disabled={pending} onClick={() => { onCancel(b.id, true); onClose(); }}><XCircle className="size-4" /> Cancel and restore</Button>}
             </div>
           </>

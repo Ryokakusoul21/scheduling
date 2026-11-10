@@ -4,7 +4,7 @@ import { activeRules } from "@/lib/scheduler/constraints-server";
 import { departmentWhere, isForeign } from "@/lib/permissions/department";
 import { prisma } from "@/lib/db/prisma";
 import { DIRECT_EDIT_ROLES, PUBLISH_ROLES, STAFF_ROLES } from "@/lib/permissions/roles";
-import { levelLabel, termLabel } from "@/lib/academics/levels";
+import { PROGRAM_CATALOG_FILTER, ACADEMIC_LEVELS, isAcademicLevel, levelLabel, termLabel } from "@/lib/academics/levels";
 import { SchedulerWorkspace } from "@/components/scheduler/scheduler-workspace";
 import { AcademicYearSwitcher } from "@/components/scheduler/academic-year-switcher";
 import type { SchedulerData } from "@/components/scheduler/types";
@@ -62,7 +62,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
     : scope.role === "HEAD_OF_DEPARTMENT"
       ? departmentWhere.schedule(scope)
       : { facultyId: scope.facultyId ?? "__none__" };
-  const inYear = { semester: { academicYearId: academicYear.id }, status: { not: "ARCHIVED" as const } };
+  const inYear = { semester: { academicYearId: academicYear.id, level: { in: [...ACADEMIC_LEVELS] } }, status: { not: "ARCHIVED" as const } };
   // Everything that does not depend on the visible classes loads in one round.
   const [allEntries, busyRows, programs, allTerms, departments, faculty, rooms, rules, assignmentRows, workload] = await Promise.all([
     prisma.schedule.findMany({ where: { AND: [scheduleScope, inYear] }, include: { section: { select: { departmentId: true, programId: true } } } }),
@@ -70,8 +70,8 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
     role === "HEAD_OF_DEPARTMENT"
       ? prisma.schedule.findMany({ where: { ...inYear, NOT: scheduleScope }, select: { semesterId: true, facultyId: true, roomId: true, dayOfWeek: true, startMin: true, endMin: true } })
       : Promise.resolve([]),
-    prisma.program.findMany({ where: departmentWhere.program(scope), orderBy: [{ level: "asc" }, { sortOrder: "asc" }, { code: "asc" }] }),
-    prisma.semester.findMany({ where: { academicYearId: academicYear.id }, include: { program: { select: { code: true } } }, orderBy: [{ level: "asc" }, { startDate: "asc" }] }),
+    prisma.program.findMany({ where: { AND: [PROGRAM_CATALOG_FILTER, departmentWhere.program(scope)] }, orderBy: [{ level: "asc" }, { sortOrder: "asc" }, { code: "asc" }] }),
+    prisma.semester.findMany({ where: { academicYearId: academicYear.id, level: { in: [...ACADEMIC_LEVELS] } }, include: { program: { select: { code: true } } }, orderBy: [{ level: "asc" }, { startDate: "asc" }] }),
     prisma.department.findMany({ where: departmentWhere.department(scope), orderBy: { code: "asc" } }),
     prisma.faculty.findMany({ where: departmentWhere.faculty(scope), include: { availability: true }, orderBy: { fullName: "asc" } }),
     prisma.room.findMany({
@@ -99,11 +99,11 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
   // Second round: records that depend on which classes are visible.
   const [sections, subjects, outsideFaculty] = await Promise.all([
     prisma.section.findMany({
-      where: { AND: [{ OR: [departmentWhere.section(scope), { id: { in: [...shownSections] } }] }, { semester: { academicYearId: academicYear.id } }] },
+      where: { level: { in: [...ACADEMIC_LEVELS] }, AND: [{ OR: [departmentWhere.section(scope), { id: { in: [...shownSections] } }] }, { OR: [{ semester: { academicYearId: academicYear.id } }, { semesterId: null, level: { not: "COLLEGE" } }] }] },
       include: { classPlaceholders: { select: { subjectId: true, component: true } } },
       orderBy: [{ level: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
     }),
-    prisma.subject.findMany({ where: { OR: [departmentWhere.subject(scope), { id: { in: [...shownSubjects] } }] }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }] }),
+    prisma.subject.findMany({ where: { level: { in: [...ACADEMIC_LEVELS] }, OR: [departmentWhere.subject(scope), { id: { in: [...shownSubjects] } }] }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }] }),
     outsideIds.length
       ? prisma.faculty.findMany({ where: { id: { in: outsideIds }, archivedAt: null }, select: { id: true, fullName: true, department: { select: { name: true } } } })
       : Promise.resolve([]),
@@ -223,17 +223,17 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
         modes={STAFF_ROLES.includes(role) ? <ModeSwitch mode={mode} academicYearId={academicYear.id} /> : undefined}
         data={data}
         permissions={{
-          // Registrar and Super Administrator only view and approve; Heads of Department build schedules.
-          canEdit: role === "HEAD_OF_DEPARTMENT",
+          // Administrator is view-only; the Registrar approves and Heads of Department build schedules.
+          canEdit: role === "HEAD_OF_DEPARTMENT" || role === "REGISTRAR",
           canPublish: PUBLISH_ROLES.includes(role),
           canSubmit: role === "HEAD_OF_DEPARTMENT",
           directEdit: DIRECT_EDIT_ROLES.includes(role),
-          queueOnly: role === "HEAD_OF_DEPARTMENT",
+          queueOnly: role === "HEAD_OF_DEPARTMENT" || role === "REGISTRAR",
           lockedLevel: onlyLevel,
           ownFacultyId,
         }}
         defaults={ownFacultyId ? { facultyId: ownFacultyId } : role === "HEAD_OF_DEPARTMENT" ? {
-          ...(onlyLevel ? { level: onlyLevel } : {}),
+          ...(isAcademicLevel(onlyLevel) ? { level: onlyLevel } : {}),
           termId: terms.some((term) => term.id === termId) ? termId : (terms.find((term) => term.isActive)?.id ?? terms[0]?.id ?? ""),
         } : {}}
         academicYearControl={<AcademicYearSwitcher key="academic-year-switcher" years={data.academicYears} currentId={academicYear.id} />}

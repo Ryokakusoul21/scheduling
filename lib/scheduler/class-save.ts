@@ -10,6 +10,7 @@ import { formatRange } from "./timetable";
 import { checkClassConstraints } from "./constraints-server";
 import type { Violation } from "./constraints";
 import type { SchedulerEntry } from "@/components/scheduler/types";
+import { notifyUsers } from "@/lib/notify";
 
 /** Save result; overridable means only soft rules were broken; requested means it went to another department for approval. */
 export type SaveResult =
@@ -123,16 +124,51 @@ export async function checkClass(d: ClassData, actor: { userId: string }, opts: 
 }
 
 /** Writes a class that already passed checkClass and records it in the audit log. */
-export async function writeClass(d: ClassData, actor: { userId: string; role: AppRole }, action: string): Promise<SaveResult> {
+export async function writeClass(d: ClassData, actor: { userId: string; role: AppRole }, action: string, changeReason?: string): Promise<SaveResult> {
+  if (actor.role === "SUPER_ADMINISTRATOR") return { ok: false, error: "Use Emergency Schedule Access for a documented emergency correction." };
   const { id, status, notes, ...data } = d;
   const owner = await prisma.section.findUnique({ where: { id: data.sectionId }, select: { departmentId: true } });
   if (!owner) return { ok: false, error: "Choose an existing section." };
-  const existing = id ? await prisma.schedule.findUnique({ where: { id }, select: { status: true } }) : null;
+  const existing = id ? await prisma.schedule.findUnique({ where: { id }, select: { status: true, facultyId: true, sectionId: true, departmentId: true, submissionId: true, subjectId: true, roomId: true, dayOfWeek: true, startMin: true, endMin: true } }) : null;
   if (id && !existing) return { ok: false, error: "This class was deleted by someone else." };
+  if ((existing?.status === "PUBLISHED" || existing?.status === "REVIEW") && !changeReason?.trim()) {
+    return { ok: false, error: "Document a reason before changing a previously submitted class." };
+  }
+  if (actor.role !== "REGISTRAR" && existing?.status === "PUBLISHED") {
+    return { ok: false, error: "Published schedules are locked. Ask the Registrar to record a documented change." };
+  }
+  if (existing?.status === "REVIEW") return { ok: false, error: "This schedule is waiting for the Registrar's decision." };
+  if (actor.role === "REGISTRAR" && (!existing || existing.status !== "PUBLISHED")) {
+    return { ok: false, error: "The Registrar may correct published classes. New or draft schedules must be submitted by the department." };
+  }
   const saved = id
-    ? await prisma.schedule.update({ where: { id }, data: { ...data, departmentId: owner.departmentId, notes: notes || null, status: resolveStatus(actor.role, status, existing!.status) } })
+    ? await prisma.schedule.update({ where: { id }, data: { ...data, departmentId: owner.departmentId, notes: notes || null, status: actor.role === "REGISTRAR" && existing!.status === "PUBLISHED" ? "PUBLISHED" : resolveStatus(actor.role, status, existing!.status) } })
     : await prisma.schedule.create({ data: { ...data, departmentId: owner.departmentId, notes: notes || null, status: resolveStatus(actor.role, status, undefined), generatedBy: actor.userId } });
-  await prisma.auditLog.create({ data: { userId: actor.userId, action, entity: "Schedule", entityId: saved.id, newValue: data } });
+  await prisma.auditLog.create({
+    data: {
+      userId: actor.userId,
+      action,
+      entity: "Schedule",
+      entityId: saved.id,
+      ...(existing ? { oldValue: existing } : {}),
+      newValue: data,
+      ...(changeReason?.trim() ? { reason: changeReason.trim() } : {}),
+    },
+  });
+  if (actor.role === "REGISTRAR" && existing?.status === "PUBLISHED") {
+    const departmentIds = [...new Set([existing.departmentId, saved.departmentId].filter((value): value is string => !!value))];
+    const [faculty, students, heads] = await Promise.all([
+      prisma.user.findMany({ where: { facultyId: { in: [...new Set([existing.facultyId, saved.facultyId])] }, status: "ACTIVE", archivedAt: null }, select: { id: true } }),
+      prisma.student.findMany({ where: { sectionId: { in: [...new Set([existing.sectionId, saved.sectionId])] }, user: { status: "ACTIVE", archivedAt: null } }, select: { userId: true } }),
+      prisma.user.findMany({ where: { role: "HEAD_OF_DEPARTMENT", status: "ACTIVE", archivedAt: null, faculty: { departmentId: { in: departmentIds } } }, select: { id: true } }),
+    ]);
+    await notifyUsers([...new Set([...faculty.map((user) => user.id), ...students.map((student) => student.userId), ...heads.map((head) => head.id)])].filter((userId) => userId !== actor.userId), {
+      title: "Published class schedule changed",
+      message: `The Registrar changed a published class schedule. Reason: ${changeReason!.trim()}`,
+      link: "/scheduler",
+      type: "WARNING",
+    });
+  }
   revalidateScheduler();
   queueWorkloadCheck(id ? "A class was edited or reassigned" : "A class was added");
   return { ok: true, data: toEntry(saved) };

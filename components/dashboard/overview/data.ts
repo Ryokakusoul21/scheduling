@@ -6,6 +6,7 @@ import { workloadView } from "@/lib/workload/view";
 import { loadPlan } from "@/lib/occupancy/load";
 import { URGENT_REASONS } from "@/lib/bookings/plan";
 import { activeOverlapConflicts } from "@/lib/scheduler/term-conflicts";
+import { PRIVATE_APPROVAL_AUDIT } from "@/lib/permissions/notifications";
 
 /** Request-scoped loaders so each dashboard widget can stream on its own without repeating queries. */
 
@@ -75,10 +76,10 @@ export const getAdminCounts = cache(async () => {
   const [conflicts, toPublish, pendingRequests, pendingAccounts, pendingReports, pendingProposals, totalSections, scheduled] = await Promise.all([
     activeOverlapConflicts(),
     prisma.schedule.count({ where: { ...inActiveTerms, status: { in: ["DRAFT", "REVIEW"] } } }),
-    prisma.scheduleRequest.count({ where: { status: "PENDING" } }),
+    Promise.resolve(0),
     prisma.user.count({ where: { status: "PENDING", archivedAt: null, emailVerified: { not: null } } }),
     prisma.unavailability.count({ where: { status: "PENDING" } }),
-    prisma.workloadProposal.count({ where: { status: "PENDING" } }),
+    Promise.resolve(0),
     prisma.section.count(),
     prisma.schedule.findMany({ where: inActiveTerms, select: { sectionId: true }, distinct: ["sectionId"] }),
   ]);
@@ -100,8 +101,8 @@ export const getRecentActivity = cache(async () => {
   const include = { user: { select: { name: true } } };
   // A separate query without sign-ins keeps meaningful changes visible on busy sign-in days.
   const [all, changes] = await Promise.all([
-    prisma.auditLog.findMany({ take: 12, orderBy: { createdAt: "desc" }, include }),
-    prisma.auditLog.findMany({ where: { entity: { not: "Auth" } }, take: 12, orderBy: { createdAt: "desc" }, include }),
+    prisma.auditLog.findMany({ where: PRIVATE_APPROVAL_AUDIT, take: 12, orderBy: { createdAt: "desc" }, include }),
+    prisma.auditLog.findMany({ where: { AND: [PRIVATE_APPROVAL_AUDIT, { entity: { not: "Auth" } }] }, take: 12, orderBy: { createdAt: "desc" }, include }),
   ]);
   const today = dayKey(new Date());
   const yesterday = dayKey(new Date(Date.now() - 86_400_000));

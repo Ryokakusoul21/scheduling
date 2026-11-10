@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { requireScope } from "@/lib/permissions/scope";
+import { PRIVATE_APPROVAL_AUDIT } from "@/lib/permissions/notifications";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,6 +11,7 @@ export default async function AuditLogsPage() {
   await requireScope("SUPER_ADMINISTRATOR");
 
   const logs = await prisma.auditLog.findMany({
+    where: PRIVATE_APPROVAL_AUDIT,
     include: { user: { select: { name: true } } },
     orderBy: { createdAt: "desc" },
     take: 300,

@@ -22,10 +22,10 @@ export const SUBJECT_COLUMNS: ImportColumn[] = [
   { key: "lectureHours", header: "Lecture Hours", required: true, example: "2", help: "Weekly lecture hours" },
   { key: "labHours", header: "Laboratory Hours", required: true, example: "1", help: "Weekly laboratory hours (0 if none)" },
   { key: "roomType", header: "Required Room Type", required: true, example: "Computer laboratory", help: "Lecture room, Computer laboratory, Science laboratory, Conference room, or Other" },
-  { key: "level", header: "Academic Level", required: true, example: "College", help: "College, Senior High School, Junior High School, or Elementary" },
+  { key: "level", header: "Academic Level", required: true, example: "College", help: "College, Senior High School, Junior High School, Elementary, or Pre-elementary" },
   { key: "program", header: "Program Code", example: "BSIT", help: "College course or Senior High School strand code; blank for general subjects" },
   { key: "yearLevel", header: "Year Level", example: "Second", help: "College only: First to Fifth" },
-  { key: "gradeLevel", header: "Grade Level", example: "", help: "Basic education only: Kindergarten or Grade 1 to Grade 12" },
+  { key: "gradeLevel", header: "Grade Level", example: "", help: "Basic education only: Nursery, Preparatory, Kindergarten, or Grade 1 to Grade 12" },
   { key: "description", header: "Description", example: "", help: "Optional" },
   { key: "assignedFaculty", header: "Assigned Faculty", example: "", help: "Optional: faculty email or employee ID; assigned for every section in the active term" },
 ];
@@ -55,7 +55,7 @@ const ROOM_TYPES: Record<string, RoomType> = {
   conferenceroom: "CONFERENCE_ROOM", other: "OTHER",
 };
 const LEVELS: Record<string, AcademicLevel> = {
-  college: "COLLEGE", seniorhighschool: "SENIOR_HIGH", seniorhigh: "SENIOR_HIGH",
+  college: "COLLEGE", seniorhighschool: "SENIOR_HIGH", seniorhigh: "SENIOR_HIGH", shs: "SENIOR_HIGH", preelementary: "PRE_ELEMENTARY", preelem: "PRE_ELEMENTARY",
   juniorhighschool: "JUNIOR_HIGH", juniorhigh: "JUNIOR_HIGH", elementary: "ELEMENTARY",
 };
 const YEARS: Record<string, YearLevel> = {
@@ -64,8 +64,8 @@ const YEARS: Record<string, YearLevel> = {
   fifth: "FIFTH", "5": "FIFTH", fifthyear: "FIFTH",
 };
 const GRADES: Record<string, GradeLevel> = Object.fromEntries([
-  ["kinder", "KINDER"], ["kindergarten", "KINDER"],
-  ...GRADE_LEVELS.filter((g) => g !== "KINDER").flatMap((g) => {
+  ["nursery", "NURSERY"], ["preparatory", "PREPARATORY"], ["kinder", "KINDER"], ["kindergarten", "KINDER"],
+  ...GRADE_LEVELS.filter((g) => g.startsWith("GRADE_")).flatMap((g) => {
     const n = g.replace("GRADE_", "");
     return [[`grade${n}`, g], [n, g]];
   }),

@@ -1,3 +1,4 @@
+import { PROGRAM_CATALOG_FILTER } from "@/lib/academics/levels";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BookOpen, CalendarBlank, UsersThree, CalendarDots } from "@phosphor-icons/react/ssr";
@@ -22,7 +23,7 @@ export default async function ProgramDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
   const [program, departments] = await Promise.all([
     prisma.program.findFirst({
-      where: { id, ...departmentWhere.program(scope) },
+      where: { id, AND: [PROGRAM_CATALOG_FILTER, departmentWhere.program(scope)] },
       include: {
         department: true,
         sections: { select: { yearLevel: true, gradeLevel: true, studentCount: true, _count: { select: { schedules: true } } } },

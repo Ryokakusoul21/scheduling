@@ -1,3 +1,4 @@
+import { PROGRAM_CATALOG_FILTER } from "@/lib/academics/levels";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { NOT_ARCHIVED } from "@/lib/archive/archive";
@@ -21,7 +22,7 @@ export default async function UsersPage() {
     }),
     prisma.faculty.findMany({ where: NOT_ARCHIVED, select: { id: true, fullName: true, employeeId: true }, orderBy: { fullName: "asc" } }),
     countArchived(),
-    prisma.program.findMany({ select: { id: true, code: true, name: true, departmentId: true }, orderBy: [{ level: "asc" }, { sortOrder: "asc" }] }),
+    prisma.program.findMany({ where: PROGRAM_CATALOG_FILTER, select: { id: true, code: true, name: true, departmentId: true }, orderBy: [{ level: "asc" }, { sortOrder: "asc" }] }),
   ]);
   const day = (d: Date) => d.toISOString().slice(0, 10);
 

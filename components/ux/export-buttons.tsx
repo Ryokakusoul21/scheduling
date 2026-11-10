@@ -5,7 +5,7 @@ import { CaretDown, DownloadSimple, FilePdf, FileXls, Printer } from "@phosphor-
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { downloadText, toCsv, type Column } from "@/lib/export/csv";
-import { activitiesDoc, downloadReportCsv, printReport, timetableDoc, type ActivityRow, type ReportDoc, type TimetableRow } from "@/lib/export/report";
+import { activitiesDoc, downloadReportCsv, printReport, timetableDoc, type ActivityRow, type ReportDoc, type TimetablePrintDetails, type TimetableRow } from "@/lib/export/report";
 
 /**
  * Spreadsheet and PDF export for a table or report. PDF uses the browser's print dialog
@@ -79,20 +79,30 @@ export function ReportButtons<T>({ doc }: { doc: ReportDoc<T> }) {
 }
 
 /** Report buttons for a timetable whose rows come from a server component. */
-export function TimetableReportButtons({ title, term, rows, filename }: { title: string; term: string; rows: TimetableRow[]; filename: string }) {
-  return <ReportButtons doc={timetableDoc(title, term, rows, filename)} />;
+export function TimetableReportButtons({ title, term, rows, filename, details }: { title: string; term: string; rows: TimetableRow[]; filename: string; details?: TimetablePrintDetails }) {
+  return <ReportButtons doc={timetableDoc(title, term, rows, filename, details)} />;
 }
 
 /** Report buttons for school events, holidays, and class suspensions. */
 export function ActivitiesReportButtons({ title, term, rows, filename, official = false, department = "All Departments" }: { title: string; term: string; rows: ActivityRow[]; filename: string; official?: boolean; department?: string }) {
+  const isCollegeReport = /college/i.test(department) || (rows.length > 0 && rows.every((row) => /^(COLLEGE|COLLEGE PROGRAM)$/i.test(row.level ?? "")));
+  const reportTerm = official && isCollegeReport ? withoutQuarterTerms(term) : term;
   if (official) return <ReportButtons doc={{
-    title, term, filename, officialActivities: true, department, rows: [...rows].sort((a,b)=>a.startDate.localeCompare(b.startDate)),
+    title, term: reportTerm, filename, officialActivities: true, department, rows: [...rows].sort((a,b)=>a.startDate.localeCompare(b.startDate)),
     columns: [
       { header: "DATE", value: (r) => r.startDate === r.endDate ? new Date(`${r.startDate}T00:00:00Z`).toLocaleDateString("en-PH", { dateStyle: "long", timeZone: "UTC" }) : `${new Date(`${r.startDate}T00:00:00Z`).toLocaleDateString("en-PH", { dateStyle: "long", timeZone: "UTC" })} to ${new Date(`${r.endDate}T00:00:00Z`).toLocaleDateString("en-PH", { dateStyle: "long", timeZone: "UTC" })}` },
       { header: "ACTIVITIES", value: (r) => r.title },
     ],
   }} />;
   return <ReportButtons doc={activitiesDoc(title, term, rows, filename)} />;
+}
+
+function withoutQuarterTerms(term: string) {
+  const separator = term.indexOf(" · ");
+  if (separator < 0) return term;
+  const schoolYear = term.slice(0, separator);
+  const terms = term.slice(separator + 3).split(";").map((label) => label.trim()).filter((label) => !/\bquarter\b/i.test(label));
+  return terms.length ? `${schoolYear} · ${terms.join("; ")}` : schoolYear;
 }
 
 /** One room a student's section uses, for the printed room assignments list. */

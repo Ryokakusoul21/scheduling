@@ -1,3 +1,4 @@
+import { PROGRAM_CATALOG_FILTER } from "@/lib/academics/levels";
 import { prisma } from "@/lib/db/prisma";
 import { policyUserFromScope, requireScope } from "@/lib/permissions/scope";
 import { can } from "@/lib/permissions/policy";
@@ -6,13 +7,13 @@ import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { ProgramsManager } from "./programs-manager";
 import { ProgramsReadOnly } from "./programs-readonly";
 
-export const metadata = { title: "Programs and Strands · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
+export const metadata = { title: "Academic Programs · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function ProgramsPage() {
   const scope = await requireScope(...STAFF_ROLES);
   const [programs, departments] = await Promise.all([
     prisma.program.findMany({
-      where: { level: { in: ["COLLEGE", "SENIOR_HIGH"] }, ...departmentWhere.program(scope) },
+      where: { AND: [PROGRAM_CATALOG_FILTER, departmentWhere.program(scope)] },
       orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
       include: {
         department: { select: { code: true, name: true } },

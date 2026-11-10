@@ -52,7 +52,8 @@ export interface AckRow { id: string; status: string; note: string | null; purpo
 const HIGHLIGHT_MS = 4000;
 
 /** Find a room (optionally as an urgent override), confirm the impact, then manage bookings below. */
-export function BookingWorkspace({ bookings, acknowledgements, showBookedBy, defaults, clock, priorities, roomChoices, caps: initialCaps, hours, openId }: {
+export function BookingWorkspace({ readOnly = false, bookings, acknowledgements, showBookedBy, defaults, clock, priorities, roomChoices, caps: initialCaps, hours, openId }: {
+  readOnly?: boolean;
   bookings: BookingRow[];
   acknowledgements: AckRow[];
   showBookedBy: boolean;
@@ -109,8 +110,8 @@ export function BookingWorkspace({ bookings, acknowledgements, showBookedBy, def
       setConfirm(null);
       if (!res.ok) return announce(false, res.error);
       const { bookingId: id, status, items, displaced, repeat } = res.data;
-      if (repeat) toast.message(`${repeat.booked} weekly repeat${repeat.booked === 1 ? "" : "s"} booked${repeat.skipped.length ? `; ${repeat.skipped.length} skipped: ${repeat.skipped.map((x) => `${x.date} (${x.reason.split(". ")[0].replace(/\.$/, "")})`).join(", ")}` : ""}.`, { duration: 20000 });
-      if (status === "AWAITING_APPROVAL") announce(true, `Request sent. ${option.needsApproval} must approve before ${option.name} is yours.`);
+      if (repeat) toast.message(`${repeat.booked} weekly repeat${repeat.booked === 1 ? "" : "s"} requested${repeat.skipped.length ? `; ${repeat.skipped.length} skipped: ${repeat.skipped.map((x) => `${x.date} (${x.reason.split(". ")[0].replace(/\.$/, "")})`).join(", ")}` : ""}.`, { duration: 20000 });
+      if (status === "AWAITING_APPROVAL") announce(true, `Request sent. ${option.needsApproval} must approve before the booking is confirmed.`);
       else announce(true, `${option.name} booked.${items.length ? ` ${items.length} class(es) moved.` : ""}${displaced.length ? ` ${displaced.length} booking(s) moved.` : ""}${items.length + displaced.length ? " Everyone affected was notified." : ""}`);
       setOptions(null);
       setHighlightId(id);
@@ -126,7 +127,7 @@ export function BookingWorkspace({ bookings, acknowledgements, showBookedBy, def
     startTransition(async () => {
       const res = await reviewOverrideAction(id, true);
       if (!res.ok) return announce(false, res.error);
-      announce(true, "Override approved and applied. Affected classes were moved and everyone was notified.");
+      announce(true, "Booking approved and applied. Affected classes were moved and everyone was notified.");
       router.refresh();
     });
   }
@@ -153,7 +154,7 @@ export function BookingWorkspace({ bookings, acknowledgements, showBookedBy, def
       <p aria-live="polite" className="sr-only">{announcement}</p>
       <AcknowledgementPanel items={acknowledgements} />
 
-      <div role="tablist" aria-label="Room booking" className="grid w-full max-w-md grid-cols-2 gap-1 rounded-2xl bg-muted p-1.5">
+      {!readOnly && <><div role="tablist" aria-label="Room booking" className="grid w-full max-w-md grid-cols-2 gap-1 rounded-2xl bg-muted p-1.5">
         {([["find", "Find a room", MagnifyingGlass], ["availability", "Room availability", CalendarDots]] as const).map(([value, label, TabIcon]) => (
           <button key={value} type="button" role="tab" aria-selected={panel === value} onClick={() => setPanel(value)}
             className={cn("inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold outline-none transition-all focus-visible:ring-2 focus-visible:ring-ring",
@@ -196,10 +197,12 @@ export function BookingWorkspace({ bookings, acknowledgements, showBookedBy, def
         <AvailabilityGrid today={clock.today} hours={hours} onPick={(slot) => { prefill({ ...slot, priority: "REGULAR" }); setTimeout(() => document.getElementById("find-title")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); }} />
       )}
 
-      <BookingsList bookings={bookings} showBookedBy={showBookedBy} highlightId={highlightId} pending={pending} onCancel={cancel} onDuplicate={duplicate} onOpen={(b) => setDetail(b.id)} onApprove={approve} onFindRoom={() => { setPanel("find"); setTimeout(() => { document.getElementById("find-title")?.scrollIntoView({ behavior: "smooth", block: "start" }); document.getElementById("b-purpose")?.focus(); }, 60); }} />
+      </>}
+
+      <BookingsList readOnly={readOnly} bookings={bookings} showBookedBy={showBookedBy} highlightId={highlightId} pending={pending} onCancel={cancel} onDuplicate={duplicate} onOpen={(b) => setDetail(b.id)} onApprove={approve} onFindRoom={() => { setPanel("find"); setTimeout(() => { document.getElementById("find-title")?.scrollIntoView({ behavior: "smooth", block: "start" }); document.getElementById("b-purpose")?.focus(); }, 60); }} />
 
       <BookDialog option={confirm} request={request} pending={pending} onConfirm={(choices) => confirm && book(confirm, choices)} onClose={() => setConfirm(null)} />
-      <BookingDrawer booking={active} onClose={() => setDetail(null)} onCancel={cancel} onDuplicate={duplicate} pending={pending} />
+      <BookingDrawer readOnly={readOnly} booking={active} onClose={() => setDetail(null)} onCancel={cancel} onDuplicate={duplicate} pending={pending} />
     </div>
   );
 }

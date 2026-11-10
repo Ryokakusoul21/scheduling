@@ -21,9 +21,9 @@ export function ScheduleHeader({ leading, trail, help, modes, children }: { lead
         <button type="button" aria-label="Scheduler help" title={help} className="rounded-full text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"><Info className="size-4" /></button>
       </div>
       {modes}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card px-3 py-2 shadow-xs">
-        {leading && <div className="flex shrink-0 items-center gap-2">{leading}</div>}
-        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">{children}</div>
+      <div className="flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-3 shadow-xs xl:flex-row xl:flex-wrap xl:items-end">
+        {leading && <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:flex xl:flex-wrap xl:items-end [&>*]:min-w-0">{leading}</div>}
+        <div className="grid min-w-0 gap-2 sm:flex sm:flex-wrap xl:flex-1 xl:justify-end [&>button]:h-auto [&>button]:min-h-11 [&>button]:whitespace-normal [&>button]:py-2 sm:[&>button]:min-h-9">{children}</div>
       </div>
     </div>
   );
@@ -36,7 +36,7 @@ export function FilterCard({ expanded, onToggle, activeCount, perspective, onPer
   return (
     <Card className="shrink-0">
       <CardContent ref={filterRef} className="p-2.5">
-        {toggleable && <div className="flex items-center gap-2">
+        {toggleable && <div className="flex flex-wrap items-center gap-2">
           <Button variant="ghost" size="sm" onClick={onToggle} aria-expanded={expanded}>
             <FunnelSimple className="size-4" /> {expanded ? "Collapse Filters" : "Expand Filters"}
             {!expanded && <Badge variant="secondary">{activeCount}</Badge>}
@@ -47,7 +47,7 @@ export function FilterCard({ expanded, onToggle, activeCount, perspective, onPer
             {(["section", "faculty", "room"] as const).map((kind) => <button key={kind} type="button" role="radio" aria-checked={perspective === kind} onClick={() => onPerspective(kind)} className={cn("rounded-md px-2 py-1 text-xs font-medium capitalize outline-none focus-visible:ring-2 focus-visible:ring-ring", perspective === kind ? "bg-primary text-primary-foreground" : "hover:bg-muted")}>{kind}</button>)}
           </div>}
         </div>}
-        {(expanded || !toggleable) && <div className={cn(toggleable && "mt-2", "grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-2")}>{children}</div>}
+        {(expanded || !toggleable) && <div className={cn(toggleable && "mt-2", "grid grid-cols-[repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-2 [&>*]:min-w-0")}>{children}</div>}
       </CardContent>
     </Card>
   );

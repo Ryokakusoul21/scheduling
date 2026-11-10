@@ -113,7 +113,17 @@ function ownsDepartment(user: PolicyUser, resource: PolicyResource) {
 /** The only authorization decision function. Anything not listed is denied. */
 export function can(user: PolicyUser | null | undefined, action: PolicyAction, resource: PolicyResource): boolean {
   if (!isActivePolicyUser(user)) return false;
-  if (user.role === "SUPER_ADMINISTRATOR") return true;
+  if (["SUPER_ADMINISTRATOR", "REGISTRAR"].includes(user.role)) {
+    if (["scheduleRequest", "workloadFix"].includes(resource.type)) return false;
+    if (resource.type === "roomBooking" || resource.type === "activityProposal") return action === "view" || action === "export";
+  }
+  if (user.role === "SUPER_ADMINISTRATOR") {
+    // System ownership grants broad access, but schedule records stay under academic authority.
+    if (["schedule", "examination", "scheduleAdjustment", "scheduleRequest", "workloadFix", "activityProposal"].includes(resource.type)) {
+      return action === "view" || action === "export";
+    }
+    return true;
+  }
   // The Registrar runs every academic record but not accounts, settings, or the audit log.
   if (user.role === "REGISTRAR") return !["user", "settings", "auditLog"].includes(resource.type);
 
@@ -126,7 +136,7 @@ export function can(user: PolicyUser | null | undefined, action: PolicyAction, r
     if (action === "export") return ["report", "analytics", "schedule", "examination"].includes(resource.type) && ownsDepartment(user, resource) && inProgramScope(user, resource);
     // A Head of Department renames their own department and nothing else about it.
     if (action === "rename") return resource.type === "department" && ownsDepartment(user, resource);
-    if (action === "approve" || action === "reject") return false;
+    if (action === "approve" || action === "reject") return ["roomBooking", "scheduleRequest", "workloadFix"].includes(resource.type) && ownsDepartment(user, resource) && inProgramScope(user, resource) && resource.ownerUserId !== user.id;
     if (resource.type === "faculty" || resource.type === "user" || resource.type === "settings" || resource.type === "roomBooking") return false;
     return HOD_MUTATIONS.has(action) && DEPARTMENT_MANAGED.has(resource.type) && ownsDepartment(user, resource) && inProgramScope(user, resource);
   }
@@ -151,6 +161,7 @@ export type PolicyWhere = Record<string, unknown>;
  */
 export function scopeQuery(user: PolicyUser | null | undefined, type: PolicyResourceType): PolicyWhere {
   if (!isActivePolicyUser(user)) return { id: { equals: "__denied__" } };
+  if (["SUPER_ADMINISTRATOR", "REGISTRAR"].includes(user.role) && ["scheduleRequest", "workloadFix"].includes(type)) return { id: { equals: "__denied__" } };
   if (user.role === "SUPER_ADMINISTRATOR" || user.role === "REGISTRAR") return {};
   const departments = policyDepartmentIds(user);
   if (user.role === "HEAD_OF_DEPARTMENT") {

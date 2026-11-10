@@ -24,7 +24,7 @@ export default async function StudentPortalLayout({ children }: { children: Reac
 
   return (
     <ShortcutProvider allowedHrefs={[]}>
-      {user.realId && <ViewAsBanner name={user.name ?? user.email ?? "Account"} role={ROLE_LABELS[user.role as AppRole]} realName={user.realName ?? "Super Administrator"} />}
+      {user.realId && <ViewAsBanner name={user.name ?? user.email ?? "Account"} role={ROLE_LABELS[user.role as AppRole]} realName={user.realName ?? "Administrator"} />}
       <a
         href="#main-content"
         className="sr-only z-50 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
@@ -46,7 +46,7 @@ export default async function StudentPortalLayout({ children }: { children: Reac
               subtitle={studentNumber ? `Student number ${studentNumber}` : undefined}
             />
           </div>
-          <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto p-3 pb-28 outline-none md:pb-4 print:overflow-visible print:p-0 md:p-4">
+          <main id="main-content" tabIndex={-1} className="mb-[calc(6.5rem+env(safe-area-inset-bottom))] min-h-0 flex-1 overflow-y-auto p-3 outline-none md:mb-0 print:m-0 print:overflow-visible print:p-0 md:p-4">
             <div className="mx-auto max-w-[1600px] space-y-4">
               <Suspense fallback={<div className="h-5" aria-hidden />}>
                 <AppBreadcrumbs role="STUDENT" />

@@ -1,10 +1,11 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireScope } from "@/lib/permissions/scope";
 import { departmentWhere } from "@/lib/permissions/department";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { flowHref, isComplete, parseFlow } from "@/lib/academics/flow";
-import { LEVELS, gradeLabel, levelLabel, termLabel, yearLabel } from "@/lib/academics/levels";
+import { PROGRAM_CATALOG_FILTER, LEVELS, gradeLabel, levelLabel, termLabel, yearLabel } from "@/lib/academics/levels";
 import { LevelFlow } from "@/components/academics/level-flow";
 import { PageHeader } from "@/components/ux/states";
 import { cn } from "@/lib/utils";
@@ -28,7 +29,8 @@ export default async function SectionsPage({ searchParams }: { searchParams: Pro
   const legacyYearLevel = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH"].includes(params.year ?? "") ? params.year : undefined;
   const flow = parseFlow({ ...params, year: params.yearLevel ?? legacyYearLevel });
 
-  if (scope.role === "HEAD_OF_DEPARTMENT" && params.other !== "1") {
+  const hasBasicPrograms = scope.role === "HEAD_OF_DEPARTMENT" && await prisma.program.count({ where: { ...departmentWhere.program(scope), level: "SENIOR_HIGH" } }) > 0;
+  if (scope.role === "HEAD_OF_DEPARTMENT" && params.other !== "1" && !hasBasicPrograms && (!flow.level || flow.level === "COLLEGE")) {
     const programs = await prisma.program.findMany({ where: { departmentId: scope.departmentId, level: "COLLEGE" }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }], select: { id: true, code: true, name: true, departmentId: true } });
     const program = programs.find((row) => row.id === filters.program) ?? programs[0];
     const years = ["FIRST", "SECOND", "THIRD", "FOURTH"] as const;
@@ -46,9 +48,12 @@ export default async function SectionsPage({ searchParams }: { searchParams: Pro
     </div>;
   }
 
+  const termWhere: Prisma.SectionWhereInput = flow.level === "COLLEGE"
+    ? { semester: { academicYear: { name: filters.year }, type: termType } }
+    : { OR: [{ semesterId: null }, { semester: { academicYear: { name: filters.year } } }] };
   const [all, programs] = await Promise.all([
-    prisma.section.findMany({ where: { archivedAt: filters.status === "ACTIVE" ? null : { not: null }, semester: { academicYear: { name: filters.year }, type: termType }, ...(params.other === "1" ? {} : departmentWhere.section(scope)) }, select: { level: true, programId: true, yearLevel: true, gradeLevel: true } }),
-    prisma.program.findMany({ where: params.other === "1" ? {} : departmentWhere.program(scope), orderBy: [{ sortOrder: "asc" }, { code: "asc" }], select: { id: true, code: true, name: true, level: true } }),
+    prisma.section.findMany({ where: { archivedAt: filters.status === "ACTIVE" ? null : { not: null }, AND: [termWhere, params.other === "1" ? {} : departmentWhere.section(scope)] }, select: { level: true, programId: true, yearLevel: true, gradeLevel: true } }),
+    prisma.program.findMany({ where: { AND: [PROGRAM_CATALOG_FILTER, params.other === "1" ? {} : departmentWhere.program(scope)] }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }], select: { id: true, code: true, name: true, level: true } }),
   ]);
 
   let list: React.ReactNode = null;
@@ -59,7 +64,7 @@ export default async function SectionsPage({ searchParams }: { searchParams: Pro
         : { level: flow.level, gradeLevel: flow.grade, ...(flow.strand ? { programId: flow.strand } : {}) };
     const [sections, terms] = await Promise.all([
       prisma.section.findMany({
-        where: { ...where, archivedAt: filters.status === "ACTIVE" ? null : { not: null }, semester: { academicYear: { name: filters.year }, type: termType }, ...(params.other === "1" ? {} : departmentWhere.section(scope)) },
+        where: { ...where, archivedAt: filters.status === "ACTIVE" ? null : { not: null }, AND: [termWhere, params.other === "1" ? {} : departmentWhere.section(scope)] },
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         include: {
           program: { select: { code: true, name: true } },
@@ -132,7 +137,7 @@ export default async function SectionsPage({ searchParams }: { searchParams: Pro
   return (
     <div className="space-y-4">
       <PageHeader title="Sections" description="Pick a level and year or grade to create and manage its class sections." />
-      <SectionTermFilters years={academicYears.map((row) => row.name)} selectedYear={filters.year} selectedSemester={filters.semester} status={filters.status} />
+      <SectionTermFilters years={academicYears.map((row) => row.name)} selectedYear={filters.year} selectedSemester={filters.semester} status={filters.status} showSemester={flow.level === "COLLEGE"} />
       <LevelFlow basePath="/sections" rootLabel="Sections" noun="sections" flow={flow} rows={all} programs={programs} />
       {list}
     </div>

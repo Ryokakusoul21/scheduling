@@ -7,7 +7,7 @@ import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
-import { ACADEMIC_LEVELS, QUARTER_TYPES, SEMESTER_TYPES, LEVELS, termLabel } from "@/lib/academics/levels";
+import { ACADEMIC_LEVELS, QUARTER_TYPES, SEMESTER_TYPES, LEVELS, isAcademicLevel, termLabel } from "@/lib/academics/levels";
 
 type Result = { ok: boolean; error?: string };
 
@@ -156,6 +156,7 @@ export async function deleteTermAction(id: string): Promise<Result> {
  */
 export async function createDefaultTermsAction(academicYearId: string, level: AcademicLevel, programId: string | null): Promise<Result> {
   await requireRole(...STAFF_ROLES);
+  if (!isAcademicLevel(level)) return { ok: false, error: "Choose an academic level offered by Granby." };
   const year = await prisma.academicYear.findUnique({ where: { id: academicYearId } });
   if (!year) return { ok: false, error: "Academic year not found." };
 

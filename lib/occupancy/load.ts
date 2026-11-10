@@ -70,7 +70,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
       select: { startDate: true, endDate: true },
     }),
     prisma.examination.findMany({
-      where: { date: { gte: rangeFrom, lte: rangeTo } },
+      where: { date: { gte: rangeFrom, lte: rangeTo }, status: { not: "ARCHIVED" } },
       include: { subject: { select: { code: true } }, section: { select: { name: true } } },
     }),
     prisma.roomBooking.findMany({ where: { status: "CONFIRMED", date: { gte: rangeFrom, lte: rangeTo } } }),

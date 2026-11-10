@@ -37,16 +37,25 @@ describe("canReviewRequest", () => {
     expect(canReviewRequest(head, req({ status: "APPROVED" }))).toBe(false);
     expect(canReviewRequest({ role: "FACULTY", userId: "f2", departmentIds: ["cs"] }, req())).toBe(false);
   });
+  it("waits for each affected department on cross-department requests", () => {
+    const details = { requiredDepartmentIds: ["cs", "biz"], approvedDepartmentIds: ["biz"] };
+    expect(canReviewRequest(head, req({ type: "CROSS_DEPARTMENT", departmentId: "other", details }))).toBe(true);
+    expect(canReviewRequest(head, req({ type: "CROSS_DEPARTMENT", details: { ...details, approvedDepartmentIds: ["cs"] } }))).toBe(false);
+    expect(canReviewRequest(head, req({ type: "CROSS_DEPARTMENT", targetDepartmentId: null }))).toBe(false);
+  });
   it("does not let the Registrar decide what a Head of Department owns", () => {
     expect(canReviewRequest(admin, req())).toBe(false);
     expect(canReviewRequest(admin, req({ type: "CROSS_DEPARTMENT", targetDepartmentId: "cs" }))).toBe(false);
   });
-  it("leaves the Registrar only the requests no Head of Department can decide", () => {
-    expect(canReviewRequest(head, req({ type: "FACULTY_CHANGE", requesterRole: "HEAD_OF_DEPARTMENT" }))).toBe(false);
-    expect(canReviewRequest(admin, req({ type: "FACULTY_CHANGE", requesterRole: "HEAD_OF_DEPARTMENT" }))).toBe(true);
-    expect(canReviewRequest(admin, req({ requesterRole: "HEAD_OF_DEPARTMENT", requestedById: "h2" }))).toBe(true);
-    expect(canReviewRequest(admin, req({ type: "SUBJECT_CHANGE", departmentId: "cs" }))).toBe(true);
-    expect(canReviewRequest(admin, req({ departmentId: null }))).toBe(true);
+  it("routes record changes and other heads' requests to the owning head, never the Registrar", () => {
+    expect(canReviewRequest(head, req({ type: "FACULTY_CHANGE", requesterRole: "HEAD_OF_DEPARTMENT" }))).toBe(true);
+    expect(canReviewRequest(head, req({ requesterRole: "HEAD_OF_DEPARTMENT", requestedById: "h2" }))).toBe(true);
+    expect(canReviewRequest(head, req({ type: "SUBJECT_CHANGE" }))).toBe(true);
+    for (const type of ["FACULTY_CHANGE", "SUBJECT_CHANGE", "NEW_SCHEDULE", "CROSS_DEPARTMENT"]) {
+      expect(canReviewRequest(admin, req({ type }))).toBe(false);
+      expect(canReviewRequest({ ...admin, role: "SUPER_ADMINISTRATOR" }, req({ type }))).toBe(false);
+    }
+    expect(canReviewRequest(admin, req({ departmentId: null }))).toBe(false);
   });
 });
 

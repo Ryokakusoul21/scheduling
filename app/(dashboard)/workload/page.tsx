@@ -24,6 +24,7 @@ export default async function WorkloadPage() {
         actions={<LiveRefresh />}
       />
       <WorkloadBoard
+        canReview={scope.role === "HEAD_OF_DEPARTMENT"}
         staff={staff}
         measure={view.limits.measure}
         tolerance={view.limits.tolerance}

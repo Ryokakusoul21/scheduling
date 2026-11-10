@@ -12,7 +12,7 @@ import { undoProblems, writePlan, type PlanItem } from "@/lib/occupancy/adjust";
 import { formatRange } from "@/lib/scheduler/timetable";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
 import {
-  allowedPriorities, approvalDepartment, capStatus, isOverride, lockKeys, planBooking, PLAN_WINDOW_DAYS, PRIORITY_LABEL, restorableAfterShortening, URGENT_REASONS,
+  allowedPriorities, canManageBooking, canReviewOverride, capStatus, isOverride, lockKeys, planBooking, PLAN_WINDOW_DAYS, PRIORITY_LABEL, restorableAfterShortening, URGENT_REASONS,
   type BookingPlan, type DisplacedBooking, type Priority, type UrgentReason,
 } from "./plan";
 
@@ -87,7 +87,7 @@ export async function searchRooms(scope: Scope, input: SlotInput & { roomType?: 
   ]);
   const options: RoomOption[] = rooms.map((r) => {
     const plan = planBooking(loaded, { ...input, roomId: r.id }, settings, { canMoveFixed: scope.isAdmin });
-    const approval = override ? approvalDepartment(scope, r.departmentId) : null;
+    const approval = r.departmentId ?? scope.departmentId;
     return {
       roomId: r.id,
       name: r.roomName,
@@ -113,6 +113,7 @@ export async function searchRooms(scope: Scope, input: SlotInput & { roomType?: 
 
 /** Checks the request itself: allowed priority, a reason for overrides, the room, and the monthly caps. */
 async function vet(scope: Scope, d: BookingInput) {
+  if (!["HEAD_OF_DEPARTMENT", "FACULTY"].includes(scope.role)) return { error: "Your role has view-only access to room bookings." } as const;
   if (!allowedPriorities(scope.role).includes(d.priority)) return { error: `Your role can book up to ${PRIORITY_LABEL[allowedPriorities(scope.role).at(-1)!]} priority.` } as const;
   if (isOverride(d.priority) && !d.urgentReason) return { error: "Choose the reason for the urgent booking." } as const;
   if (d.urgentReason === "OTHER" && !d.reasonDetail?.trim()) return { error: "Describe the reason for the urgent booking." } as const;
@@ -129,11 +130,12 @@ async function vet(scope: Scope, d: BookingInput) {
   return { room } as const;
 }
 
-/** Books a room. Overrides of another department's room wait for that department's approval; everything else is applied now. */
+/** Requests a booking; every booking waits for the responsible department head. */
 export async function createBooking(scope: Scope, d: BookingInput) {
   const v = await vet(scope, d);
   if ("error" in v) return { ok: false, error: v.error! } satisfies Fail;
-  const approval = isOverride(d.priority) ? approvalDepartment(scope, v.room.departmentId) : null;
+  const approval = v.room.departmentId ?? scope.departmentId;
+  if (!approval) return { ok: false, error: "Assign a responsible department before requesting this room." } satisfies Fail;
   const fields: Prisma.RoomBookingUncheckedCreateInput = {
     roomId: d.roomId, bookedById: scope.userId, purpose: d.purpose, date: day(d.date), startMin: d.startMin, endMin: d.endMin, attendees: d.attendees,
     departmentId: scope.departmentId, priority: d.priority, urgentReason: isOverride(d.priority) ? d.urgentReason : null, reasonDetail: d.reasonDetail?.trim() || null,
@@ -144,8 +146,8 @@ export async function createBooking(scope: Scope, d: BookingInput) {
     const plan = planBooking(await loadPlan(d.date, addDays(d.date, PLAN_WINDOW_DAYS)), d, settings, { canMoveFixed: scope.isAdmin });
     if (plan.blockers.length) return { ok: false, error: plan.blockers.join(" ") } satisfies Fail;
     const booking = await prisma.roomBooking.create({ data: { ...fields, status: "AWAITING_APPROVAL", approvalDepartmentId: approval } });
-    await audit(prisma, scope, booking.id, `Requested an urgent override of ${v.room.roomName}, awaiting the owning department's approval`, { ...d, displacedClasses: plan.items.length });
-    await notifyManagers(approval, { title: "Urgent room override needs your approval", message: `${scope.name} asks to take ${v.room.roomName} on ${d.date}, ${formatRange(d.startMin, d.endMin)} for "${d.purpose}" (${reasonLabel(d.urgentReason ?? null)}). ${plan.items.length} class(es) would move.`, link: `/bookings?booking=${booking.id}`, type: "WARNING" });
+    await audit(prisma, scope, booking.id, `Requested a booking of ${v.room.roomName}, awaiting the owning department's approval`, { ...d, displacedClasses: plan.items.length });
+    await notifyManagers(approval, { title: "Room booking needs department approval", message: `${scope.name} asks to take ${v.room.roomName} on ${d.date}, ${formatRange(d.startMin, d.endMin)} for "${d.purpose}" (${reasonLabel(d.urgentReason ?? null)}). ${plan.items.length} class(es) would move.`, link: `/bookings?booking=${booking.id}`, type: "WARNING" });
     return { ok: true as const, bookingId: booking.id, status: "AWAITING_APPROVAL" as const, items: redact(plan.items, scope), displaced: plan.displaced };
   }
   return commit(scope, d, { fields, roomName: v.room.roomName });
@@ -174,6 +176,10 @@ async function commit(scope: Scope, d: BookingInput, ctx: { fields: Prisma.RoomB
     });
     const moved = await tx.scheduleAdjustment.count({ where: { createdAt: { gt: loadedAt }, OR: [{ scheduleId: { in: plan.items.map((i) => i.scheduleId) } }, { roomId: { in: rooms.filter(Boolean) } }] } });
     if (changed || moved) throw new Error("STALE");
+    if (ctx.existingId) {
+      const claimed = await tx.roomBooking.updateMany({ where: { id: ctx.existingId, status: "AWAITING_APPROVAL" }, data: { status: "CONFIRMED", reviewedById: actorId, reviewedAt: new Date() } });
+      if (claimed.count !== 1) throw new Error("STALE");
+    }
 
     const summary = `${ctx.roomName} taken on ${d.date} for "${d.purpose}" (${PRIORITY_LABEL[d.priority]} priority)`;
     const batchId = plan.items.length ? await writePlan(tx, plan, "ROOM_BOOKING", summary, actorId, scope.departmentId) : null;
@@ -245,25 +251,26 @@ const fromRow = (b: { roomId: string; date: Date; startMin: number; endMin: numb
   roomId: b.roomId, date: isoDate(b.date), startMin: b.startMin, endMin: b.endMin, attendees: b.attendees, purpose: b.purpose, priority: b.priority, urgentReason: b.urgentReason as UrgentReason | null, reasonDetail: b.reasonDetail,
 });
 
-/** The owning department's Head (or the Registrar) approves an override of their room; it is planned and applied then. */
+/** The responsible department head decides the booking; conflicts are checked again before confirmation. */
 export async function reviewOverride(scope: Scope, id: string, approve: boolean, note?: string) {
   const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { roomName: true } }, bookedBy: { select: { id: true, name: true } } } });
   if (!b || b.status !== "AWAITING_APPROVAL") return { ok: false, error: "This request was already decided." } satisfies Fail;
-  if (!scope.isAdmin && !(b.approvalDepartmentId && scope.departmentIds.includes(b.approvalDepartmentId))) {
+  if (!canReviewOverride(scope, b.approvalDepartmentId) || b.bookedById === scope.userId) {
     await logBlocked(scope, "decide an urgent override of another department's room", "RoomBooking", id);
-    return { ok: false, error: "Only the Head of Department who owns this room, or the Registrar, can decide." } satisfies Fail;
+    return { ok: false, error: "Another department head assigned to the responsible department must decide this request." } satisfies Fail;
   }
   if (!approve) {
+    if (!note?.trim()) return { ok: false, error: "A rejection reason is required." } satisfies Fail;
     await prisma.roomBooking.update({ where: { id }, data: { status: "REJECTED", reviewedById: scope.userId, reviewedAt: new Date(), reviewNote: note?.trim() || null } });
     await audit(prisma, scope, id, `Rejected the urgent override of ${b.room.roomName}${note ? `: ${note}` : ""}`, { note: note ?? null });
-    await notifyUsers([b.bookedById], { title: "Urgent override rejected", message: `Your request for ${b.room.roomName} on ${isoDate(b.date)} was rejected${note ? `: ${note}` : "."}`, link: "/bookings", type: "WARNING" });
+    await notifyUsers([b.bookedById], { title: "Room booking rejected", message: `Your request for ${b.room.roomName} on ${isoDate(b.date)} was rejected${note ? `: ${note}` : "."}`, link: "/bookings", type: "WARNING" });
     return { ok: true as const };
   }
   const bookerScope = { ...scope, userId: b.bookedById, name: b.bookedBy.name };
   const result = await commit(bookerScope, fromRow(b), { fields: null, roomName: b.room.roomName, existingId: id, actorId: scope.userId });
   if (!result.ok) return result;
   await audit(prisma, scope, id, `Approved the urgent override of ${b.room.roomName}`, { note: note ?? null });
-  await notifyUsers([b.bookedById], { title: "Urgent override approved", message: `${b.room.roomName} is yours on ${isoDate(b.date)}, ${formatRange(b.startMin, b.endMin)}.`, link: "/bookings" });
+  await notifyUsers([b.bookedById], { title: "Room booking approved", message: `${b.room.roomName} is yours on ${isoDate(b.date)}, ${formatRange(b.startMin, b.endMin)}.`, link: "/bookings" });
   return { ok: true as const };
 }
 
@@ -298,7 +305,7 @@ export async function releaseDisplaced(scope: Scope, bookingId: string) {
 export async function cancelBooking(scope: Scope, id: string, restore: boolean) {
   const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { roomName: true } }, batch: { include: { adjustments: true } } } });
   if (!b || ["CANCELLED", "REJECTED"].includes(b.status)) return { ok: false, error: "This booking is already cancelled." } satisfies Fail;
-  if (!scope.isAdmin && b.bookedById !== scope.userId) return { ok: false, error: "Only the person who booked the room or a Registrar can cancel it." } satisfies Fail;
+  if (!canManageBooking(scope, b)) return { ok: false, error: "Only the booker or Registrar can cancel this booking. Administrators cannot change urgent overrides." } satisfies Fail;
   const undo = restore && b.batch && !b.batch.undoneAt;
   if (undo) {
     const problems = await undoProblems(b.batch!.id, b.batch!.adjustments, [b.id]);
@@ -316,7 +323,7 @@ export async function cancelBooking(scope: Scope, id: string, restore: boolean) 
   }, { timeout: 30000 });
   if (undo) await notifyRestored(b.batch!.adjustments.map((a) => a.scheduleId), b.room.roomName, b.purpose);
   if (restoredOwners.length) await notifyUsers(restoredOwners, { title: "Room booking restored", message: `The higher-priority booking of ${b.room.roomName} was cancelled, so your booking is back in its original room.`, link: "/bookings" });
-  if (b.bookedById !== scope.userId) await notifyUsers([b.bookedById], { title: "Room booking cancelled", message: `Your booking of ${b.room.roomName} for "${b.purpose}" was cancelled by a Registrar.`, link: "/bookings" });
+  if (b.bookedById !== scope.userId) await notifyUsers([b.bookedById], { title: "Room booking cancelled", message: `Your booking of ${b.room.roomName} for "${b.purpose}" was cancelled by the responsible department head.`, link: "/bookings" });
   queueWorkloadCheck("A room booking was cancelled", scope.userId);
   return { ok: true as const };
 }
@@ -334,7 +341,7 @@ async function notifyRestored(scheduleIds: string[], roomName: string, purpose: 
 export async function shortenBooking(scope: Scope, id: string, startMin: number, endMin: number, restore: boolean) {
   const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { roomName: true } }, batch: { include: { adjustments: { include: { schedule: true } } } } } });
   if (!b || b.status !== "CONFIRMED") return { ok: false, error: "Only confirmed bookings can be shortened." } satisfies Fail;
-  if (!scope.isAdmin && b.bookedById !== scope.userId) return { ok: false, error: "Only the person who booked the room or a Registrar can change it." } satisfies Fail;
+  if (!canManageBooking(scope, b)) return { ok: false, error: "Only the booker or responsible department head can change this booking." } satisfies Fail;
   if (startMin < b.startMin || endMin > b.endMin || endMin <= startMin || (startMin === b.startMin && endMin === b.endMin)) return { ok: false, error: "Choose a shorter time inside the current booking. To extend or move it, cancel and book again." } satisfies Fail;
   const date = isoDate(b.date);
   const open = b.batch && !b.batch.undoneAt ? b.batch.adjustments.filter((a) => a.kind !== "MAKE_UP") : [];
@@ -360,7 +367,7 @@ export async function shortenBooking(scope: Scope, id: string, startMin: number,
 export async function editBookingDetails(scope: Scope, id: string, purpose: string, attendees: number) {
   const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { capacity: true, roomName: true } } } });
   if (!b || ["CANCELLED", "REJECTED"].includes(b.status)) return { ok: false, error: "This booking can no longer be changed." } satisfies Fail;
-  if (!scope.isAdmin && b.bookedById !== scope.userId) return { ok: false, error: "Only the person who booked the room or a Registrar can change it." } satisfies Fail;
+  if (!canManageBooking(scope, b)) return { ok: false, error: "Only the booker or responsible department head can change this booking." } satisfies Fail;
   if (attendees > b.room.capacity) return { ok: false, error: `${b.room.roomName} seats only ${b.room.capacity}.` } satisfies Fail;
   await prisma.roomBooking.update({ where: { id }, data: { purpose, attendees } });
   await audit(prisma, scope, id, "Changed the booking details", { purpose, attendees, before: { purpose: b.purpose, attendees: b.attendees } });
@@ -369,6 +376,7 @@ export async function editBookingDetails(scope: Scope, id: string, purpose: stri
 
 /** A displaced class's faculty member acknowledges the change or asks for another option. */
 export async function respondAcknowledgement(scope: Scope, ackId: string, status: "ACKNOWLEDGED" | "ALTERNATIVE_REQUESTED", note?: string) {
+  if (scope.isAdmin) return { ok: false, error: "Your role has view-only access to room bookings." } satisfies Fail;
   const a = await prisma.bookingAcknowledgement.findUnique({ where: { id: ackId }, include: { booking: { select: { id: true, bookedById: true, purpose: true, room: { select: { roomName: true } } } } } });
   if (!a || !scope.facultyId || a.facultyId !== scope.facultyId) return { ok: false, error: "This acknowledgement is not yours." } satisfies Fail;
   if (status === "ALTERNATIVE_REQUESTED" && !note?.trim()) return { ok: false, error: "Say what alternative would work for you." } satisfies Fail;

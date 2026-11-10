@@ -33,6 +33,7 @@ export interface ClassDraft {
   endMin: number;
   status?: ScheduleStatus;
   notes?: string;
+  changeReason?: string;
   doNotMove?: boolean;
   source?: "CURRICULUM_QUEUE";
 }
@@ -67,7 +68,7 @@ export function ClassDialog({
   directEdit: boolean;
   readOnly?: boolean;
   onSave: (input: ClassInput) => Promise<boolean>;
-  onDelete: (id: string) => Promise<boolean>;
+  onDelete: (id: string, reason?: string) => Promise<boolean>;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -113,11 +114,13 @@ function ClassForm({
   directEdit: boolean;
   readOnly: boolean;
   onSave: (input: ClassInput) => Promise<boolean>;
-  onDelete: (id: string) => Promise<boolean>;
+  onDelete: (id: string, reason?: string) => Promise<boolean>;
   onClose: () => void;
 }) {
   const [form, setForm] = useState<ClassDraft>(draft);
+  const [changeReason, setChangeReason] = useState("");
   const [pending, startTransition] = useTransition();
+  const locked = readOnly || draft.status === "REVIEW" || (draft.status === "PUBLISHED" && !canPublish);
   const set = <K extends keyof ClassDraft>(k: K, v: ClassDraft[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   const section = data.sections.find((s) => s.id === form.sectionId);
@@ -209,8 +212,12 @@ function ClassForm({
       toast.error("End time must be after start time.");
       return;
     }
+    if ((draft.status === "PUBLISHED" || draft.status === "REVIEW") && !changeReason.trim()) {
+      toast.error("Document a reason for changing this submitted class.");
+      return;
+    }
     startTransition(async () => {
-      const ok = await onSave({ ...form, notes: form.notes ?? "" });
+      const ok = await onSave({ ...form, notes: form.notes ?? "", changeReason });
       if (ok) onClose();
     });
   }
@@ -218,17 +225,19 @@ function ClassForm({
   return (
     <form onSubmit={submit}>
       <DialogHeader>
-        <DialogTitle>{readOnly ? "Class details" : form.id ? "Edit class" : "Add class"}</DialogTitle>
+        <DialogTitle>{locked ? "Class details" : form.id ? "Edit class" : "Add class"}</DialogTitle>
         <DialogDescription>
-          {readOnly
-            ? "View only. The Head of Department of this section makes changes."
+          {locked && draft.status === "PUBLISHED"
+            ? "Published schedule is locked. Ask the Registrar to record a documented change."
+            : locked
+            ? "This schedule is waiting for a Registrar decision."
             : directEdit
             ? "Changes are saved and applied immediately."
             : "Changes to published classes are sent for review before they go live."}
         </DialogDescription>
       </DialogHeader>
 
-      <fieldset disabled={readOnly} className="contents">
+      <fieldset disabled={locked} className="contents">
       <FieldGroup className="mt-4 grid gap-4 sm:grid-cols-2">
         <Field>
           <FieldLabel htmlFor="cls-section">Section</FieldLabel>
@@ -320,10 +329,17 @@ function ClassForm({
             options={statusOptions}
           />
         </Field>
-        <Field className="sm:col-span-2">
-          <FieldLabel htmlFor="cls-notes">Notes</FieldLabel>
-          <Textarea id="cls-notes" rows={2} value={form.notes ?? ""} onChange={(e) => set("notes", e.target.value)} maxLength={500} />
-        </Field>
+        {(draft.status === "PUBLISHED" || draft.status === "REVIEW") && form.id ? (
+          <Field className="sm:col-span-2">
+            <FieldLabel htmlFor="cls-change-reason">Reason for published schedule change</FieldLabel>
+            <Textarea id="cls-change-reason" rows={2} value={changeReason} onChange={(e) => setChangeReason(e.target.value)} maxLength={500} required />
+          </Field>
+        ) : (
+          <Field className="sm:col-span-2">
+            <FieldLabel htmlFor="cls-notes">Notes</FieldLabel>
+            <Textarea id="cls-notes" rows={2} value={form.notes ?? ""} onChange={(e) => set("notes", e.target.value)} maxLength={500} />
+          </Field>
+        )}
         <label className="flex cursor-pointer items-start gap-2.5 text-sm sm:col-span-2">
           <Checkbox checked={!!form.doNotMove} onCheckedChange={(on) => set("doNotMove", !!on)} className="mt-0.5" />
           <span>
@@ -349,9 +365,9 @@ function ClassForm({
 
       <DialogFooter className="mt-6 flex-wrap gap-2 sm:justify-between">
         <div className="flex gap-2">
-          {form.id && !readOnly && (
+          {form.id && !locked && (
             <>
-              <Button
+              {!(canPublish && draft.status === "PUBLISHED") && <Button
                 type="button"
                 variant="outline"
                 disabled={pending}
@@ -359,28 +375,34 @@ function ClassForm({
                 title="Turn this form into a new copy of the class"
               >
                 <Copy className="size-4" /> Duplicate
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                disabled={pending}
-                onClick={() =>
-                  startTransition(async () => {
-                    if (!window.confirm("Delete this class from the schedule?")) return;
-                    if (await onDelete(form.id!)) onClose();
-                  })
-                }
-              >
-                <Trash className="size-4" /> Delete
-              </Button>
+              </Button>}
+              {(draft.status !== "PUBLISHED" && draft.status !== "REVIEW" || canPublish && draft.status === "PUBLISHED") && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={pending}
+                  onClick={() =>
+                    startTransition(async () => {
+                      if (!window.confirm("Delete this class from the schedule?")) return;
+                      if (draft.status === "PUBLISHED" && !changeReason.trim()) {
+                        toast.error("Document a reason before removing this published class.");
+                        return;
+                      }
+                      if (await onDelete(form.id!, changeReason)) onClose();
+                    })
+                  }
+                >
+                  <Trash className="size-4" /> Delete
+                </Button>
+              )}
             </>
           )}
         </div>
         <div className="flex gap-2">
-          <Button type="button" variant={readOnly ? "outline" : "ghost"} onClick={onClose}>
-            {readOnly ? "Close" : "Cancel"}
+          <Button type="button" variant={locked ? "outline" : "ghost"} onClick={onClose}>
+            {locked ? "Close" : "Cancel"}
           </Button>
-          {!readOnly && (
+          {!locked && (
             <Button type="submit" disabled={pending}>
               {pending && <CircleNotch className="size-4 animate-spin" />}
               {overlaps.length ? "Save anyway" : form.id ? "Save changes" : "Add class"}

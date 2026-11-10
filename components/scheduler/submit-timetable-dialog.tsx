@@ -20,7 +20,7 @@ export function SubmitTimetableDialog({ summary, open, pending, onOpenChange, on
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><UploadSimple className="size-5 text-primary" /> Submit the whole timetable</DialogTitle>
-          <DialogDescription>{summary?.department} sends every program, year, and section for {summary?.terms.join(" and ")} to the Super Administrator as one package.</DialogDescription>
+          <DialogDescription>{summary?.department} sends every program, year, and section for {summary?.terms.join(" and ")} to the Registrar as one package.</DialogDescription>
         </DialogHeader>
 
         {summary && (
@@ -45,7 +45,7 @@ export function SubmitTimetableDialog({ summary, open, pending, onOpenChange, on
 
             <p className="flex gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-amber-900 dark:text-amber-200">
               <LockSimple className="mt-0.5 size-4 shrink-0" weight="fill" />
-              The timetable is locked until the Super Administrator decides. You can withdraw it before then to make changes.
+              The timetable is locked until the Registrar decides. You can withdraw it before then to make changes.
             </p>
           </div>
         )}

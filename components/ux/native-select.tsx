@@ -28,22 +28,22 @@ export function NativeSelect({
       <select
         {...props}
         className={cn(
-          "h-9 w-full appearance-none rounded-md border border-input bg-background py-1 pr-8 pl-2.5 text-sm shadow-xs outline-none transition-colors",
+          "h-11 w-full min-w-0 appearance-none rounded-md border border-input bg-background py-1 pr-8 pl-2.5 text-base text-foreground shadow-xs outline-none transition-colors sm:h-9 sm:text-sm",
           "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
           "aria-invalid:border-destructive dark:bg-input/30"
         )}
       >
-        {placeholder !== undefined && <option value="">{placeholder}</option>}
+        {placeholder !== undefined && <option value="" className="bg-popover text-popover-foreground">{placeholder}</option>}
         {options?.map((o) => (
-          <option key={o.value} value={o.value} disabled={o.disabled} title={o.title}>
+          <option key={o.value} value={o.value} disabled={o.disabled} title={o.title} className="bg-popover text-popover-foreground">
             {o.label}
           </option>
         ))}
         {groups?.map((g) =>
           g.options.length ? (
-            <optgroup key={g.label} label={g.label}>
+            <optgroup key={g.label} label={g.label} className="bg-popover text-popover-foreground">
               {g.options.map((o) => (
-                <option key={o.value} value={o.value} disabled={o.disabled} title={o.title}>
+                <option key={o.value} value={o.value} disabled={o.disabled} title={o.title} className="bg-popover text-popover-foreground">
                   {o.label}
                 </option>
               ))}

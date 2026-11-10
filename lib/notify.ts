@@ -36,7 +36,7 @@ export async function notifyEach(items: { userIds: string[]; msg: Message }[], d
   if (data.length) await db.notification.createMany({ data });
 }
 
-/** Notifies Registrars and, when a department is given, that department's Head of Department. */
+/** Department requests and workload fixes notify heads only; other events also notify school administrators. */
 export async function notifyManagers(departmentId: string | null, msg: Message, db: Client = prisma) {
   const now = new Date();
   const users = await db.user.findMany({
@@ -44,7 +44,7 @@ export async function notifyManagers(departmentId: string | null, msg: Message, 
       status: "ACTIVE",
       archivedAt: null,
       OR: [
-        { role: { in: ["SUPER_ADMINISTRATOR", "REGISTRAR"] as ("SUPER_ADMINISTRATOR" | "REGISTRAR")[] } },
+        ...(!msg.link || !["/requests", "/workload"].some((path) => msg.link === path || msg.link?.startsWith(`${path}?`)) ? [{ role: { in: ["SUPER_ADMINISTRATOR", "REGISTRAR"] as ("SUPER_ADMINISTRATOR" | "REGISTRAR")[] } }] : []),
         ...(departmentId ? [{
           role: "HEAD_OF_DEPARTMENT" as const,
           OR: [

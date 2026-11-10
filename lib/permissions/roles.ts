@@ -5,14 +5,14 @@ export type AppRole = (typeof ROLES)[number];
 /** Roles that manage academic structure, rooms, faculty, and schedules (Head of Department within their department). */
 export const STAFF_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR", "HEAD_OF_DEPARTMENT"];
 
-/** Roles that can build timetables and run automatic adjustments. */
-export const SCHEDULING_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR", "HEAD_OF_DEPARTMENT"];
+/** Roles that can work on timetable construction or resolution. */
+export const SCHEDULING_ROLES: AppRole[] = ["REGISTRAR", "HEAD_OF_DEPARTMENT"];
 
-/** Roles whose schedule edits apply immediately, with no review step. */
-export const DIRECT_EDIT_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR"];
+/** Routine timetable changes always go through department submission and Registrar review. */
+export const DIRECT_EDIT_ROLES: AppRole[] = [];
 
-/** Roles that approve and publish class and examination schedules. */
-export const PUBLISH_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR"];
+/** Only the Registrar approves and publishes department-submitted schedules. */
+export const PUBLISH_ROLES: AppRole[] = ["REGISTRAR"];
 
 /** Roles with school-wide access to every department, term, room, schedule, and report. */
 export const ADMIN_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR"];
@@ -24,7 +24,7 @@ export const SUPER_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR"];
 export const TEACHING_ROLES: AppRole[] = ["HEAD_OF_DEPARTMENT", "FACULTY"];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
-  SUPER_ADMINISTRATOR: "Super Administrator",
+  SUPER_ADMINISTRATOR: "Administrator",
   REGISTRAR: "Registrar",
   HEAD_OF_DEPARTMENT: "Head of Department",
   FACULTY: "Faculty",

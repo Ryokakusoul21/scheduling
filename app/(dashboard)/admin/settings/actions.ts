@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
@@ -16,13 +17,24 @@ const schema = z.object({
 });
 
 export async function updateInstitutionAction(formData: FormData) {
-  await requireRole(...ADMIN);
+  const admin = await requireRole(...ADMIN);
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
+  const previous = await prisma.systemSetting.findUnique({ where: { key: "institution" }, select: { value: true } });
   await prisma.systemSetting.upsert({
     where: { key: "institution" },
     update: { value: parsed.data },
     create: { key: "institution", value: parsed.data },
+  });
+  await prisma.auditLog.create({
+    data: {
+      userId: admin.id,
+      action: "Updated institution settings",
+      entity: "SystemSetting",
+      entityId: "institution",
+      ...(previous ? { oldValue: previous.value as Prisma.InputJsonValue } : {}),
+      newValue: parsed.data,
+    },
   });
   revalidatePath("/admin/settings");
   return { ok: true };

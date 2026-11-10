@@ -6,6 +6,7 @@ import { isAdmin, isStaff, type AppRole } from "@/lib/permissions/roles";
 import { departmentWhere } from "@/lib/permissions/department";
 import { activeOverlapConflicts } from "@/lib/scheduler/term-conflicts";
 import { levelLabel, termLabel } from "@/lib/academics/levels";
+import { notificationVisibility } from "@/lib/permissions/notifications";
 
 export const ASSISTANT_MODEL = process.env.GEMINI_ASSISTANT_MODEL ?? SCHEDULING_MODEL;
 
@@ -78,12 +79,13 @@ async function buildContext(userId: string, role: AppRole): Promise<string> {
         name: true,
         faculty: { select: { id: true, fullName: true, position: true, maxHours: true, departmentId: true } },
         requestsMade: {
+          where: isAdmin(role) ? { id: "__denied__" } : {},
           take: 10,
           orderBy: { createdAt: "desc" },
           select: { type: true, status: true, reason: true, reviewNote: true, createdAt: true },
         },
         notifications: {
-          where: { isRead: false },
+          where: { isRead: false, ...notificationVisibility(role) },
           take: 5,
           orderBy: { createdAt: "desc" },
           select: { title: true, message: true, createdAt: true },
@@ -188,7 +190,7 @@ async function buildStaffOverview(termIds: string[], who: { isAdmin: boolean; ma
     prisma.schedule.findMany({ where: ownClasses, include: scheduleInclude, take: 600 }),
     activeOverlapConflicts(),
     prisma.scheduleRequest.findMany({
-      where: { status: "PENDING", ...(who.isAdmin ? {} : { OR: [{ targetDepartmentId: who.manageDepartmentId }, { requestedBy: { faculty: { departmentId: who.manageDepartmentId } } }] }) },
+      where: { status: "PENDING", ...(who.isAdmin ? { id: "__denied__" } : { OR: [{ targetDepartmentId: who.manageDepartmentId }, { requestedBy: { faculty: { departmentId: who.manageDepartmentId } } }] }) },
       orderBy: { createdAt: "desc" },
       take: 20,
       select: { type: true, reason: true, createdAt: true, requestedBy: { select: { name: true, role: true } } },
@@ -273,7 +275,7 @@ function systemInstruction(context: string, role: AppRole) {
 
 Your job is to answer questions about this scheduling system: ${
     staff
-      ? "the whole school's timetable (College, Senior High, Junior High, and Elementary), sections, faculty workloads, room usage, schedule conflicts, pending requests, the active terms, and how to use the system"
+      ? "the whole school's timetable (College, Senior High, Junior High, Elementary, and Pre-elementary), sections, faculty workloads, room usage, schedule conflicts, pending requests, the active terms, and how to use the system"
       : "the user's class schedule, rooms, instructors, subjects, the active terms, their schedule requests and notifications, and how to use the system"
   }.
 

@@ -130,11 +130,11 @@ function ProposalCard({ p, unit, preview, history }: { p: ProposalView; unit: st
             <DialogTitle>{rejecting?.length ? `Reject ${rejecting.length} reassignment(s)?` : "Reject this proposal?"}</DialogTitle>
             <DialogDescription>The classes stay with their current faculty, and the next check suggests something else.</DialogDescription>
           </DialogHeader>
-          <label htmlFor={`reason-${p.id}`} className="text-sm font-medium">Reason (optional)</label>
+          <label htmlFor={`reason-${p.id}`} className="text-sm font-medium">Reason (required)</label>
           <Textarea id={`reason-${p.id}`} value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} />
           <DialogFooter>
             <Button variant="outline" disabled={pending} onClick={() => setRejecting(null)}>Cancel</Button>
-            <Button variant="destructive" disabled={pending} onClick={reject}>{pending && <CircleNotch className="size-4 animate-spin" />} Reject</Button>
+            <Button variant="destructive" disabled={pending || !reason.trim()} onClick={reject}>{pending && <CircleNotch className="size-4 animate-spin" />} Reject</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -31,8 +31,8 @@ describe("central permission policy", () => {
     expect(can(hod, "requestChange", shared)).toBe(true);
   });
 
-  it("reserves every approval and rejection for the Registrar", () => {
-    expect(can(hod, "approve", { type: "scheduleRequest", departmentId: "computer" })).toBe(false);
+  it("gives department heads operational approvals within their departments", () => {
+    expect(can(hod, "approve", { type: "scheduleRequest", departmentId: "computer" })).toBe(true);
     expect(can({ role: "FACULTY", status: "ACTIVE" }, "reject", { type: "roomBooking" })).toBe(false);
   });
 
@@ -51,7 +51,7 @@ describe("central permission policy", () => {
 
   it("builds database filters that exclude other departments", () => {
     expect(scopeQuery(hod, "program")).toEqual({ departmentId: { in: ["computer"] } });
-    expect(scopeQuery(hod, "subject")).toEqual({ OR: [{ departmentId: { in: ["computer"] } }, { departmentId: null }] });
+    expect(scopeQuery(hod, "subject")).toEqual({ OR: [{ departmentId: { in: ["computer"] } }, { departmentId: null }, { level: "COLLEGE", programId: null }] });
     expect(scopeQuery({ role: "REGISTRAR", status: "ACTIVE" }, "program")).toEqual({});
     expect(scopeQuery(null, "program")).toEqual({ id: { equals: "__denied__" } });
   });

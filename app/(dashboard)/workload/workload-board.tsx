@@ -22,6 +22,7 @@ type Summary = { overloaded: number; underloaded: number; balanced: number; near
 
 export function WorkloadBoard(props: {
   staff: boolean;
+  canReview: boolean;
   measure: "HOURS" | "UNITS";
   tolerance: number;
   status: { checkedAt: string; trigger: string } | null;
@@ -65,9 +66,9 @@ export function WorkloadBoard(props: {
             <Stat label="Department balance score" value={`${s.score} / 100`} hint={props.tolerance ? `in range and within ${props.tolerance} ${unit} of the department average` : "share in range"} />
             <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
               <Badge variant="secondary">Head of Department approval required</Badge>
-              <Button size="sm" variant="outline" onClick={recheck} disabled={pending}>
+              {props.canReview && <Button size="sm" variant="outline" onClick={recheck} disabled={pending}>
                 {pending ? <CircleNotch className="size-4 animate-spin" /> : <ArrowsClockwise className="size-4" />} Recheck now
-              </Button>
+              </Button>}
             </div>
             <p className="w-full text-xs text-muted-foreground">
               {props.status ? `Last checked ${new Date(props.status.checkedAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })} after: ${props.status.trigger}.` : "Loads have not been checked yet."}
@@ -76,7 +77,7 @@ export function WorkloadBoard(props: {
         </Card>
       )}
 
-      {props.staff && (
+      {props.canReview && (
         <div role="tablist" aria-label="Proposals" className="flex w-fit rounded-md border p-1">
           {(["current", "history"] as const).map((t) => (
             <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className="rounded px-3 py-1 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-selected:bg-muted aria-selected:font-semibold">
@@ -86,12 +87,12 @@ export function WorkloadBoard(props: {
         </div>
       )}
 
-      {props.staff && tab === "history" && (
+      {props.canReview && tab === "history" && (
         props.history.length ? <ProposalCards proposals={props.history} unit={unit} history /> : <p className="text-sm text-muted-foreground">No past proposals yet.</p>
       )}
 
       {tab === "current" && <>
-        {props.staff && (
+        {props.canReview && (
           <Card>
             <CardHeader><CardTitle className="text-base">Needs manual attention</CardTitle></CardHeader>
             <CardContent>
@@ -177,10 +178,10 @@ export function WorkloadBoard(props: {
           </CardContent>
         </Card>}
 
-        <Card>
+        {(props.canReview || !props.staff) && <Card>
           <CardHeader><CardTitle className="text-base">{props.staff ? "Workload fix log" : "Changes to my load"}</CardTitle></CardHeader>
           <CardContent><FixLog fixes={props.fixes} empty={props.staff ? "No workload fixes yet." : "Your load has not been changed by a workload fix."} /></CardContent>
-        </Card>
+        </Card>}
       </>}
     </div>
   );

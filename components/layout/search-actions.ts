@@ -3,6 +3,7 @@
 import { getScope } from "@/lib/permissions/scope";
 import { departmentWhere } from "@/lib/permissions/department";
 import { prisma } from "@/lib/db/prisma";
+import { isAcademicLevel, isGradeLevel } from "@/lib/academics/levels";
 import { ANY_YEAR, GENERAL, flowHref } from "@/lib/academics/flow";
 
 export interface SearchResult {
@@ -54,7 +55,7 @@ export async function globalSearchAction(query: string): Promise<SearchResult[]>
   ]);
 
   return [
-    ...subjects.map((s) => ({
+    ...subjects.filter((s) => isAcademicLevel(s.level)).map((s) => ({
       id: s.id,
       label: `${s.code} — ${s.name}`,
       sublabel: `${s.units} units`,
@@ -62,7 +63,7 @@ export async function globalSearchAction(query: string): Promise<SearchResult[]>
       href:
         s.level === "COLLEGE"
           ? flowHref("/subjects", { level: s.level, programId: s.programId ?? GENERAL, year: s.yearLevel ?? ANY_YEAR })
-          : flowHref("/subjects", { level: s.level, grade: s.gradeLevel }),
+          : flowHref("/subjects", { level: isAcademicLevel(s.level) ? s.level : null, grade: isGradeLevel(s.gradeLevel) ? s.gradeLevel : null }),
       group: "Subjects" as const,
     })),
     ...faculty.map((f) => ({

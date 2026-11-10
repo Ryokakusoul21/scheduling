@@ -2,15 +2,16 @@
 
 import { useCallback, useEffect, useId, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { DndContext, DragOverlay, KeyboardSensor, useDraggable, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragMoveEvent } from "@dnd-kit/core";
 import { CalendarBlank, CaretLeft, CaretRight, CheckCircle, DotsSixVertical, Lightning, Plus, UploadSimple, UsersThree, Warning, WarningOctagon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { NativeSelect } from "@/components/ux/native-select";
 import { EmptyState, SelectCard } from "@/components/ux/states";
@@ -18,9 +19,12 @@ import { usePersisted } from "@/hooks/use-persisted";
 import { cn } from "@/lib/utils";
 import { EXAM_PERIODS, EXAM_TYPE_LABELS, type ExamType } from "@/lib/examinations/types";
 import { DEFAULT_EXAM_RULES, checkExaminations, hasHardConflict, type ExamIssue, type ExamSlot } from "@/lib/examinations/rules";
+import { generateExaminationSchedule, stageIndex, yearGroup, type AutoScheduleResult } from "@/lib/examinations/auto-schedule";
+import { ACADEMIC_LEVELS } from "@/lib/academics/levels";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DEFAULT_GRID, clampStart, formatRange, formatTime, timeOptions, yToMinutes, type Severity } from "@/lib/scheduler/timetable";
 import type { DayOfWeek } from "@/lib/scheduler/types";
-import { moveExamAction, removeExamAction, saveExamAction, submitExamsAction, type ExamInput } from "@/app/(dashboard)/scheduler/exam-actions";
+import { moveExamAction, removeExamAction, saveExamAction, saveGeneratedExamsAction, submitExamsAction, type ExamInput } from "@/app/(dashboard)/scheduler/exam-actions";
 import { Timetable, type BlockInfo, type DropPreview } from "./timetable";
 import { ChecksHeading, ChecksRail, FilterCard, FilterSelect, PanelSection, ScheduleHeader, type Perspective } from "./schedule-chrome";
 import { collision, gridKeyboardCoordinates } from "./dnd-grid";
@@ -38,10 +42,11 @@ export interface ExamRecord extends ExamSlot {
 export interface ExamData {
   terms: { id: string; level: string; programId: string | null; isActive: boolean; label: string }[];
   programs: { id: string; code: string; name: string; level: string }[];
-  sections: { id: string; name: string; level: string; programId: string | null; semesterId: string | null; studentCount: number }[];
+  sections: { id: string; name: string; level: string; yearLevel: string | null; gradeLevel: string | null; programId: string | null; semesterId: string | null; studentCount: number }[];
   subjects: { id: string; code: string; name: string }[];
-  faculty: { id: string; fullName: string }[];
-  rooms: { id: string; roomName: string; capacity: number; foreign: boolean }[];
+  faculty: { id: string; fullName: string; dayOff: DayOfWeek | null; availability: { dayOfWeek: DayOfWeek; startMin: number; endMin: number }[] }[];
+  rooms: { id: string; roomName: string; capacity: number; foreign: boolean; availability: { dayOfWeek: DayOfWeek; startMin: number; endMin: number }[] }[];
+  unavailable: { facultyId: string | null; roomId: string | null; start: string; end: string; startMin: number | null; endMin: number | null }[];
   exams: ExamRecord[];
   busy: ExamSlot[];
   classes: { sectionId: string; subjectId: string; facultyId: string; roomId: string; semesterId: string; component: "LECTURE" | "LABORATORY"; dayOfWeek: DayOfWeek; startMin: number; endMin: number }[];
@@ -54,6 +59,7 @@ export interface ExamData {
 
 const GRID = DEFAULT_GRID;
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+const DATE_DAYS: DayOfWeek[] = ["SUNDAY", ...DAYS, "SUNDAY"];
 const TIMES = timeOptions({ ...GRID, dayEnd: 21 * 60 }).map((t) => ({ value: String(t.value), label: t.label }));
 const STATUS_LABEL = { DRAFT: "Draft", REVIEW: "Awaiting approval", PUBLISHED: "Approved", ARCHIVED: "Archived" } as const;
 const STATUS_STYLE = { DRAFT: "secondary", REVIEW: "outline", PUBLISHED: "default", ARCHIVED: "secondary" } as const;
@@ -92,6 +98,7 @@ type Panel = "conflicts" | "todo" | "rules";
 const PERSPECTIVE_LABEL: Record<Perspective, string> = { section: "sections", faculty: "proctors", room: "rooms" };
 
 export function ExamWorkspace({ data, academicYearControl, modes }: { data: ExamData; academicYearControl?: React.ReactNode; modes?: React.ReactNode }) {
+  const router = useRouter();
   const params = useSearchParams();
   const dndId = useId();
   const [pending, startTransition] = useTransition();
@@ -120,6 +127,8 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [autoPlan, setAutoPlan] = useState<AutoScheduleResult | null>(null);
+  const [generateOpen, setGenerateOpen] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [needDrag, setNeedDrag] = useState<ClassRef | null>(null);
@@ -181,7 +190,7 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
   // The Unscheduled list is derived: the term's classes (one per section and subject) minus the examinations already placed for this period.
   const termClasses = useMemo(() => uniqueClasses(data.classes.filter((c) => c.semesterId === termId)), [data.classes, termId]);
   const unscheduled = useMemo(() => {
-    const placed = new Set(allPeriod.map(classKey));
+    const placed = new Set(allPeriod.filter((exam) => exam.status !== "ARCHIVED").map(classKey));
     return termClasses.filter((c) => sectionIds.has(c.sectionId) && (!sectionId || c.sectionId === sectionId) && !placed.has(classKey(c)));
   }, [termClasses, allPeriod, sectionIds, sectionId]);
 
@@ -233,6 +242,97 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
     startTransition(async () => {
       const res = await moveExamAction({ id, date, startMin, endMin: startMin + (x.endMin - x.startMin) });
       if (!res.ok) toast.error(res.error);
+    });
+  }
+  // Unscheduled classes of every section in scope, ignoring the section filter, for the generator selection.
+  const pendingBySection = useMemo(() => {
+    const placed = new Set(allPeriod.filter((exam) => exam.status !== "ARCHIVED").map(classKey));
+    const counts = new Map<string, number>();
+    for (const c of termClasses) if (sectionIds.has(c.sectionId) && !placed.has(classKey(c))) counts.set(c.sectionId, (counts.get(c.sectionId) ?? 0) + 1);
+    return counts;
+  }, [termClasses, allPeriod, sectionIds]);
+
+  /** Generates examinations for the chosen sections and saves them as drafts, like the class scheduler. */
+  function generateFor(selected: Set<string>) {
+    if (!win) {
+      toast.error(`An approved ${EXAM_TYPE_LABELS[period]} examination window is required before generating a schedule.`);
+      return;
+    }
+    const placedKeys = new Set(allPeriod.filter((exam) => exam.status !== "ARCHIVED").map(classKey));
+    const candidates = termClasses.filter((c) => selected.has(c.sectionId) && !placedKeys.has(classKey(c))).flatMap((item) => {
+      const section = maps.section.get(item.sectionId);
+      const subject = maps.subject.get(item.subjectId);
+      const proctor = maps.faculty.get(item.facultyId);
+      if (!section || !subject) return [];
+      return [{
+        sectionId: section.id,
+        sectionName: section.name,
+        sectionLevel: section.level,
+        yearLevel: section.yearLevel,
+        gradeLevel: section.gradeLevel,
+        studentCount: section.studentCount,
+        subjectId: item.subjectId,
+        subjectCode: subject.code,
+        proctorId: item.facultyId,
+        proctorName: proctor?.fullName ?? "",
+        proctorDayOff: proctor?.dayOff ?? null,
+        proctorAvailability: proctor?.availability ?? [],
+        roomId: item.roomId,
+        startMin: item.startMin,
+        endMin: item.endMin,
+      }];
+    });
+    const existing = allPeriod.filter((exam) => exam.status !== "ARCHIVED").map((exam) => ({ ...exam, subjectId: exam.subjectId }));
+    const scheduledClasses = win ? data.classes
+      .filter((item) => item.semesterId === termId)
+      .flatMap((item) => {
+        const busy = [];
+        for (let date = win.start; date <= win.end; date = addDays(date, 1)) {
+          if (DATE_DAYS[new Date(`${date}T00:00:00Z`).getUTCDay()] !== item.dayOfWeek) continue;
+          busy.push({
+            id: `class-${item.sectionId}-${item.subjectId}-${date}-${item.startMin}`,
+            date,
+            startMin: item.startMin,
+            endMin: item.endMin,
+            sectionId: item.sectionId,
+            roomId: item.roomId,
+            proctorId: item.facultyId,
+          });
+        }
+        return busy;
+      }) : [];
+    const plan = generateExaminationSchedule(
+      candidates,
+      existing,
+      data.rooms.filter((room) => !room.foreign),
+      context,
+      scheduledClasses,
+      data.unavailable,
+    );
+    startTransition(async () => {
+      if (plan.proposals.length) {
+        const result = await saveGeneratedExamsAction({
+          semesterId: termId,
+          type: period,
+          exams: plan.proposals.map(({ sectionId, subjectId, roomId, proctorId, date, startMin, endMin }) => ({
+            sectionId, subjectId, roomId, proctorId, date, startMin, endMin,
+          })),
+        });
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
+        toast.success(`${result.data.count} examination${result.data.count === 1 ? "" : "s"} added as drafts.`, { description: "Review each section timetable, then submit to the Registrar for approval." });
+        // Open the first generated section on the week of its first examination.
+        const first = [...plan.proposals].sort((a, b) => a.date.localeCompare(b.date))[0];
+        setPerspective("section"); setProctorId(""); setRoomId("");
+        setSectionId(plan.proposals[0].sectionId);
+        setWeek(mondayOf(first.date));
+        router.refresh();
+      }
+      // The dialog stays open only to list classes that could not be placed.
+      if (plan.unscheduled.length) setAutoPlan(plan);
+      else setGenerateOpen(false);
     });
   }
   function jump(examId: string) {
@@ -313,10 +413,13 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
           help="Each examination starts from its class schedule. Drag to change the date or time; hard conflicts block a save."
           leading={<>
             {academicYearControl}
-            <div className="min-w-40"><NativeSelect aria-label="Term" value={termId} onChange={(e) => { setTermId(e.target.value); setSectionId(""); }} options={data.terms.map((t) => ({ value: t.id, label: t.label }))} /></div>
+            <div className="min-w-0 space-y-1 xl:w-64">
+              <label htmlFor="exam-term" className="block text-sm text-muted-foreground">Term</label>
+              <NativeSelect id="exam-term" value={termId} onChange={(e) => { setTermId(e.target.value); setSectionId(""); }} options={data.terms.map((t) => ({ value: t.id, label: t.label }))} />
+            </div>
           </>}
         >
-          {data.canEdit && <Button variant="outline" disabled title="Planned for the next step: places an examination for every class inside the approved window."><Lightning className="size-4" /> Auto-Schedule</Button>}
+          {data.canSubmit && <Button variant="outline" disabled={!win || !pendingBySection.size || pending} onClick={() => setGenerateOpen(true)}><Lightning className="size-4" /> Auto-Schedule</Button>}
           {data.canSubmit && <Button variant="outline" disabled={!drafts.length} onClick={() => setSubmitOpen(true)}><UploadSimple className="size-4" /> Submit for Approval{drafts.length ? ` (${drafts.length})` : ""}</Button>}
           {data.isAdmin && <Button variant="outline" nativeButton={false} render={<Link href="/admin/review-center?queue=examinations" />}>Registrar Review Center</Button>}
         </ScheduleHeader>
@@ -361,7 +464,7 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
         <div className={cn("grid gap-3 lg:min-h-[30rem] lg:flex-1 lg:overflow-hidden", panelHidden ? "lg:grid-cols-[minmax(0,1fr)_48px]" : "lg:grid-cols-[minmax(0,1fr)_320px]")}>
           <section aria-label="Timetable" className="flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto pr-1">
             {focused ? (
-              <Timetable days={DAYS} entries={entries} info={info} conflictIndex={issueIndex} editable={data.canEdit} highlightId={highlight} preview={preview} heatmap={heatmap} onOpen={openExam} onEmptySlot={data.canEdit ? (day, start) => openNew({ date: dates[DAYS.indexOf(day)], startMin: start, endMin: start + 120 }) : undefined} grid={GRID} />
+              <Timetable days={DAYS} entries={entries} info={info} conflictIndex={issueIndex} editable={data.canEdit && !data.isAdmin} highlightId={highlight} preview={preview} heatmap={heatmap} onOpen={openExam} onEmptySlot={data.canEdit && !data.isAdmin ? (day, start) => openNew({ date: dates[DAYS.indexOf(day)], startMin: start, endMin: start + 120 }) : undefined} grid={GRID} />
             ) : (
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">Choose {perspective === "section" ? "a section" : perspective === "faculty" ? "a proctor" : "a room"} to open its examination timetable.</p>
@@ -387,7 +490,7 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
                 {unscheduled.length === 0 ? <EmptyState icon={CheckCircle} title="Every class has an examination" description={`Nothing left to place for the ${EXAM_TYPE_LABELS[period]} period in this view.`} className="py-8" /> : (
                   <ul className="space-y-2">
                     {unscheduled.map((u) => (
-                      <UnscheduledItem key={classKey(u)} cls={u} subject={maps.subject.get(u.subjectId)} section={maps.section.get(u.sectionId)} room={maps.room.get(u.roomId)} proctor={maps.faculty.get(u.facultyId)} editable={data.canEdit} onPlace={() => openClass(u)} />
+                      <UnscheduledItem key={classKey(u)} cls={u} subject={maps.subject.get(u.subjectId)} section={maps.section.get(u.sectionId)} room={maps.room.get(u.roomId)} proctor={maps.faculty.get(u.facultyId)} editable={data.canEdit && !data.isAdmin} onPlace={() => openClass(u)} />
                     ))}
                   </ul>
                 )}
@@ -421,7 +524,94 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
       </DragOverlay>
       {draft && <ExamDialog key={draft.id ?? "new"} draft={draft} data={data} type={period} termId={termId} classes={termClasses} win={win} dates={dates} context={context} others={allPeriod} onClose={() => setDraft(null)} />}
       {submitOpen && <SubmitDialog rows={allPeriod} issues={issues} draftHard={draftHard} maps={maps} onClose={() => setSubmitOpen(false)} />}
+      {(generateOpen || autoPlan) && (
+        <GenerateExamsDialog
+          sections={sectionsInScope}
+          pendingBySection={pendingBySection}
+          initial={sectionId}
+          period={EXAM_TYPE_LABELS[period]}
+          plan={autoPlan}
+          busy={pending}
+          onGenerate={generateFor}
+          onClose={() => { setGenerateOpen(false); setAutoPlan(null); }}
+        />
+      )}
     </DndContext>
+  );
+}
+
+type ScopeSection = ExamData["sections"][number];
+
+/** Pick year levels and sections to generate, then list any classes that could not be placed. */
+function GenerateExamsDialog({ sections, pendingBySection, initial, period, plan, busy, onGenerate, onClose }: { sections: ScopeSection[]; pendingBySection: Map<string, number>; initial: string; period: string; plan: AutoScheduleResult | null; busy: boolean; onGenerate: (selected: Set<string>) => void; onClose: () => void }) {
+  // Sections with classes still waiting, grouped by academic level and year, in curriculum order.
+  const groups = useMemo(() => {
+    const stage = (s: ScopeSection) => ({ sectionLevel: s.level, yearLevel: s.yearLevel, gradeLevel: s.gradeLevel });
+    const sorted = sections.filter((s) => pendingBySection.has(s.id)).sort((a, b) =>
+      ACADEMIC_LEVELS.indexOf(a.level as (typeof ACADEMIC_LEVELS)[number]) - ACADEMIC_LEVELS.indexOf(b.level as (typeof ACADEMIC_LEVELS)[number]) ||
+      stageIndex(stage(a)) - stageIndex(stage(b)) || a.name.localeCompare(b.name));
+    const map = new Map<string, ScopeSection[]>();
+    for (const s of sorted) map.set(yearGroup(stage(s)), [...(map.get(yearGroup(stage(s))) ?? []), s]);
+    return [...map];
+  }, [sections, pendingBySection]);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(pendingBySection.has(initial) ? [initial] : []));
+  const toggle = (ids: string[], on: boolean) => setSelected((prev) => { const next = new Set(prev); ids.forEach((id) => (on ? next.add(id) : next.delete(id))); return next; });
+  const classCount = [...selected].reduce((n, id) => n + (pendingBySection.get(id) ?? 0), 0);
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        {plan ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Some classes could not be placed</DialogTitle>
+              <DialogDescription>{plan.proposals.length} examination{plan.proposals.length === 1 ? " was" : "s were"} added as drafts. Place these {plan.unscheduled.length} manually from the Unscheduled panel.</DialogDescription>
+            </DialogHeader>
+            <ul className="space-y-2 text-sm">
+              {plan.unscheduled.map((item, index) => <li key={`${item.sectionName}-${item.subjectCode}-${index}`} className="rounded-lg border p-2.5"><span className="font-medium">{item.subjectCode} · {item.sectionName}</span><span className="block text-muted-foreground">{item.reason}</span></li>)}
+            </ul>
+            <DialogFooter><Button onClick={onClose}>Done</Button></DialogFooter>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>Auto-Schedule {period} Examinations</DialogTitle>
+              <DialogDescription>Choose the year levels or sections to generate. Each examination starts from its class schedule, keeps the class teacher as proctor, and is saved as a draft on the timetable.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              {groups.map(([group, list]) => {
+                const ids = list.map((s) => s.id);
+                const all = ids.every((id) => selected.has(id));
+                const some = !all && ids.some((id) => selected.has(id));
+                return (
+                  <section key={group} className="rounded-lg border">
+                    <label className="flex cursor-pointer items-center gap-2 border-b bg-muted/40 px-3 py-2 text-sm font-semibold">
+                      <Checkbox checked={all} indeterminate={some} onCheckedChange={(on) => toggle(ids, !!on)} />
+                      {group}
+                      <span className="ml-auto text-xs font-normal text-muted-foreground">{list.length} section{list.length === 1 ? "" : "s"}</span>
+                    </label>
+                    <div className="grid gap-1 p-2 sm:grid-cols-2">
+                      {list.map((s) => (
+                        <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
+                          <Checkbox checked={selected.has(s.id)} onCheckedChange={(on) => toggle([s.id], !!on)} />
+                          <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                          <Badge variant="secondary">{pendingBySection.get(s.id)} to place</Badge>
+                        </label>
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+            <DialogFooter className="items-center gap-2">
+              <span className="mr-auto text-sm text-muted-foreground">{selected.size} section{selected.size === 1 ? "" : "s"} · {classCount} examination{classCount === 1 ? "" : "s"}</span>
+              <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+              <Button onClick={() => onGenerate(selected)} disabled={busy || !selected.size}><Lightning className="size-4" /> {busy ? "Generating..." : "Generate"}</Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -459,6 +649,7 @@ function IssueList({ issues, examById, maps, onJump }: { issues: ExamIssue[]; ex
 
 function ExamDialog({ draft, data, type, termId, classes, win, dates, context, others, onClose }: { draft: Draft; data: ExamData; type: ExamType; termId: string; classes: ClassRef[]; win: { start: string; end: string } | null; dates: string[]; context: Parameters<typeof checkExaminations>[1]; others: ExamRecord[]; onClose: () => void }) {
   const [f, setF] = useState(draft);
+  const [changeReason, setChangeReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setF((p) => ({ ...p, [k]: v }));
@@ -469,6 +660,9 @@ function ExamDialog({ draft, data, type, termId, classes, win, dates, context, o
   }, [f, others, context]);
   const subjectOf = new Map(data.subjects.map((s) => [s.id, s]));
   const sectionOf = new Map(data.sections.map((s) => [s.id, s]));
+  const submittedExam = data.exams.find((exam) => exam.id === f.id);
+  const needsChangeReason = !!f.id && (submittedExam?.status === "PUBLISHED" || submittedExam?.status === "REVIEW");
+  const locked = !data.canEdit || submittedExam?.status === "REVIEW" || (data.isAdmin ? submittedExam?.status !== "PUBLISHED" : submittedExam?.status === "PUBLISHED");
   const classOptions = classes.filter((c) => sectionOf.has(c.sectionId)).map((c) => ({ value: classKey(c), label: `${subjectOf.get(c.subjectId)?.code ?? "?"} · ${sectionOf.get(c.sectionId)?.name}` }));
   // Choosing a class fills the room, proctor, and time from its class schedule; the Head of Department can then change them.
   const pickClass = (key: string) => {
@@ -478,17 +672,21 @@ function ExamDialog({ draft, data, type, termId, classes, win, dates, context, o
 
   function save() {
     setError(null);
+    if (needsChangeReason && !changeReason.trim()) {
+      setError("Document a reason before changing this submitted examination.");
+      return;
+    }
     const input: ExamInput = { semesterId: termId, sectionId: f.sectionId, subjectId: f.subjectId, roomId: f.roomId, proctorId: f.proctorId, type, date: f.date, startMin: f.startMin, endMin: f.endMin, notes: f.notes };
     startTransition(async () => {
-      const res = await saveExamAction(input, f.id);
-      if (res.ok) { toast.success("Examination saved as a draft."); onClose(); } else setError(res.error);
+      const res = await saveExamAction(input, f.id, changeReason);
+      if (res.ok) { toast.success(submittedExam?.status === "PUBLISHED" && data.isAdmin ? "Published examination updated." : "Examination saved as a draft."); onClose(); } else setError(res.error);
     });
   }
   function remove() {
     if (!f.id) return;
     startTransition(async () => {
-      const res = await removeExamAction(f.id!);
-      if (res.ok) { toast.success("Moved to Unscheduled. The class still needs an examination slot."); onClose(); } else setError(res.error);
+      const res = await removeExamAction(f.id!, changeReason);
+      if (res.ok) { toast.success(submittedExam?.status === "PUBLISHED" && data.isAdmin ? "Published examination removed." : "Moved to Unscheduled. The class still needs an examination slot."); onClose(); } else setError(res.error);
     });
   }
 
@@ -496,7 +694,8 @@ function ExamDialog({ draft, data, type, termId, classes, win, dates, context, o
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader><DialogTitle>{f.id ? "Edit Examination" : "Add Examination"} · {EXAM_TYPE_LABELS[type]}</DialogTitle></DialogHeader>
-        <div className="grid gap-3 sm:grid-cols-2">
+        {locked && <p className="text-sm text-muted-foreground">{submittedExam?.status === "REVIEW" ? "This examination is waiting for a Registrar decision." : data.isAdmin ? "The Registrar may correct published examinations only." : "Published examination schedules are locked. Ask the Registrar to record a documented change."}</p>}
+        <fieldset disabled={locked} className="grid gap-3 sm:grid-cols-2">
           <Field className="sm:col-span-2"><FieldLabel htmlFor="x-class">Class</FieldLabel><NativeSelect id="x-class" value={f.sectionId && f.subjectId ? classKey(f) : ""} disabled={!!f.id} onChange={(e) => pickClass(e.target.value)} placeholder="Choose a scheduled class" options={classOptions} /></Field>
           <Field><FieldLabel htmlFor="x-room">Room</FieldLabel><NativeSelect id="x-room" value={f.roomId} onChange={(e) => set("roomId", e.target.value)} placeholder="Choose a room" options={data.rooms.map((r) => ({ value: r.id, label: `${r.roomName} · ${r.capacity} seats${r.foreign ? " (another department)" : ""}`, disabled: r.foreign }))} /></Field>
           <Field><FieldLabel htmlFor="x-proctor">Proctor</FieldLabel><NativeSelect id="x-proctor" value={f.proctorId} onChange={(e) => set("proctorId", e.target.value)} placeholder="Choose a proctor" options={data.faculty.map((p) => ({ value: p.id, label: p.fullName }))} /></Field>
@@ -505,7 +704,8 @@ function ExamDialog({ draft, data, type, termId, classes, win, dates, context, o
             <Field><FieldLabel htmlFor="x-start">Start</FieldLabel><NativeSelect id="x-start" value={String(f.startMin)} onChange={(e) => set("startMin", Number(e.target.value))} options={TIMES} /></Field>
             <Field><FieldLabel htmlFor="x-end">End</FieldLabel><NativeSelect id="x-end" value={String(f.endMin)} onChange={(e) => set("endMin", Number(e.target.value))} options={TIMES} /></Field>
           </div>
-        </div>
+          </fieldset>
+          {submittedExam?.status === "PUBLISHED" && data.isAdmin && <Field><FieldLabel htmlFor="x-change-reason">Reason for published examination change</FieldLabel><Textarea id="x-change-reason" value={changeReason} onChange={(e) => setChangeReason(e.target.value)} maxLength={500} required /></Field>}
         {live.length > 0 && (
           <ul className="space-y-1 text-xs" aria-live="polite">
             {live.map((i, n) => <li key={n} className={i.severity === "conflict" ? "text-red-700 dark:text-red-300" : "text-amber-700 dark:text-amber-300"}>{i.severity === "conflict" ? "Conflict" : "Warning"}: {i.message}</li>)}
@@ -513,8 +713,8 @@ function ExamDialog({ draft, data, type, termId, classes, win, dates, context, o
         )}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <DialogFooter className="gap-2">
-          {f.id && <Button variant="outline" disabled={busy} onClick={remove}>Move to Unscheduled</Button>}
-          <Button disabled={busy || !f.sectionId || !f.subjectId || !f.roomId || !f.proctorId || hasHardConflict(live)} onClick={save}>Save as Draft</Button>
+          {!locked && f.id && <Button variant="outline" disabled={busy} onClick={remove}>Move to Unscheduled</Button>}
+          {!locked && <Button disabled={busy || !f.sectionId || !f.subjectId || !f.roomId || !f.proctorId || hasHardConflict(live)} onClick={save}>{data.isAdmin ? "Save published correction" : "Save as Draft"}</Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -524,7 +724,7 @@ function ExamDialog({ draft, data, type, termId, classes, win, dates, context, o
 /** One table of every examination row in the period; only drafts are sent, and not while hard conflicts remain. */
 function SubmitDialog({ rows, issues, draftHard, maps, onClose }: { rows: ExamRecord[]; issues: ExamIssue[]; draftHard: boolean; maps: { subject: Map<string, { code: string }>; section: Map<string, { name: string }>; faculty: Map<string, { fullName: string }>; room: Map<string, { roomName: string }> }; onClose: () => void }) {
   const [busy, startTransition] = useTransition();
-  const drafts = rows.filter((r) => r.status === "DRAFT");
+  const drafts = rows.filter((r) => r.status === "DRAFT" || r.status === "REVIEW");
   const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date) || a.startMin - b.startMin);
   function submit() {
     startTransition(async () => {

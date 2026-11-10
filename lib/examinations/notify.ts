@@ -8,6 +8,7 @@ import { formatLongDate } from "@/lib/calendar";
 export type ExamNotice = "SCHEDULED" | "UPDATED" | "CANCELLED" | "REMINDER";
 
 export interface ExamDetails {
+  semesterId: string;
   sectionId: string;
   subjectId: string;
   roomId: string;
@@ -34,26 +35,31 @@ async function usersOf(facultyIds: string[]) {
 }
 
 /**
- * Notifies everyone who has the examination on their schedule: the proctor, the faculty teaching that
- * subject to that section, and the department's Head of Department. The person making the change is skipped.
+ * Notifies everyone who has the examination on their schedule: the proctor, faculty teaching that
+ * subject to the section, its students, and the department's Head of Department. The person making the change is skipped.
  * Returns how many people were notified.
  */
-export async function notifyExamParticipants(exam: ExamDetails, notice: ExamNotice, opts: { actorUserId?: string; previousProctorId?: string } = {}) {
+export async function notifyExamParticipants(exam: ExamDetails, notice: ExamNotice, opts: { actorUserId?: string; previousProctorId?: string; reason?: string } = {}) {
   const [subject, section, room, proctor, teaching] = await Promise.all([
     prisma.subject.findUnique({ where: { id: exam.subjectId }, select: { code: true, name: true } }),
     prisma.section.findUnique({ where: { id: exam.sectionId }, select: { name: true, departmentId: true } }),
     prisma.room.findUnique({ where: { id: exam.roomId }, select: { roomName: true } }),
     prisma.faculty.findUnique({ where: { id: exam.proctorId }, select: { fullName: true } }),
     prisma.schedule.findMany({
-      where: { sectionId: exam.sectionId, subjectId: exam.subjectId, status: { not: "ARCHIVED" }, semester: { isActive: true } },
+      where: { semesterId: exam.semesterId, sectionId: exam.sectionId, subjectId: exam.subjectId, status: { not: "ARCHIVED" } },
       select: { facultyId: true },
       distinct: ["facultyId"],
     }),
   ]);
+  const students = await prisma.student.findMany({
+    where: { sectionId: exam.sectionId, user: { status: "ACTIVE", archivedAt: null } },
+    select: { userId: true },
+  });
   const what = `${subject?.code} ${subject?.name} ${TYPE_WORD[exam.type]} examination of ${section?.name}`;
   const when = `${formatLongDate(exam.date)}, ${formatRange(exam.startMin, exam.endMin)} in ${room?.roomName}`;
   const verb = notice === "CANCELLED" ? "was cancelled. It was set for" : notice === "UPDATED" ? "now takes place on" : "is on";
   const type: NotificationType = notice === "CANCELLED" ? "WARNING" : "INFO";
+  const reason = opts.reason?.trim() ? ` Reason: ${opts.reason.trim()}` : "";
 
   const sent = new Set<string>(opts.actorUserId ? [opts.actorUserId] : []);
   const send = async (userIds: string[], title: string, message: string) => {
@@ -63,16 +69,17 @@ export async function notifyExamParticipants(exam: ExamDetails, notice: ExamNoti
   };
   const before = sent.size;
 
-  await send(await usersOf([exam.proctorId]), EXAM_TITLES.proctor[notice], `You ${notice === "CANCELLED" ? "no longer need to proctor" : "proctor"} the ${what}. It ${verb} ${when}.`);
+  await send(await usersOf([exam.proctorId]), EXAM_TITLES.proctor[notice], `You ${notice === "CANCELLED" ? "no longer need to proctor" : "proctor"} the ${what}. It ${verb} ${when}.${reason}`);
   if (opts.previousProctorId && opts.previousProctorId !== exam.proctorId) {
-    await send(await usersOf([opts.previousProctorId]), EXAM_TITLES.removed, `You no longer proctor the ${what}; ${proctor?.fullName ?? "another faculty member"} does now.`);
+    await send(await usersOf([opts.previousProctorId]), EXAM_TITLES.removed, `You no longer proctor the ${what}; ${proctor?.fullName ?? "another faculty member"} does now.${reason}`);
   }
   const instructors = teaching.map((t) => t.facultyId).filter((id) => id !== exam.proctorId);
-  await send(await usersOf(instructors), EXAM_TITLES.instructor[notice], `The ${what} ${verb} ${when}. Proctor: ${proctor?.fullName ?? "to be assigned"}.`);
+  await send(await usersOf(instructors), EXAM_TITLES.instructor[notice], `The ${what} ${verb} ${when}. Proctor: ${proctor?.fullName ?? "to be assigned"}.${reason}`);
+  await send(students.map((student) => student.userId), notice === "CANCELLED" ? "Examination cancelled for your section" : notice === "UPDATED" ? "Examination changed for your section" : notice === "REMINDER" ? "Examination reminder" : "Examination scheduled for your section", `The ${what} ${verb} ${when}.${reason}`);
   const departmentId = section?.departmentId;
   if (departmentId) {
     const heads = await prisma.user.findMany({ where: { role: "HEAD_OF_DEPARTMENT", status: "ACTIVE", archivedAt: null, faculty: { departmentId } }, select: { id: true } });
-    await send(heads.map((h) => h.id), EXAM_TITLES.head[notice], `The ${what} ${verb} ${when}. Proctor: ${proctor?.fullName ?? "to be assigned"}.`);
+    await send(heads.map((h) => h.id), EXAM_TITLES.head[notice], `The ${what} ${verb} ${when}. Proctor: ${proctor?.fullName ?? "to be assigned"}.${reason}`);
   }
   return sent.size - before;
 }

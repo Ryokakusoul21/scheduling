@@ -1,5 +1,5 @@
 import { activitiesOn, manilaNow, NO_CLASS_TYPES } from "./format";
-import type { PortalActivity, PortalClass } from "./portal";
+import type { PortalActivity, PortalClass, PortalMove } from "./portal";
 
 export const DAY_ENUMS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 
@@ -16,11 +16,21 @@ export function shiftDate(date: string, days: number) {
 }
 
 /** Today's classes with live, done, and cancelled status, plus the next class within the coming week. */
-export function nowAndNext(classes: PortalClass[], activities: PortalActivity[], at: Date) {
+export function nowAndNext(classes: PortalClass[], activities: PortalActivity[], at: Date, moves: PortalMove[] = []) {
   const now = manilaNow(at);
   const todayActivities = activitiesOn(activities, now.date);
-  const today = classes
-    .filter((c) => c.dayOfWeek === now.day)
+  const matches = (move: PortalMove, cls: PortalClass) => move.scheduleId
+    ? move.scheduleId === cls.id
+    : move.subjectCode === cls.subjectCode && move.fromStartMin === cls.startMin && move.fromEndMin === cls.endMin;
+  const onDate = (date: string, day: string) => {
+    const regular = classes.filter((cls) => cls.dayOfWeek === day && !moves.some((move) => move.date === date && matches(move, cls)));
+    const adjusted = moves.filter((move) => (move.kind === "ONLINE" ? move.date : move.newDate ?? move.date) === date).flatMap((move) => {
+      const cls = classes.find((row) => matches(move, row));
+      return cls ? [{ ...cls, dayOfWeek: day, startMin: move.startMin, endMin: move.endMin, room: move.kind === "ONLINE" ? "Online or asynchronous" : move.room, building: move.kind !== "ONLINE" && move.room === cls.room ? cls.building : null }] : [];
+    });
+    return [...regular, ...adjusted];
+  };
+  const today = onDate(now.date, now.day)
     .sort((a, b) => a.startMin - b.startMin)
     .map((c) => ({
       ...c,
@@ -33,8 +43,8 @@ export function nowAndNext(classes: PortalClass[], activities: PortalActivity[],
   for (let offset = 0; offset <= 7 && !next; offset++) {
     const { date, day } = shiftDate(now.date, offset);
     const dayActivities = activitiesOn(activities, date);
-    const found = classes
-      .filter((c) => c.dayOfWeek === day && (offset > 0 || c.startMin > now.minutes) && !isCancelled(c, dayActivities))
+    const found = onDate(date, day)
+      .filter((c) => (offset > 0 || c.startMin > now.minutes) && !isCancelled(c, dayActivities))
       .sort((a, b) => a.startMin - b.startMin)[0];
     if (found) next = { cls: found, date, inMinutes: offset === 0 ? found.startMin - now.minutes : null };
   }

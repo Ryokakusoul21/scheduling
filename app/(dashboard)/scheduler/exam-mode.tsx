@@ -1,3 +1,4 @@
+import { PROGRAM_CATALOG_FILTER } from "@/lib/academics/levels";
 import type { AcademicLevel } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { departmentWhere, isForeign } from "@/lib/permissions/department";
@@ -16,15 +17,15 @@ export async function ExamMode({ scope, academicYearId, academicYearControl, mod
   const examScope = departmentWhere.examination(scope);
 
   const [programs, sections, faculty, rooms, exams, busyRows, classes] = await Promise.all([
-    prisma.program.findMany({ where: departmentWhere.program(scope), orderBy: [{ level: "asc" }, { sortOrder: "asc" }] }),
+    prisma.program.findMany({ where: { AND: [PROGRAM_CATALOG_FILTER, departmentWhere.program(scope)] }, orderBy: [{ level: "asc" }, { sortOrder: "asc" }] }),
     prisma.section.findMany({ where: { ...departmentWhere.section(scope), archivedAt: null, semesterId: { in: termIds } }, orderBy: [{ level: "asc" }, { sortOrder: "asc" }, { name: "asc" }] }),
     // The teacher of a class is its default proctor, even when the teacher belongs to another department (a shared General Education class).
-    prisma.faculty.findMany({ where: { status: "ACTIVE", archivedAt: null, OR: [departmentWhere.faculty(scope), { schedules: { some: { semesterId: { in: termIds }, ...departmentWhere.schedule(scope) } } }] }, orderBy: { fullName: "asc" } }),
+    prisma.faculty.findMany({ where: { status: "ACTIVE", archivedAt: null, OR: [departmentWhere.faculty(scope), { schedules: { some: { semesterId: { in: termIds }, ...departmentWhere.schedule(scope) } } }] }, include: { availability: true }, orderBy: { fullName: "asc" } }),
     // Rooms stay campus-wide for availability; another department's room can only be requested from the Registrar.
-    prisma.room.findMany({ where: { archivedAt: null, status: "AVAILABLE" }, orderBy: [{ sortOrder: "asc" }, { roomName: "asc" }] }),
-    prisma.examination.findMany({ where: { AND: [examScope, { semesterId: { in: termIds } }] }, orderBy: [{ date: "asc" }, { startMin: "asc" }] }),
+    prisma.room.findMany({ where: { archivedAt: null, status: "AVAILABLE" }, include: { availability: true }, orderBy: [{ sortOrder: "asc" }, { roomName: "asc" }] }),
+    prisma.examination.findMany({ where: { AND: [examScope, { semesterId: { in: termIds }, status: { not: "ARCHIVED" } }] }, orderBy: [{ date: "asc" }, { startMin: "asc" }] }),
     hod
-      ? prisma.examination.findMany({ where: { semesterId: { in: termIds }, NOT: examScope }, select: { id: true, date: true, startMin: true, endMin: true, roomId: true, proctorId: true, sectionId: true } })
+      ? prisma.examination.findMany({ where: { semesterId: { in: termIds }, status: { not: "ARCHIVED" }, NOT: examScope }, select: { id: true, date: true, startMin: true, endMin: true, roomId: true, proctorId: true, sectionId: true } })
       : [],
     prisma.schedule.findMany({
       where: { AND: [departmentWhere.schedule(scope), { semesterId: { in: termIds }, status: { not: "ARCHIVED" } }] },
@@ -43,14 +44,29 @@ export async function ExamMode({ scope, academicYearId, academicYearControl, mod
   // Official windows and blocked dates come only from the approved Calendar of Activities.
   const contexts = await Promise.all(EXAM_PERIODS.map(async (type) => ({ type, ...(await loadExamContext(type, null, scope.isAdmin ? null : scope.departmentIds)) })));
   const facultyIds = new Set(faculty.map((f) => f.id));
+  const activeWindows = contexts.flatMap((context) => context.window ? [context.window] : []);
+  const unavailableStart = activeWindows.map((window) => window.start).sort()[0];
+  const unavailableEnd = activeWindows.map((window) => window.end).sort().at(-1);
+  const unavailable = unavailableStart && unavailableEnd ? await prisma.unavailability.findMany({
+    where: {
+      status: { not: "DISMISSED" },
+      OR: [
+        { facultyId: { in: [...facultyIds] } },
+        { roomId: { in: rooms.filter((room) => !isForeign(scope, room.departmentId)).map((room) => room.id) } },
+      ],
+      startDate: { lte: new Date(`${unavailableEnd}T00:00:00Z`) },
+      endDate: { gte: new Date(`${unavailableStart}T00:00:00Z`) },
+    },
+    select: { facultyId: true, roomId: true, startDate: true, endDate: true, startMin: true, endMin: true },
+  }) : [];
 
   const data: ExamData = {
     terms: terms.map((t) => ({ id: t.id, level: t.level as AcademicLevel, programId: t.programId, isActive: t.isActive, label: `${levelLabel(t.level)} · ${termLabel(t.type)}${t.isActive ? " (active)" : ""}` })),
     programs: programs.map((p) => ({ id: p.id, code: p.code, name: p.name, level: p.level })),
-    sections: sections.map((s) => ({ id: s.id, name: s.name, level: s.level, programId: s.programId, semesterId: s.semesterId, studentCount: s.studentCount })),
+    sections: sections.map((s) => ({ id: s.id, name: s.name, level: s.level, yearLevel: s.yearLevel, gradeLevel: s.gradeLevel, programId: s.programId, semesterId: s.semesterId, studentCount: s.studentCount })),
     subjects,
-    faculty: faculty.map((f) => ({ id: f.id, fullName: f.fullName })),
-    rooms: rooms.map((r) => ({ id: r.id, roomName: r.roomName, capacity: r.capacity, foreign: isForeign(scope, r.departmentId) })),
+    faculty: faculty.map((f) => ({ id: f.id, fullName: f.fullName, dayOff: f.employmentType === "PART_TIME" ? f.dayOff : null, availability: f.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })) })),
+    rooms: rooms.map((r) => ({ id: r.id, roomName: r.roomName, capacity: r.capacity, foreign: isForeign(scope, r.departmentId), availability: isForeign(scope, r.departmentId) ? [] : r.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })) })),
     exams: exams.map((e) => ({
       id: e.id, semesterId: e.semesterId, sectionId: e.sectionId, subjectId: e.subjectId, roomId: e.roomId, proctorId: e.proctorId,
       type: e.type, date: day(e.date), startMin: e.startMin, endMin: e.endMin, status: e.status, notes: e.notes ?? "", reviewNote: e.reviewNote,
@@ -60,7 +76,8 @@ export async function ExamMode({ scope, academicYearId, academicYearControl, mod
     classes,
     windows: contexts.map((c) => ({ type: c.type, window: c.window })),
     blocked: [...(contexts[0]?.blockedDates ?? new Map<string, string>())],
-    canEdit: hod,
+    unavailable: unavailable.map((u) => ({ facultyId: u.facultyId, roomId: u.roomId, start: day(u.startDate), end: day(u.endDate), startMin: u.startMin, endMin: u.endMin })),
+    canEdit: hod || scope.role === "REGISTRAR",
     canSubmit: hod,
     isAdmin: scope.isAdmin,
   };

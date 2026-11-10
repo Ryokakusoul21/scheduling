@@ -53,7 +53,8 @@ const exportRows = (rows: BookingRow[], name = "room-bookings.csv") => downloadT
 const ROW_GRID = "grid gap-2 lg:items-start lg:gap-4";
 
 /** Upcoming and past bookings with filters, priority and status, moved-class details, and row actions. */
-export function BookingsList({ bookings, showBookedBy, highlightId, pending, onCancel, onDuplicate, onOpen, onApprove, onFindRoom }: {
+export function BookingsList({ readOnly = false, bookings, showBookedBy, highlightId, pending, onCancel, onDuplicate, onOpen, onApprove, onFindRoom }: {
+  readOnly?: boolean;
   bookings: BookingRow[];
   showBookedBy: boolean;
   highlightId: string | null;
@@ -151,7 +152,7 @@ export function BookingsList({ bookings, showBookedBy, highlightId, pending, onC
       <div id="bookings-panel" role="tabpanel" aria-labelledby={`bookings-tab-${tab}`}>
         {rows.length === 0 ? (
           anyFilter ? <EmptyState icon={CalendarBlank} title="No bookings match these filters" className="py-8" />
-            : tab === "upcoming" ? <EmptyState icon={CalendarBlank} title="No upcoming bookings" description="Rooms you book appear here." action={<Button onClick={onFindRoom}>Book a room</Button>} className="py-8" />
+            : tab === "upcoming" ? <EmptyState icon={CalendarBlank} title="No upcoming bookings" description="Rooms you book appear here." action={readOnly ? undefined : <Button onClick={onFindRoom}>Book a room</Button>} className="py-8" />
               : <EmptyState icon={CalendarBlank} title="No past bookings" description="Bookings from the last 30 days appear here." className="py-8" />
         ) : (
           <>
@@ -186,7 +187,7 @@ export function BookingsList({ bookings, showBookedBy, highlightId, pending, onC
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => onOpen(b)}><Eye className="size-4" /> Details</DropdownMenuItem>
                         {b.canEdit && <DropdownMenuItem onClick={() => setEditing(b)}><PencilSimple className="size-4" /> Edit</DropdownMenuItem>}
-                        <DropdownMenuItem onClick={() => onDuplicate(b)}><Copy className="size-4" /> Duplicate</DropdownMenuItem>
+                        {!readOnly && <DropdownMenuItem onClick={() => onDuplicate(b)}><Copy className="size-4" /> Duplicate</DropdownMenuItem>}
                         <DropdownMenuItem onClick={() => exportRows([b], `room-booking-${b.date}.csv`)}><FileXls className="size-4" /> Export</DropdownMenuItem>
                         {b.canCancel && <DropdownMenuItem variant="destructive" onClick={() => { setRestore(true); setCancelling(b); }}><XCircle className="size-4" /> Cancel booking</DropdownMenuItem>}
                       </DropdownMenuContent>

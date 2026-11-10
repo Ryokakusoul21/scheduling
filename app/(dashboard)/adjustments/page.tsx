@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { SCHEDULING_ROLES } from "@/lib/permissions/roles";
 import { requireScope } from "@/lib/permissions/scope";
 import { isoDate, ONLINE_ROOM } from "@/lib/occupancy/engine";
 import type { PlanItem } from "@/lib/occupancy/adjust";
@@ -16,7 +16,7 @@ const CAUSE_LABELS = {
 };
 
 export default async function AdjustmentsPage({ searchParams }: { searchParams: Promise<{ report?: string }> }) {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope(...SCHEDULING_ROLES);
   const { report } = await searchParams;
   const dept = scope.isAdmin ? {} : { departmentId: scope.manageDepartmentId };
   const since = new Date();

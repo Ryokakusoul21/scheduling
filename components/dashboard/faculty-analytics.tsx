@@ -65,10 +65,10 @@ function Ring({ pct, value, unit }: { pct: number; value: number; unit: string }
 /** Compact figure tile for the secondary measures beside the headline load card. */
 function Tile({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
   return (
-    <div className="rounded-xl border bg-card p-3">
-      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className="text-2xl font-semibold tabular-nums">{value}</dd>
-      {hint && <p className="truncate text-[11px] text-muted-foreground">{hint}</p>}
+    <div className="min-w-0 rounded-2xl border bg-card p-4 shadow-xs transition-shadow hover:shadow-sm">
+      <dt className="truncate text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{value}</dd>
+      {hint && <p className="mt-0.5 truncate text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -81,7 +81,7 @@ export function FacultyAnalyticsView({ data, terms, title = "My teaching analyti
   const d = data;
   const [tab, setTab] = useState<(typeof INSIGHTS)[number][0]>("timetable");
   return (
-    <section aria-label={title} className="print-area space-y-4">
+    <section aria-label={title} className="print-area space-y-5">
       <DashboardToolbar
         title={title}
         printTitle={`My Teaching Analytics: ${d.name}`}
@@ -93,16 +93,20 @@ export function FacultyAnalyticsView({ data, terms, title = "My teaching analyti
         {toggle}
       </DashboardToolbar>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <Card>
-          <CardContent className="flex items-center gap-5">
+      <div className="grid gap-4 xl:grid-cols-[minmax(285px,0.9fr)_minmax(0,1.7fr)]">
+        <Card className="border-primary/20 bg-gradient-to-br from-primary/[0.07] via-card to-card shadow-sm">
+          <CardContent className="flex h-full items-center gap-5 py-5">
             <Ring pct={d.load.maximum ? (d.load.value / d.load.maximum) * 100 : 0} value={d.load.value} unit={d.load.unit} />
-            <div className="min-w-0 space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">My teaching load</p>
-              <p className="text-2xl font-semibold tabular-nums">{d.load.hours} hours</p>
-              <p className="text-[11px] text-muted-foreground">{d.load.units} units this term · allowed {d.load.minimum} to {d.load.maximum}</p>
-              <ChangeBadge change={d.hoursChange} previous={d.previousLabel} />
-              <LoadStatusLabel status={d.load.status} />
+            <div className="min-w-0 space-y-2">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">My teaching load</p>
+                <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">{d.load.hours}<span className="ml-1.5 text-base font-medium text-muted-foreground">hours</span></p>
+              </div>
+              <p className="text-sm text-muted-foreground">{d.load.units} units this term <span aria-hidden>·</span> allowed {d.load.minimum}–{d.load.maximum}</p>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <LoadStatusLabel status={d.load.status} />
+                <ChangeBadge change={d.hoursChange} previous={d.previousLabel} />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -116,17 +120,18 @@ export function FacultyAnalyticsView({ data, terms, title = "My teaching analyti
         </dl>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3 lg:items-start">
-        <Card className="h-fit lg:max-h-[32rem] lg:overflow-y-auto">
-          <CardHeader><CardTitle className="text-base">Today</CardTitle></CardHeader>
-          <CardContent>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)]">
+        <Card className="h-full">
+          <CardHeader className="border-b pb-3"><CardTitle className="text-base">Today</CardTitle><p className="text-xs text-muted-foreground">Your classes for the day</p></CardHeader>
+          <CardContent className="pt-1">
             {d.today.length === 0 ? <p className="text-sm text-muted-foreground">No classes today.</p> : (
-              <ul className="max-h-96 space-y-2 overflow-y-auto">
+              <ul className="max-h-80 space-y-1 overflow-y-auto">
                 {d.today.map((c, i) => (
-                  <li key={i} className="flex items-center gap-3 border-l-4 border-primary/60 py-1 pl-3 text-sm">
+                  <li key={i} className="flex items-start gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-muted/50">
+                    <span className="mt-0.5 min-w-16 shrink-0 rounded-md bg-primary/10 px-2 py-1 text-center text-[11px] font-semibold tabular-nums text-primary">{c.time.split("–")[0].trim()}</span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{c.label}</p>
-                      <p className="text-xs text-muted-foreground">{c.time} · {c.room}</p>
+                      <p className="line-clamp-2 text-sm font-medium leading-snug">{c.label}</p>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">{c.time} · {c.room}</p>
                     </div>
                     {c.changed && <Badge variant="secondary">Rescheduled</Badge>}
                   </li>
@@ -135,19 +140,21 @@ export function FacultyAnalyticsView({ data, terms, title = "My teaching analyti
             )}
           </CardContent>
         </Card>
-        <div className="contents">
-        <Card>
-          <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
-            <CardTitle className="text-base">Changes made to my classes</CardTitle>
-            <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/availability" />}>
-              <UserMinus className="size-4" /> Report unavailability
-            </Button>
+        <Card className="h-full">
+          <CardHeader className="border-b pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-base">Changes to my classes</CardTitle>
+              <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/availability" />}>
+                <UserMinus className="size-4" /> Report unavailability
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Recent moves, substitutions, and cancellations</p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-1">
             {d.changes.recent.length === 0 ? <p className="text-sm text-muted-foreground">No changes this term.</p> : (
-              <ul className="space-y-2">
+              <ul className="max-h-80 space-y-2 overflow-y-auto">
                 {d.changes.recent.map((c) => (
-                  <li key={c.id} className="rounded-lg border p-2.5 text-sm">
+                  <li key={c.id} className="rounded-xl border bg-muted/20 p-3 text-sm">
                     <p className="flex flex-wrap items-center gap-2 font-medium">{c.label} <Badge variant="outline">{c.kind}</Badge> <span className="text-xs font-normal text-muted-foreground">{c.date}</span></p>
                     <p className="text-xs text-muted-foreground">{c.reason}</p>
                   </li>
@@ -156,21 +163,28 @@ export function FacultyAnalyticsView({ data, terms, title = "My teaching analyti
             )}
           </CardContent>
         </Card>
-          <UpcomingList items={d.upcoming} title="My upcoming examinations and activities" />
+        <div className="min-w-0 [&_[data-slot=card]]:h-full [&_[data-slot=card-header]]:border-b [&_[data-slot=card-header]]:pb-3">
+          <UpcomingList items={d.upcoming} title="Upcoming examinations and activities" />
         </div>
       </div>
 
       <Card>
-        <CardHeader className="gap-3">
-          <div role="tablist" aria-label="Teaching insights" className="flex w-fit max-w-full gap-1 overflow-x-auto rounded-lg border bg-muted/40 p-1 print:hidden">
-            {INSIGHTS.map(([id, label]) => (
-              <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className="shrink-0 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring aria-selected:bg-card aria-selected:text-foreground aria-selected:shadow-sm">{label}</button>
-            ))}
+        <CardHeader className="gap-4 border-b pb-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <CardTitle className="text-lg">Teaching insights</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">Explore your weekly schedule, workload, and room use.</p>
+            </div>
+            <div role="tablist" aria-label="Teaching insights" className="flex max-w-full gap-1 overflow-x-auto rounded-xl border bg-muted/40 p-1 print:hidden">
+              {INSIGHTS.map(([id, label]) => (
+                <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-selected:bg-card aria-selected:text-foreground aria-selected:shadow-sm sm:text-sm">{label}</button>
+              ))}
+            </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-1">
           <div role="tabpanel" className={cn(tab !== "timetable" && "hidden print:block")}>
-            <h3 className="mb-2 text-base font-semibold">My timetable</h3>
+            <h3 className="mb-3 text-base font-semibold">My timetable</h3>
             {d.timetable.length ? <WeekGrid entries={d.timetable} /> : <p className="text-sm text-muted-foreground">No classes this term.</p>}
           </div>
           <div role="tabpanel" className={cn("h-72", tab !== "hours" && "hidden print:block")}>

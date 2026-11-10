@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
-import { getScope, requireScope, type Scope } from "@/lib/permissions/scope";
-import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { requireScope, type Scope } from "@/lib/permissions/scope";
 import { formatRange } from "@/lib/scheduler/timetable";
 import { canCancelRequest, canEditRequest, canReviewRequest, requestFormSchema, TYPE_LABELS, type RequestDetails, type RequestFormData, type RequestFormInput, type RequestSummary } from "@/lib/requests/rules";
 import { logBlocked } from "@/lib/permissions/department";
 import { notifyManagers, notifyUsers } from "@/lib/notify";
-import { applyCrossDepartment } from "@/lib/requests/cross-department";
+import { applyCrossDepartment, type CrossDepartmentDetails } from "@/lib/requests/cross-department";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { applyFacultyChange, describeChanges, facultyChangeSchema, type FacultyChangeDetails } from "@/lib/requests/faculty-change";
 
@@ -58,7 +57,7 @@ async function prepare(scope: Scope, d: RequestFormData): Promise<{ error: strin
 const label = (type: string) => TYPE_LABELS[type] ?? type.replace(/_/g, " ").toLowerCase();
 
 export async function createRequestAction(input: RequestFormInput): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
-  const scope = await getScope();
+  const scope = await requireScope("HEAD_OF_DEPARTMENT", "FACULTY");
   const parsed = requestFormSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the request." };
   const d = parsed.data;
@@ -80,7 +79,7 @@ export async function createRequestAction(input: RequestFormInput): Promise<{ ok
 
 /** The person who filed a pending class request changes it; nobody else can. */
 export async function updateRequestAction(id: string, input: RequestFormInput): Promise<Result> {
-  const scope = await getScope();
+  const scope = await requireScope("HEAD_OF_DEPARTMENT", "FACULTY");
   const parsed = requestFormSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the request." };
   const stored = await prisma.scheduleRequest.findUnique({ where: { id }, include: { requestedBy: { select: { role: true } } } });
@@ -103,7 +102,7 @@ export async function updateRequestAction(id: string, input: RequestFormInput): 
 
 /** Withdraws a pending request; reviewers are told so they stop looking for it. */
 export async function cancelRequestAction(id: string): Promise<Result> {
-  const scope = await getScope();
+  const scope = await requireScope("HEAD_OF_DEPARTMENT", "FACULTY");
   const request = await prisma.scheduleRequest.findUnique({ where: { id }, include: { requestedBy: { select: { role: true } } } });
   const who = { role: scope.role, userId: scope.userId, departmentIds: scope.departmentIds };
   if (!request || !canCancelRequest(who, { ...request, requesterRole: request.requestedBy.role })) {
@@ -135,13 +134,13 @@ export async function requestFacultyChangeAction(facultyId: string, changes: unk
   await prisma.scheduleRequest.create({
     data: { type: "FACULTY_CHANGE", requestedById: scope.userId, departmentId: faculty.departmentId, details: details as never, reason: `${faculty.fullName}: ${summary}. Reason: ${reason.trim()}` },
   });
-  await notifyManagers(null, { title: "Faculty record change requested", message: `${scope.name} asks to change ${faculty.fullName}: ${summary}.`, link: "/requests" });
+  await notifyManagers(faculty.departmentId, { title: "Faculty record change requested", message: `${scope.name} asks to change ${faculty.fullName}: ${summary}.`, link: "/requests" });
   revalidatePath("/requests");
   return { ok: true };
 }
 
 export async function reviewRequestAction(id: string, status: "APPROVED" | "REJECTED", reviewNote?: string): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const request = await prisma.scheduleRequest.findUnique({ where: { id }, include: { requestedBy: { select: { role: true } } } });
   if (!request || request.status !== "PENDING") return { ok: false, error: "This request was already reviewed." };
   if (!canReviewRequest({ role: scope.role, userId: scope.userId, departmentIds: scope.departmentIds }, { ...request, requesterRole: request.requestedBy.role })) {
@@ -150,6 +149,20 @@ export async function reviewRequestAction(id: string, status: "APPROVED" | "REJE
   }
 
   if (status === "REJECTED" && !reviewNote?.trim()) return { ok: false, error: "A rejection reason is required." };
+
+  if (status === "APPROVED" && request.type === "CROSS_DEPARTMENT") {
+    const details = request.details as unknown as CrossDepartmentDetails;
+    if (details.requiredDepartmentIds?.length) {
+      const approvedDepartmentIds = [...new Set([...(details.approvedDepartmentIds ?? []), ...details.requiredDepartmentIds.filter((id) => scope.departmentIds.includes(id))])];
+      if (!details.requiredDepartmentIds.every((id) => approvedDepartmentIds.includes(id))) {
+        const saved = await prisma.scheduleRequest.updateMany({ where: { id, status: "PENDING", updatedAt: request.updatedAt }, data: { details: { ...details, approvedDepartmentIds } as never } });
+        if (saved.count !== 1) return { ok: false, error: "This request changed. Refresh before reviewing it." };
+        await prisma.auditLog.create({ data: { userId: scope.userId, entity: "ScheduleRequest", entityId: id, action: "Approved department's side of a cross-department request" } });
+        revalidatePath("/requests");
+        return { ok: true };
+      }
+    }
+  }
 
   // Approving a cross-department or faculty change applies it at once; if it no longer fits, nothing changes.
   if (status === "APPROVED" && (request.type === "CROSS_DEPARTMENT" || request.type === "FACULTY_CHANGE")) {

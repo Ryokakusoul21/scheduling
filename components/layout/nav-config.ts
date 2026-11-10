@@ -1,4 +1,4 @@
-import { TEACHING_ROLES, type AppRole } from "@/lib/permissions/roles";
+import { SCHEDULING_ROLES, TEACHING_ROLES, type AppRole } from "@/lib/permissions/roles";
 import type { Icon } from "@phosphor-icons/react";
 import {
   SquaresFour as LayoutDashboard,
@@ -75,8 +75,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Scheduler", href: "/scheduler", icon: CalendarClock, shortcut: "g s" },
       { label: "Calendar of Activities", href: "/calendar", icon: CalendarCheck, shortcut: "g c" },
       { label: "Room Booking", href: "/bookings", icon: DoorOpen, shortcut: "g b" },
-      { label: "Schedule Adjustments", href: "/adjustments", icon: ArrowsClockwise, roles: STAFF, tabGroup: "changes" },
-      { label: "Schedule Requests", href: "/requests", icon: ClipboardList, tabGroup: "changes" },
+      { label: "Schedule Adjustments", href: "/adjustments", icon: ArrowsClockwise, roles: SCHEDULING_ROLES, tabGroup: "changes" },
+      { label: "Schedule Requests", href: "/requests", icon: ClipboardList, roles: TEACHING_ROLES, tabGroup: "changes" },
       { label: "Scheduling Constraints", href: "/constraints", icon: ShieldCheck, roles: STAFF, tabGroup: "changes" },
       { label: "Scheduling Assistant", href: "/assistant", icon: Bot },
     ],
@@ -93,7 +93,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Management",
     items: [
       { label: "Academic Years and Terms", href: "/academic-years", icon: CalendarDays, roles: ADMIN, shortcut: "g y", tabGroup: "setup" },
-      { label: "Programs and Strands", href: "/programs", icon: Layers, roles: STAFF, shortcut: "g p", tabGroup: "setup" },
+      { label: "Academic Programs", href: "/programs", icon: Layers, roles: STAFF, shortcut: "g p", tabGroup: "setup" },
       { label: "Subjects", href: "/subjects", icon: BookOpen, roles: STAFF, shortcut: "g u", tabGroup: "setup" },
       { label: "Sections", href: "/sections", icon: UsersThree, roles: STAFF, shortcut: "g e", tabGroup: "setup" },
       { label: "Faculty", href: "/faculty", icon: UserSquare2, roles: STAFF, shortcut: "g f", tabGroup: "setup" },
@@ -108,9 +108,12 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Administration",
     items: [
       { label: "Registrar Review Center", href: "/admin/review-center", icon: ShieldCheck, roles: ADMIN },
+      { label: "Department Management", href: "/admin/departments", icon: Building2, roles: ADMIN },
+      { label: "Scheduling Periods", href: "/admin/scheduling-periods", icon: CalendarDays, roles: ["REGISTRAR"] },
       { label: "User Management", href: "/admin/users", icon: Users, roles: SUPER, tabGroup: "system" },
       { label: "Audit Logs", href: "/admin/audit-logs", icon: History, roles: SUPER, tabGroup: "system" },
       { label: "System Settings", href: "/admin/settings", icon: Settings, roles: SUPER, tabGroup: "system" },
+      { label: "Emergency Schedule Access", href: "/admin/emergency-access", icon: ShieldCheck, roles: SUPER, tabGroup: "system" },
       { label: "View as Another Role", href: "/admin/view-as", icon: UserCircle, roles: SUPER, tabGroup: "system" },
     ],
   },
@@ -119,23 +122,115 @@ export const NAV_GROUPS: NavGroup[] = [
 /** Student portal navigation; every page lives under /student and is read-only. */
 export const STUDENT_NAV: NavGroup[] = [
   {
-    label: "Student Portal",
+    label: "My Timetable",
     items: [
       { label: "Dashboard", href: "/student", icon: LayoutDashboard },
-      { label: "My Schedule", href: "/student/schedule", icon: Table },
+      { label: "My Timetable", href: "/student/schedule", icon: Table },
       { label: "Subjects", href: "/student/subjects", icon: BookOpen },
-      { label: "Rooms", href: "/student/rooms", icon: Building2 },
+    ],
+  },
+  {
+    label: "Updates",
+    items: [
       { label: "Calendar of Activities", href: "/student/calendar", icon: CalendarCheck },
       { label: "Notifications", href: "/student/notifications", icon: Bell },
+    ],
+  },
+  {
+    label: "My Account",
+    items: [
       { label: "Profile", href: "/student/profile", icon: UserCircle },
     ],
   },
 ];
 
+type MenuEntry = string | { href: string; label: string };
+interface RoleMenuGroup {
+  label: string;
+  items: MenuEntry[];
+  /** Keep secondary reference pages together in a sidebar entry with page tabs. */
+  compact?: boolean;
+}
+
+const ROLE_MENUS: Record<Exclude<AppRole, "STUDENT">, RoleMenuGroup[]> = {
+  SUPER_ADMINISTRATOR: [
+    {
+      label: "School Monitoring",
+      items: ["/dashboard", { href: "/analytics", label: "Timetable Analytics" }, { href: "/admin/review-center", label: "Submission Monitoring" }, "/reports", "/workload"],
+    },
+    {
+      label: "School Activity",
+      items: [{ href: "/scheduler", label: "School Timetables" }, { href: "/bookings", label: "Booking Monitoring" }, "/calendar", "/notifications"],
+    },
+    {
+      label: "Academic Records",
+      compact: true,
+      items: ["/academic-years", "/programs", "/subjects", "/sections", "/faculty", "/rooms"],
+    },
+    {
+      label: "System Administration",
+      items: ["/admin/users", "/admin/audit-logs", "/admin/departments", "/admin/settings", "/admin/emergency-access", "/admin/view-as", "/constraints"],
+    },
+  ],
+  REGISTRAR: [
+    { label: "Overview", items: ["/dashboard"] },
+    {
+      label: "Academic Setup",
+      items: ["/academic-years", "/programs", "/subjects", "/sections", "/faculty", "/rooms", "/admin/departments", "/import"],
+    },
+    {
+      label: "Schedule Administration",
+      items: ["/admin/scheduling-periods", { href: "/admin/review-center", label: "Review & Publish Timetables" }, { href: "/scheduler", label: "School Timetables" }, "/constraints", "/adjustments"],
+    },
+    { label: "Reports", compact: true, items: ["/analytics", "/workload", "/reports"] },
+    { label: "School Updates", items: ["/calendar", { href: "/bookings", label: "Booking Monitoring" }, "/notifications"] },
+  ],
+  HEAD_OF_DEPARTMENT: [
+    { label: "Department Scheduling", items: ["/dashboard", { href: "/scheduler", label: "Department Timetable" }] },
+    {
+      label: "Approvals & Changes",
+      items: [{ href: "/bookings", label: "Booking Approvals" }, { href: "/adjustments", label: "Unavailability & Changes" }, { href: "/requests", label: "Department Requests" }, "/workload"],
+    },
+    {
+      label: "Department Resources",
+      compact: true,
+      items: ["/programs", "/subjects", "/sections", "/faculty", "/rooms"],
+    },
+    { label: "Scheduling Tools", items: ["/constraints", "/assistant", "/calendar"] },
+    { label: "My Teaching", items: ["/my-subjects", "/availability"] },
+    { label: "Department Reports", compact: true, items: ["/analytics", "/reports"] },
+    { label: "Updates", items: ["/notifications"] },
+  ],
+  FACULTY: [
+    { label: "My Timetable", items: ["/dashboard", { href: "/scheduler", label: "My Timetable" }] },
+    { label: "Unavailability", items: [{ href: "/availability", label: "Submit Unavailability" }] },
+    { label: "My Teaching", items: ["/my-subjects", "/workload"] },
+    { label: "Updates", items: ["/calendar", "/notifications"] },
+  ],
+};
+
+/** Resolve the role's menu against the authorized page catalog, including role-specific labels. */
+function menuForRole(role: Exclude<AppRole, "STUDENT">): NavGroup[] {
+  const available = NAV_GROUPS.flatMap((group) => group.items).filter((item) => !item.roles || item.roles.includes(role));
+  return ROLE_MENUS[role].map((group) => ({
+    label: group.label,
+    items: group.items.map((entry) => {
+      const href = typeof entry === "string" ? entry : entry.href;
+      const item = available.find((candidate) => candidate.href === href);
+      if (!item) throw new Error(`No navigation destination for ${role}: ${href}`);
+      return {
+        ...item,
+        label: typeof entry === "string" ? item.label : entry.label,
+        tabGroup: group.compact ? item.tabGroup : undefined,
+      };
+    }),
+  }));
+}
+
 export const onPath = (pathname: string, href: string) => pathname === href || pathname.startsWith(href + "/");
 
 /** Items of a role, with every tab group the role can open on more than one page folded into one sidebar entry. */
-function collapse(items: NavItem[]): NavItem[] {
+function collapse(items: NavItem[], label: string): NavItem[] {
   const members = new Map<TabGroupId, NavItem[]>();
   for (const item of items) if (item.tabGroup) members.set(item.tabGroup, [...(members.get(item.tabGroup) ?? []), item]);
   return items.flatMap((item) => {
@@ -144,18 +239,17 @@ function collapse(items: NavItem[]): NavItem[] {
     if (group[0] !== item) return [];
     if (group.length === 1) return [item];
     // The folded entry opens the first page; its shortcut would mislead, so it is dropped.
-    const { label, icon } = TAB_GROUPS[item.tabGroup];
+    const { icon } = TAB_GROUPS[item.tabGroup];
     return [{ ...item, label, icon, shortcut: undefined, match: group.map((m) => m.href) }];
   });
 }
 
 export function filterNavForRole(role: AppRole): NavGroup[] {
-  // Students only see the separate student portal.
   if (role === "STUDENT") return STUDENT_NAV;
-  return NAV_GROUPS.map((group) => ({
+  return menuForRole(role).map((group) => ({
     ...group,
-    items: collapse(group.items.filter((item) => !item.roles || item.roles.includes(role))),
-  })).filter((group) => group.items.length > 0);
+    items: collapse(group.items, group.label),
+  }));
 }
 
 /** Every page a role may open from the menu, including pages reached through tabs (used by keyboard shortcuts). */
@@ -178,7 +272,7 @@ export function activeHrefFor(pathname: string, role: AppRole) {
 /** The sibling pages to show as tabs for the path, or null when the page stands alone for this role. */
 export function tabsForPath(pathname: string, role: AppRole): NavItem[] | null {
   if (role === "STUDENT") return null;
-  const visible = NAV_GROUPS.flatMap((g) => g.items).filter((i) => i.tabGroup && (!i.roles || i.roles.includes(role)));
+  const visible = menuForRole(role).flatMap((g) => g.items).filter((i) => i.tabGroup);
   const hit = visible.filter((i) => onPath(pathname, i.href)).sort((a, b) => b.href.length - a.href.length)[0];
   const tabs = hit ? visible.filter((i) => i.tabGroup === hit.tabGroup) : [];
   return tabs.length > 1 ? tabs : null;

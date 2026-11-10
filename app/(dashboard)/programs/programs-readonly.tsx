@@ -29,7 +29,7 @@ export function ProgramsReadOnly({ programs, departments }: { programs: ProgramR
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Programs and Strands"
+        title="Academic Programs"
         description={names ? `Programs under ${names}.` : "Programs under your department."}
         actions={names ? <Badge variant="secondary" className="h-7 px-2.5 text-sm">Viewing: {names}</Badge> : undefined}
       />

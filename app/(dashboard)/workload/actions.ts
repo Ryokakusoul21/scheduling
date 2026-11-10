@@ -3,7 +3,6 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
-import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { canManageDepartment, requireScope } from "@/lib/permissions/scope";
 import { logBlocked } from "@/lib/permissions/department";
 import { runWorkloadCheck, undoFix } from "@/lib/workload/auto";
@@ -18,7 +17,7 @@ function revalidate() {
 
 /** Runs the workload check immediately (it also runs after every change that affects a load). */
 export async function recheckWorkloadAction(): Promise<Result<{ proposed: number; flags: number }>> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const status = await runWorkloadCheck("Manual recheck", scope.userId);
   revalidate();
   return { ok: true, data: { proposed: status.proposed, flags: status.flags.filter((f) => f.kind !== "UNDERLOADED").length } };
@@ -34,7 +33,7 @@ const reviewSchema = z.object({
 type ReviewData = { applied: number; rejected: number; awaiting: number; summary: string | null };
 
 async function review(decision: "APPROVE" | "REJECT", input: z.infer<typeof reviewSchema>): Promise<Result<ReviewData>> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const parsed = reviewSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Refresh the page and try again." };
   const result = await reviewProposal(scope, { ...parsed.data, decision });
@@ -59,7 +58,7 @@ export async function rejectProposalAction(input: z.infer<typeof reviewSchema>) 
 
 /** Picks a different receiver for one row; the row is re-validated and both approvals start over. */
 export async function editProposalRowAction(input: { proposalId: string; version: number; itemId: string; toFacultyId: string }): Promise<Result<Move>> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const parsed = z.object({ proposalId: z.string().min(1), version: z.number().int().min(1), itemId: z.string().min(1), toFacultyId: z.string().min(1) }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "Choose a faculty member." };
   const result = await editProposalRow(scope, parsed.data);
@@ -70,12 +69,12 @@ export async function editProposalRowAction(input: { proposalId: string; version
 
 /** Undoes one applied fix; a Head of Department may undo fixes within their department. */
 export async function undoFixAction(id: string): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const fix = await prisma.workloadFix.findUnique({ where: { id } });
   if (!fix) return { ok: false, error: "This fix no longer exists." };
   if (!scope.isAdmin) {
     const both = await prisma.faculty.findMany({ where: { id: { in: [fix.fromFacultyId, fix.toFacultyId] } }, select: { departmentId: true } });
-    if (!both.every((f) => canManageDepartment(scope, f.departmentId))) return { ok: false, error: "Only the Registrar can undo fixes that cross departments." };
+    if (!both.every((f) => canManageDepartment(scope, f.departmentId))) return { ok: false, error: "A head assigned to both affected departments must undo a cross-department fix." };
   }
   const problem = await undoFix(id, scope.userId);
   if (problem) return { ok: false, error: problem };

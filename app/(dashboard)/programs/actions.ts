@@ -1,5 +1,6 @@
 "use server";
 
+import { DEFAULT_SHS_STRANDS } from "@/lib/academics/levels";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { OUTSIDE_DEPARTMENT, policyUserFromScope, programDepartment, requireScope } from "@/lib/permissions/scope";
@@ -17,6 +18,7 @@ const schema = z
     name: z.string().trim().min(1, "Name is required").max(150),
     departmentId: z.string().optional(),
   })
+  .refine((d) => d.level !== "SENIOR_HIGH" || DEFAULT_SHS_STRANDS.some((strand) => strand.code === d.code), { message: "Choose STEM, ABM, HUMSS, GAS, ICT, or TVL", path: ["code"] })
   .refine((d) => d.level !== "COLLEGE" || !!d.departmentId, { message: "Choose the department offering this course", path: ["departmentId"] });
 
 const READ_ONLY = "Programs and strands are managed by the Registrar. You can rename your department.";

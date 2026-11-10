@@ -11,15 +11,16 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+  const canSeeFixes = session.user.role === "HEAD_OF_DEPARTMENT" || session.user.role === "FACULTY";
 
   const [schedules, batches, undone, bookings, fixes, fixesUndone, proposals, activities, exams, settings, sections, faculty, rooms] = await Promise.all([
     prisma.schedule.aggregate({ _max: { updatedAt: true }, _count: true }),
     prisma.adjustmentBatch.aggregate({ _max: { createdAt: true }, _count: true }),
     prisma.adjustmentBatch.count({ where: { undoneAt: { not: null } } }),
     prisma.roomBooking.aggregate({ _max: { updatedAt: true }, _count: true }),
-    prisma.workloadFix.aggregate({ _max: { appliedAt: true }, _count: true }),
-    prisma.workloadFix.count({ where: { undoneAt: { not: null } } }),
-    prisma.workloadProposal.aggregate({ _max: { createdAt: true, reviewedAt: true }, _count: true }),
+    canSeeFixes ? prisma.workloadFix.aggregate({ _max: { appliedAt: true }, _count: true }) : Promise.resolve({ _max: { appliedAt: null }, _count: 0 }),
+    canSeeFixes ? prisma.workloadFix.count({ where: { undoneAt: { not: null } } }) : Promise.resolve(0),
+    canSeeFixes ? prisma.workloadProposal.aggregate({ _max: { createdAt: true, reviewedAt: true }, _count: true }) : Promise.resolve({ _max: { createdAt: null, reviewedAt: null }, _count: 0 }),
     prisma.activity.aggregate({ _max: { updatedAt: true }, _count: true }),
     prisma.examination.aggregate({ _max: { updatedAt: true }, _count: true }),
     prisma.systemSetting.aggregate({ _max: { updatedAt: true } }),

@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { departmentWhere } from "@/lib/permissions/department";
 import { getScope } from "@/lib/permissions/scope";
 import { PageHeader } from "@/components/ux/states";
-import { allowedPriorities, isOverride, statusLabel, URGENT_REASONS, type Priority } from "@/lib/bookings/plan";
+import { allowedPriorities, canManageBooking, canReviewOverride, isOverride, statusLabel, URGENT_REASONS, type Priority } from "@/lib/bookings/plan";
 import { overrideCaps } from "@/lib/bookings/service";
 import { getBookingSettings } from "@/lib/settings";
 import { ONLINE_ROOM, isoDate } from "@/lib/occupancy/engine";
@@ -24,7 +24,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
   const [bookings, rooms, faculty, departments, myAcks, settings] = await Promise.all([
     prisma.roomBooking.findMany({
       // Own bookings, plus overrides of rooms this person must approve; the Registrar sees all.
-      where: { date: { gte: since }, ...(scope.isAdmin ? {} : { OR: [{ bookedById: scope.userId }, { status: "AWAITING_APPROVAL", ...approver }] }) },
+      where: { date: { gte: since }, ...(scope.isAdmin ? {} : { OR: [{ bookedById: scope.userId }, ...(scope.role === "HEAD_OF_DEPARTMENT" ? [approver, { departmentId: { in: scope.departmentIds } }] : [])] }) },
       include: {
         room: { select: { roomName: true } },
         bookedBy: { select: { name: true } },
@@ -92,11 +92,11 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
       reasonDetail: b.reasonDetail,
       reviewNote: b.reviewNote,
       awaitingDepartment: b.status === "AWAITING_APPROVAL" ? (deptName.get(b.approvalDepartmentId ?? "") ?? "the owning department") : null,
-      canApprove: b.status === "AWAITING_APPROVAL" && (scope.isAdmin || (!!b.approvalDepartmentId && scope.departmentIds.includes(b.approvalDepartmentId))),
+      canApprove: b.status === "AWAITING_APPROVAL" && !mine && canReviewOverride(scope, b.approvalDepartmentId),
       bookedBy: b.bookedBy.name,
       mine,
-      canCancel: !past && (scope.isAdmin || mine) && ["CONFIRMED", "AWAITING_APPROVAL", "PENDING"].includes(b.status),
-      canEdit: !past && (scope.isAdmin || mine) && b.status === "CONFIRMED",
+      canCancel: !past && canManageBooking(scope, b) && ["CONFIRMED", "AWAITING_APPROVAL", "PENDING"].includes(b.status),
+      canEdit: !past && canManageBooking(scope, b) && b.status === "CONFIRMED",
       moves,
       displaced: b.displaced.map((d) => ({ purpose: d.purpose, outcome: d.status === "CANCELLED" ? "Cancelled; no other room was free" : `Moved to ${roomName.get(d.roomId) ?? "another room"}` })),
       acknowledgements: b.acknowledgements.map((a) => ({ faculty: facultyName.get(a.facultyId) ?? "Faculty", status: a.status, note: a.note })),
@@ -129,6 +129,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
     <div className="space-y-6">
       <PageHeader title="Room Booking" description="Find and book a room for a meeting or activity. Urgent bookings can take a room in use and move the classes in it." />
       <BookingWorkspace
+        readOnly={scope.isAdmin}
         bookings={rows}
         acknowledgements={acks}
         showBookedBy={scope.isAdmin}

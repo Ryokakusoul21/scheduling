@@ -76,14 +76,18 @@ enum SemesterType {
 }
 
 enum AcademicLevel {
+  PRE_ELEMENTARY
   ELEMENTARY
   JUNIOR_HIGH
   SENIOR_HIGH
   COLLEGE
 }
 
-/// Basic-education grade levels (Kindergarten to Grade 12). College uses YearLevel.
+/// Basic education: Nursery, Preparatory, Kindergarten, and Grades 1 to 12.
+/// College uses YearLevel.
 enum GradeLevel {
+  NURSERY
+  PREPARATORY
   KINDER
   GRADE_1
   GRADE_2
@@ -303,13 +307,13 @@ model User {
   timetableComments   TimetableComment[]    @relation("TimetableCommentAuthor")
   timetablesSubmitted TimetableSubmission[] @relation("TimetableSubmitter")
   timetablesDecided   TimetableSubmission[] @relation("TimetableDecider")
-  id           String     @id @default(cuid())
-  email        String     @unique
-  passwordHash String
-  name         String
-  role         Role
-  status       UserStatus @default(ACTIVE)
-  image        String?
+  id                  String                @id @default(cuid())
+  email               String                @unique
+  passwordHash        String
+  name                String
+  role                Role
+  status              UserStatus            @default(ACTIVE)
+  image               String?
 
   // Authentication / security
   emailVerified          DateTime?
@@ -389,9 +393,9 @@ model LoginAttempt {
 
 model Department {
   timetableSubmissions TimetableSubmission[]
-  id   String @id @default(cuid())
-  code String @unique
-  name String
+  id                   String                @id @default(cuid())
+  code                 String                @unique
+  name                 String
 
   programs              Program[]
   faculty               Faculty[]
@@ -481,18 +485,19 @@ model AcademicYear {
 /// A term: a College semester (optionally per program) or a basic-education quarter.
 model Semester {
   timetableSubmissions TimetableSubmission[]
-  id             String        @id @default(cuid())
-  academicYearId String
-  academicYear   AcademicYear  @relation(fields: [academicYearId], references: [id])
-  level          AcademicLevel @default(COLLEGE)
+  schedulingPeriods    SchedulingPeriod[]
+  id                   String                @id @default(cuid())
+  academicYearId       String
+  academicYear         AcademicYear          @relation(fields: [academicYearId], references: [id])
+  level                AcademicLevel         @default(COLLEGE)
   /// College only: the course this semester belongs to. Null = applies to every course.
-  programId      String?
-  program        Program?      @relation(fields: [programId], references: [id])
-  type           SemesterType
-  name           String
-  startDate      DateTime
-  endDate        DateTime
-  isActive       Boolean       @default(false)
+  programId            String?
+  program              Program?              @relation(fields: [programId], references: [id])
+  type                 SemesterType
+  name                 String
+  startDate            DateTime
+  endDate              DateTime
+  isActive             Boolean               @default(false)
 
   sections           Section[]
   schedules          Schedule[]
@@ -504,6 +509,35 @@ model Semester {
   updatedAt DateTime @updatedAt
 
   @@index([academicYearId, level])
+}
+
+enum SchedulingPeriodKind {
+  CLASS_TIMETABLE
+  EXAMINATION
+}
+
+enum SchedulingPeriodStatus {
+  OPEN
+  CLOSED
+}
+
+/// Registrar-managed submission window for one term and scheduling workflow.
+model SchedulingPeriod {
+  id          String                 @id @default(cuid())
+  semesterId  String
+  semester    Semester               @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  kind        SchedulingPeriodKind
+  name        String
+  startsAt    DateTime
+  endsAt      DateTime
+  status      SchedulingPeriodStatus @default(CLOSED)
+  createdById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([semesterId, kind])
+  @@index([status, startsAt, endsAt])
 }
 
 model Subject {
@@ -572,7 +606,7 @@ model Section {
   /// Set for sections created together so generation can be undone safely.
   generationBatchId String?
 
-  /// College course or SHS strand. Null for Elementary / Junior High sections.
+  /// College course or SHS strand. Null for other basic-education sections.
   programId String?
   program   Program? @relation(fields: [programId], references: [id])
 
@@ -837,13 +871,13 @@ model Schedule {
   startMin  Int
   endMin    Int
 
-  status       ScheduleStatus @default(DRAFT)
-  version      Int            @default(1)
+  status       ScheduleStatus       @default(DRAFT)
+  version      Int                  @default(1)
   generatedBy  String? // "AI" or a userId
   score        Float?
   notes        String?
   /// Marked "do not move": an urgent booking cannot displace this class unless the Registrar confirms.
-  doNotMove    Boolean        @default(false)
+  doNotMove    Boolean              @default(false)
   /// Ownership snapshot used for scope-safe reads and exports.
   departmentId String?
   /// The whole-timetable submission this class was last sent in.
@@ -982,7 +1016,7 @@ model Examination {
 
   /// Set when the examination was created by the auto-scheduler, so the whole run can be undone.
   batchId      String?
-  batch        ExamBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  batch        ExamBatch?           @relation(fields: [batchId], references: [id], onDelete: SetNull)
   /// Ownership snapshot derived from the stored section, never from request input.
   departmentId String?
   submissionId String?

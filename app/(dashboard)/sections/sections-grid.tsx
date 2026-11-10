@@ -74,7 +74,7 @@ export function SectionsGrid({
           { name: "yearLevel", label: "", type: "hidden" as const },
         ]
       : []),
-    { name: "name", label: "Section name", type: "text", required: true, placeholder: isCollege ? "BSIT 1C" : level === "SENIOR_HIGH" ? "11-STEM B" : "Grade 7 - Mabini" },
+    { name: "name", label: "Section name", type: "text", required: true, placeholder: isCollege ? "BSIT 1C" : level === "SENIOR_HIGH" ? "11-STEM B" : `${gradeLabel(context.gradeLevel)} - A` },
     { name: "studentCount", label: "Number of learners", type: "number", min: 0, required: true, help: "Used to check room capacity in the Scheduler." },
     ...(!isCollege
       ? [

@@ -23,6 +23,29 @@ describe("validateSubjects", () => {
   const lookups = { programs: [{ code: "BSIT", level: "COLLEGE" }], existingCodes: ["IT101"] };
   const row = { code: "IT204", name: "Object-Oriented Programming", units: "3", lectureHours: "2", labHours: "1", roomType: "Computer laboratory", level: "College", program: "BSIT", yearLevel: "Second", gradeLevel: "", description: "" };
 
+  it.each(["Nursery", "Preparatory", "Kindergarten"])("imports %s under Pre-elementary", (gradeLevel) => {
+    const [result] = validateSubjects([{ ...row, level: "Pre-elementary", gradeLevel, program: "", yearLevel: "" }], lookups);
+    expect(result.errors).toEqual([]);
+    expect(result.data?.level).toBe("PRE_ELEMENTARY");
+  });
+
+  it("accepts SHS core subjects and rejects Kindergarten under Elementary", () => {
+    const results = validateSubjects([
+      { ...row, code: "OLD", level: "Senior High School", gradeLevel: "Grade 11", program: "", yearLevel: "" },
+      { ...row, code: "KINDER", level: "Elementary", gradeLevel: "Kindergarten", program: "", yearLevel: "" },
+    ], lookups);
+    expect(results[0].data).toMatchObject({ level: "SENIOR_HIGH", gradeLevel: "GRADE_11", programCode: null });
+    expect(results[1].errors.join()).toMatch(/not part of/);
+  });
+
+  it.each(["STEM", "ABM", "HUMSS", "GAS", "ICT", "TVL"])("imports Grade 12 subjects in the %s strand", (program) => {
+    const [result] = validateSubjects([{ ...row, level: "Senior High School", gradeLevel: "Grade 12", program, yearLevel: "" }], {
+      ...lookups, programs: [{ code: program, level: "SENIOR_HIGH" }],
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.data).toMatchObject({ level: "SENIOR_HIGH", gradeLevel: "GRADE_12", programCode: program });
+  });
+
   it("accepts a valid row with human-readable values", () => {
     const [r] = validateSubjects([row], lookups);
     expect(r.errors).toEqual([]);
@@ -31,7 +54,7 @@ describe("validateSubjects", () => {
 
   it("rejects duplicates, unknown programs, and mismatched grades", () => {
     const results = validateSubjects(
-      [{ ...row, code: "IT101" }, { ...row, program: "XYZ" }, { ...row, code: "IT204" }, { ...row, code: "M7", level: "Junior High School", program: "", yearLevel: "", gradeLevel: "Grade 11" }],
+      [{ ...row, code: "IT101" }, { ...row, program: "XYZ" }, { ...row, code: "IT204" }, { ...row, code: "M7", level: "Junior High School", program: "", yearLevel: "", gradeLevel: "Grade 6" }],
       lookups
     );
     expect(results[0].errors[0]).toMatch(/already exists/);

@@ -12,6 +12,7 @@ import { publishDueSubmissions } from "@/lib/scheduler/submissions";
 import type { AppRole } from "@/lib/permissions/roles";
 import { AppBreadcrumbs } from "@/components/ux/breadcrumbs";
 import { SectionTabs } from "@/components/layout/section-tabs";
+import { notificationVisibility } from "@/lib/permissions/notifications";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -20,13 +21,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Approved timetables whose publish time has passed go live on the next page load.
   await publishDueSubmissions();
   const [unread, account] = await Promise.all([
-    prisma.notification.count({ where: { userId: user.id, isRead: false } }),
+    prisma.notification.count({ where: { userId: user.id, isRead: false, ...notificationVisibility(role) } }),
     prisma.user.findUnique({ where: { id: user.id }, select: { name: true, image: true, faculty: { select: { department: { select: { name: true } } } } } }),
   ]);
 
   return (
     <ShortcutProvider allowedHrefs={allowedHrefsForRole(role)}>
-      {user.realId && <ViewAsBanner name={user.name ?? user.email ?? "Account"} role={ROLE_LABELS[user.role as AppRole]} realName={user.realName ?? "Super Administrator"} />}
+      {user.realId && <ViewAsBanner name={user.name ?? user.email ?? "Account"} role={ROLE_LABELS[user.role as AppRole]} realName={user.realName ?? "Administrator"} />}
       <a
         href="#main-content"
         className="sr-only z-50 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
@@ -43,7 +44,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             role={role}
             unreadNotifications={unread}
           />
-          <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto p-3 pb-28 outline-none md:pb-4 print:overflow-visible print:p-0 lg:[&:has([data-viewport-lock])]:overflow-hidden md:p-4">
+          <main id="main-content" tabIndex={-1} className="mb-[calc(6.5rem+env(safe-area-inset-bottom))] min-h-0 flex-1 overflow-y-auto p-3 outline-none md:mb-0 print:m-0 print:overflow-visible print:p-0 lg:[&:has([data-viewport-lock])]:overflow-hidden md:p-4">
             <div className="space-y-3 lg:has-[[data-viewport-lock]]:h-full">
               <Suspense fallback={<div className="h-5" aria-hidden />}><AppBreadcrumbs role={role} departmentName={account?.faculty?.department?.name} /></Suspense>
               <SectionTabs role={role} />

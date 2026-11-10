@@ -1,3 +1,4 @@
+import { PROGRAM_CATALOG_FILTER } from "@/lib/academics/levels";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db/prisma";
@@ -12,7 +13,7 @@ export default async function StudentRegisterPage() {
   const session = await auth();
   if (session?.user) redirect(homePath(session.user.role));
   const [programs, sections] = await Promise.all([
-    prisma.program.findMany({ orderBy: [{ level: "desc" }, { sortOrder: "asc" }], select: { id: true, code: true, name: true } }),
+    prisma.program.findMany({ where: PROGRAM_CATALOG_FILTER, orderBy: [{ level: "desc" }, { sortOrder: "asc" }], select: { id: true, code: true, name: true } }),
     registrableSections(),
   ]);
 

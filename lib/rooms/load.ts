@@ -1,3 +1,4 @@
+import { PROGRAM_CATALOG_FILTER } from "@/lib/academics/levels";
 import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
@@ -83,7 +84,7 @@ export async function loadBuildings(scope: Scope, where: Prisma.BuildingWhereInp
 export async function roomFormOptions(scope: Scope) {
   const [departments, programs] = await Promise.all([
     prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.program.findMany({ where: { level: { in: ["COLLEGE", "SENIOR_HIGH"] }, ...departmentWhere.program(scope) }, orderBy: [{ level: "desc" }, { sortOrder: "asc" }], select: { id: true, code: true, name: true } }),
+    prisma.program.findMany({ where: { AND: [PROGRAM_CATALOG_FILTER, departmentWhere.program(scope)] }, orderBy: [{ level: "desc" }, { sortOrder: "asc" }], select: { id: true, code: true, name: true } }),
   ]);
   return {
     departments: (scope.isAdmin ? departments : departments.filter((d) => d.id === scope.departmentId)).map((d) => ({ value: d.id, label: d.name })),

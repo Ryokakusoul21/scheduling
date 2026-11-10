@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { releaseDisplaced } from "@/lib/bookings/service";
 import { prisma } from "@/lib/db/prisma";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
-import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { SCHEDULING_ROLES } from "@/lib/permissions/roles";
 import { canManageDepartment, requireScope, type Scope } from "@/lib/permissions/scope";
 import {
   addMakeUp,
@@ -66,7 +66,7 @@ function plan(req: AdjustmentRequest): Promise<AdjustmentPlan> {
 }
 
 async function checked(input: AdjustmentRequest) {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope(...SCHEDULING_ROLES);
   const parsed = requestSchema.safeParse(input);
   if (!parsed.success) return { scope, error: parsed.error.issues[0]?.message ?? "Check the details." } as const;
   const denied = await authorize(scope, parsed.data);
@@ -116,7 +116,7 @@ export async function applyAdjustmentAction(input: AdjustmentRequest): Promise<R
 }
 
 async function batchScope(batchId: string) {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope(...SCHEDULING_ROLES);
   const batch = await prisma.adjustmentBatch.findUnique({
     where: { id: batchId },
     include: { activity: true, unavailability: true, booking: true, adjustments: { select: { schedule: { select: { section: { select: { departmentId: true } } } } } } },
@@ -188,7 +188,7 @@ export async function scheduleMakeUpAction(batchId: string, scheduleId: string, 
 }
 
 export async function dismissReportAction(id: string): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope(...SCHEDULING_ROLES);
   const report = await prisma.unavailability.findUnique({ where: { id }, include: { faculty: { select: { departmentId: true } } } });
   if (!report || report.status !== "PENDING") return { ok: false, error: "This report was already handled." };
   if (!canManageDepartment(scope, report.faculty?.departmentId)) return { ok: false, error: "You can only handle reports from your department." };

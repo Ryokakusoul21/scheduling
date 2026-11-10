@@ -1,5 +1,7 @@
 "use server";
 
+import { PROGRAM_CATALOG_FILTER } from "@/lib/academics/levels";
+
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
@@ -24,7 +26,7 @@ function activeTerm<T extends { level: string; programId: string | null }>(terms
 async function validate(kind: ImportKind, records: Record<string, string>[], scope: Scope): Promise<RowResult<unknown>[]> {
   if (kind === "subjects") {
     const [programs, existing, faculty, terms] = await Promise.all([
-      prisma.program.findMany({ select: { id: true, code: true, level: true, departmentId: true } }),
+      prisma.program.findMany({ where: PROGRAM_CATALOG_FILTER, select: { id: true, code: true, level: true, departmentId: true } }),
       prisma.subject.findMany({ select: { code: true } }),
       prisma.faculty.findMany({ where: { status: "ACTIVE", archivedAt: null }, select: { id: true, email: true, employeeId: true } }),
       prisma.semester.findMany({ where: { isActive: true }, select: { level: true, programId: true } }),
@@ -74,7 +76,7 @@ export async function commitImportAction(kind: ImportKind, records: Record<strin
 
   try {
     if (kind === "subjects") {
-      const programs = new Map((await prisma.program.findMany({ select: { id: true, code: true, departmentId: true } })).map((p) => [p.code, p]));
+      const programs = new Map((await prisma.program.findMany({ where: PROGRAM_CATALOG_FILTER, select: { id: true, code: true, departmentId: true } })).map((p) => [p.code, p]));
       const blocked = valid.some((r) => {
         const row = r.data as SubjectRow;
         const departmentId = row.programCode ? programs.get(row.programCode)?.departmentId : null;

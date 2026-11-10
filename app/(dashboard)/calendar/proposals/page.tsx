@@ -10,16 +10,16 @@ import type { ProposalListItem } from "@/lib/activities/proposals";
 export const metadata = { title: "School Activity Proposals · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function ActivityProposalsPage({ searchParams }: { searchParams: Promise<{ proposal?: string }> }) {
-  const scope = await requireScope("HEAD_OF_DEPARTMENT", "SUPER_ADMINISTRATOR", "REGISTRAR");
+  const scope = await requireScope("HEAD_OF_DEPARTMENT", "REGISTRAR", "SUPER_ADMINISTRATOR");
   const params = await searchParams;
   const [terms, proposals, departments] = await Promise.all([
     prisma.semester.findMany({ include: { academicYear: true }, orderBy: [{ academicYear: { startDate: "desc" } }, { startDate: "asc" }] }),
     prisma.activityProposal.findMany({
-      where: scope.isAdmin ? {} : { createdById: scope.userId },
+      where: scope.isAdmin ? { status: "APPROVED" } : { departmentId: { in: scope.departmentIds } },
       include: { semester: { include: { academicYear: true } }, department: true, rows: { orderBy: { sortOrder: "asc" } } },
       orderBy: { updatedAt: "desc" },
     }),
-    prisma.department.findMany({ where: scope.isAdmin ? {} : { id: scope.departmentId ?? "" }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.department.findMany({ where: scope.isAdmin ? {} : { id: { in: scope.departmentIds } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   const creators = new Map((await prisma.user.findMany({ where: { id: { in: proposals.map((p) => p.createdById) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
   const items: ProposalListItem[] = proposals.map((p) => ({
@@ -30,7 +30,7 @@ export default async function ActivityProposalsPage({ searchParams }: { searchPa
       time: r.startMin === null || r.endMin === null ? "" : formatRange(r.startMin, r.endMin), location: r.location ?? "",
       level: r.level ?? "", category: r.category ?? "", status: r.status, reviewNote: r.reviewNote ?? "", activityId: r.activityId })),
   }));
-  return <div className="space-y-4"><PageHeader title="School Activity Proposals" description="Prepare, validate, submit, review, and publish a whole semester's activity table." />
+  return <div className="space-y-4"><PageHeader title="School Activity Proposals" description="Prepare, validate, and publish department activities without a separate approval step." />
     <CalendarTabs active="proposals" isAdmin={scope.isAdmin} showProposals />
     <ProposalWorkspace isAdmin={scope.isAdmin} ownDepartmentId={scope.departmentId} selectedId={params.proposal} proposals={items}
       terms={terms.map((t) => ({ id: t.id, label: `${t.academicYear.name} · ${t.name}`, level: t.level }))}

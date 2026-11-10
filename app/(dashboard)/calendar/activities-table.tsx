@@ -131,6 +131,8 @@ export function ActivitiesTable({
             title="School Activities"
             term={term}
             filename={`school-activities-${today}`}
+            official
+            department={department && department !== "ALL" ? departments.find((option) => option.value === department)?.label ?? "All Departments" : "All Departments"}
             rows={rows.map((a) => ({ ...a, level: a.level ? levelLabel(a.level) : "", status: ACTIVITY_STATUS_LABELS[a.status] }))}
           />
         </div>

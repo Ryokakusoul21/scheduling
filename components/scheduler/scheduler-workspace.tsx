@@ -355,6 +355,10 @@ export function SchedulerWorkspace({
       const duration = entry.endMin - entry.startMin;
       const moved = { ...entry, dayOfWeek: day, startMin, endMin: startMin + duration };
       if (moved.dayOfWeek === entry.dayOfWeek && moved.startMin === entry.startMin) return;
+      if (entry.status === "PUBLISHED" || entry.status === "REVIEW") {
+        toast.info("Open this submitted class to document a reason before changing it.");
+        return;
+      }
 
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? moved : e)));
       const input = { id: entry.id, dayOfWeek: day, startMin, endMin: moved.endMin };
@@ -421,8 +425,8 @@ export function SchedulerWorkspace({
     [flash, promptOverride]
   );
 
-  const deleteClass = useCallback(async (id: string) => {
-    const res = await deleteClassAction(id);
+  const deleteClass = useCallback(async (id: string, reason?: string) => {
+    const res = await deleteClassAction(id, reason);
     if (!res.ok) {
       toast.error(res.error);
       return false;
@@ -445,7 +449,7 @@ export function SchedulerWorkspace({
   // ---------------------------------------------------------------------------
   /** Submits the department's whole timetable for the terms with drafts, whatever the filters show. */
   async function submitVisible() {
-    const drafts = entries.filter((e) => e.status === "DRAFT" && !e.busy);
+    const drafts = entries.filter((e) => (e.status === "DRAFT" || e.status === "REVIEW") && !e.busy);
     if (!drafts.length) return;
     const missing = facultyNotAssigned(drafts, activeFacultyIds);
     if (missing.length) {
@@ -456,7 +460,7 @@ export function SchedulerWorkspace({
     }
     // The package: every draft or published class of the department in the terms that have drafts.
     const terms = new Set(drafts.map((e) => e.semesterId));
-    const lineup = entries.filter((e) => !e.busy && terms.has(e.semesterId) && (e.status === "DRAFT" || e.status === "PUBLISHED"));
+    const lineup = entries.filter((e) => !e.busy && terms.has(e.semesterId) && (e.status === "DRAFT" || e.status === "REVIEW" || e.status === "PUBLISHED"));
     const sections = [...new Set(lineup.map((e) => e.sectionId))].map((id) => maps.section.get(id)).filter((x): x is NonNullable<typeof x> => !!x);
     const byProgram = Map.groupBy(sections, (x) => (x.programId ? maps.program.get(x.programId)?.code : null) ?? levelLabel(x.level));
     const department = data.departments.find((d) => d.id === sections[0]?.departmentId)?.name ?? "Your department";
@@ -472,7 +476,7 @@ export function SchedulerWorkspace({
 
   /** Sends the package after the Head of Department confirms in the dialog. */
   async function confirmSubmit() {
-    const ids = entries.filter((e) => e.status === "DRAFT" && !e.busy).map((e) => e.id);
+    const ids = entries.filter((e) => (e.status === "DRAFT" || e.status === "REVIEW") && !e.busy).map((e) => e.id);
     setSubmitting(true);
     try {
       let res = await submitClassesAction(ids);
@@ -487,7 +491,7 @@ export function SchedulerWorkspace({
       const selected = new Set(ids);
       setEntries((prev) => prev.map((e) => (selected.has(e.id) ? { ...e, status: "REVIEW" } : e)));
       setSubmitSummary(null);
-      toast.success(`Submitted the whole timetable (${res.data.count} classes) for Super Administrator approval.`);
+      toast.success(`Submitted the whole timetable (${res.data.count} classes) for Registrar approval.`);
       router.refresh();
     } finally {
       setSubmitting(false);
@@ -854,10 +858,16 @@ export function SchedulerWorkspace({
     const term = filters.termId !== ACTIVE_TERMS ? maps.term.get(filters.termId)?.label : termLabels.join("; ");
     const rows = visibleTimetable.map((e) => {
       const r = rowInfo(e);
-      return { ...e, subject: `${r.subject} - ${r.subjectName}`, section: r.section, faculty: r.faculty, room: r.room };
+      return { ...e, subject: `${r.subject} - ${r.subjectName}`, section: r.section, faculty: r.faculty, room: r.room, units: maps.subject.get(e.subjectId)?.units };
     });
-    return timetableDoc(`${kind} Timetable: ${focusTitle}`, term || "No term selected", rows, `${kind.toLowerCase()}-timetable-${focusTitle.replace(/\W+/g, "-").toLowerCase()}`);
-  }, [focus, focusTitle, visibleTimetable, maps.term, filters.termId, rowInfo]);
+    const section = focus.kind === "section" ? maps.section.get(focus.id) : undefined;
+    const program = section?.programId ? maps.program.get(section.programId) : undefined;
+    const department = section?.departmentId ? data.departments.find((item) => item.id === section.departmentId)?.name : undefined;
+    const details = focus.kind === "section"
+      ? { course: program?.name, year: section ? stageLabel(section) : undefined, section: section?.shortName, studentCount: section?.studentCount, department }
+      : { focus: focus.kind, focusName: focusTitle };
+    return timetableDoc(`${kind} Timetable: ${focusTitle}`, term || "No term selected", rows, `${kind.toLowerCase()}-timetable-${focusTitle.replace(/\W+/g, "-").toLowerCase()}`, details);
+  }, [focus, focusTitle, visibleTimetable, maps.term, maps.subject, maps.section, maps.program, filters.termId, rowInfo, data.departments]);
 
   const unscheduledCount = focusedSection ? needs.length : allNeeds.length;
   const isOpen = (key: PanelKey, count: number | null) => openPanels[key] ?? (count === null ? false : count > 0);
@@ -947,7 +957,10 @@ export function SchedulerWorkspace({
           help="Drag classes to reschedule. Hard constraints block a save; soft ones ask before overriding."
           leading={<>
             {academicYearControl}
-            <div className="min-w-40"><NativeSelect aria-label="Term" value={filters.termId} onChange={(e) => update({ termId: e.target.value || ACTIVE_TERMS })} options={options.terms} /></div>
+            <div className="min-w-0 space-y-1 xl:w-64">
+              <label htmlFor="scheduler-term" className="block text-sm text-muted-foreground">Term</label>
+              <NativeSelect id="scheduler-term" value={filters.termId} onChange={(e) => update({ termId: e.target.value || ACTIVE_TERMS })} options={options.terms} />
+            </div>
           </>}
         >
             <Button
@@ -958,8 +971,8 @@ export function SchedulerWorkspace({
                 setMobilePanelOpen(true);
               }}
             >
-              <WarningOctagon className="size-4" /> Conflicts
-              {overlapCount > 0 && <Badge variant="destructive">{overlapCount}</Badge>}
+              <WarningOctagon className="size-4" /> Schedule checks
+              {issueTotal > 0 && <Badge variant={overlapCount > 0 ? "destructive" : "secondary"}>{issueTotal}</Badge>}
             </Button>
             {permissions.canPublish && pendingPublish > 0 && (
               <Button variant="outline" onClick={publishVisible}>
@@ -1201,7 +1214,10 @@ function SectionPicker({
   const [tab, setTab] = useState<string>("");
   const lookups = useMemo(() => ({
     subjects: new Map(data.subjects.map((x) => [x.id, x])),
-    faculty: new Map(data.faculty.map((x) => [x.id, x])),
+    faculty: new Map([
+      ...data.faculty.map((x) => [x.id, { fullName: x.fullName }] as const),
+      ...data.outsideFaculty.map((x) => [x.id, { fullName: x.fullName, department: x.department }] as const),
+    ]),
     rooms: new Map(data.rooms.map((x) => [x.id, x])),
     programs: new Map(data.programs.map((x) => [x.id, x])),
     departments: new Map(data.departments.map((x) => [x.id, x])),

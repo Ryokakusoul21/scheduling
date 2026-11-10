@@ -86,7 +86,7 @@ export async function addArchiveAndApprovalSamples(db: PrismaClient, passwordHas
   };
   type Submission = {
     dept: keyof typeof heads; title: string; description: string; start: string; end?: string; from?: number; to?: number;
-    level?: "COLLEGE" | "SENIOR_HIGH" | "JUNIOR_HIGH" | "ELEMENTARY"; room?: string; location?: string; participants: string;
+    level?: "COLLEGE" | "PRE_ELEMENTARY" | "JUNIOR_HIGH" | "ELEMENTARY"; room?: string; location?: string; participants: string;
     status: ActivityStatus; note?: string; daysAgo: number;
   };
   const submissions: Submission[] = [
@@ -104,7 +104,7 @@ export async function addArchiveAndApprovalSamples(db: PrismaClient, passwordHas
     },
     {
       dept: "BED", title: "Elementary Parent-Teacher Conference", description: "First quarter report card distribution.", start: weekday(10), from: 8 * 60, to: 12 * 60,
-      level: "ELEMENTARY", room: "3101", participants: "Parents and advisers of Kindergarten to Grade 6", status: "PENDING", daysAgo: 0,
+      level: "ELEMENTARY", room: "3101", participants: "Parents and advisers of Grades 1 to 6", status: "PENDING", daysAgo: 0,
     },
     {
       dept: "CBA", title: "Entrepreneurship Bazaar", description: "Student-run food and product stalls for the Entrepreneurship course.", start: weekday(9), end: addDays(weekday(9), 1),
@@ -116,7 +116,7 @@ export async function addArchiveAndApprovalSamples(db: PrismaClient, passwordHas
     },
     {
       dept: "CAS", title: "Mathematics Month Opening Program", description: "Opening program with puzzle booths.", start: weekday(5), from: 8 * 60, to: 10 * 60,
-      level: "SENIOR_HIGH", room: "4102", participants: "Senior High School students and mathematics teachers", status: "PENDING", daysAgo: 0,
+      level: "JUNIOR_HIGH", room: "4102", participants: "Junior High School students and mathematics teachers", status: "PENDING", daysAgo: 0,
     },
     {
       dept: "CAS", title: "Research Colloquium", description: "Presentation of faculty research outputs.", start: weekday(12), from: 14 * 60, to: 17 * 60,

@@ -34,7 +34,7 @@ export async function AdminKpis({ scope }: { scope: Scope }) {
   return (
     <KpiRow
       items={[
-        { label: "Pending approvals", value: approvals, hint: "Classes, requests, reports, workload, accounts", href: "#needs-attention", icon: SealCheck, tone: "info" },
+        { label: "Pending approvals", value: approvals, hint: "Classes, reports, accounts", href: "#needs-attention", icon: SealCheck, tone: "info" },
         { label: "Faculty overloaded", value: workload.rows.filter((r) => r.status === "OVERLOADED").length, hint: `of ${faculty} active faculty`, href: "/workload", icon: TrendUp, tone: "danger" },
         { label: "Faculty underloaded", value: workload.rows.filter((r) => r.status === "UNDERLOADED").length, hint: `of ${faculty} active faculty`, href: "/workload", icon: TrendDown, tone: "warning" },
         { label: "Classes today", value: today.total, hint: `${today.upcoming.length} still to come`, href: "/calendar?view=day", icon: CalendarCheck, tone: "info" },
@@ -73,6 +73,7 @@ export async function AdminAttention({ scope }: { scope: Scope }) {
 }
 
 export async function PendingFixesSection({ scope }: { scope: Scope }) {
+  if (scope.role !== "HEAD_OF_DEPARTMENT") return null;
   const workload = await getWorkload(scope);
   const proposals = workload.proposals.filter((p) => p.status === "PENDING");
   if (proposals.length === 0) {

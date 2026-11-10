@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { rankFaculty, rankRooms } from "@/lib/scheduler/suggest";
 import { ANY_YEAR, GENERAL, flowHref, isComplete, parseFlow } from "@/lib/academics/flow";
-import { LEVELS, levelForGrade, stageLabel, termTypesFor } from "@/lib/academics/levels";
+import { ACADEMIC_LEVELS, DEFAULT_COLLEGE_PROGRAMS, DEFAULT_SHS_STRANDS, LEVELS, isAcademicLevel, levelForGrade, stageLabel, termTypesFor } from "@/lib/academics/levels";
 import { canAccessPath, rolesForPath } from "@/lib/permissions/routes";
 import { NAV_GROUPS, allowedHrefsForRole, tabsForPath } from "@/components/layout/nav-config";
 import { ROLES } from "@/lib/permissions/roles";
@@ -46,17 +46,34 @@ describe("level helpers", () => {
     expect(termTypesFor("COLLEGE")).toContain("FIRST");
     expect(termTypesFor("ELEMENTARY")).toEqual(["QUARTER_1", "QUARTER_2", "QUARTER_3", "QUARTER_4"]);
   });
-  it("covers Kindergarten to Grade 12 exactly once", () => {
+  it("covers Nursery through Grade 12 exactly once", () => {
     const grades = Object.values(LEVELS).flatMap((l) => l.grades);
-    expect(grades).toHaveLength(13);
-    expect(new Set(grades).size).toBe(13);
-    expect(levelForGrade("KINDER")).toBe("ELEMENTARY");
+    expect(grades).toHaveLength(15);
+    expect(new Set(grades).size).toBe(15);
+    expect(levelForGrade("NURSERY")).toBe("PRE_ELEMENTARY");
+    expect(levelForGrade("PREPARATORY")).toBe("PRE_ELEMENTARY");
+    expect(levelForGrade("KINDER")).toBe("PRE_ELEMENTARY");
+    expect(levelForGrade("GRADE_1")).toBe("ELEMENTARY");
+    expect(levelForGrade("GRADE_6")).toBe("ELEMENTARY");
     expect(levelForGrade("GRADE_10")).toBe("JUNIOR_HIGH");
+    expect(levelForGrade("GRADE_11")).toBe("SENIOR_HIGH");
     expect(levelForGrade("GRADE_12")).toBe("SENIOR_HIGH");
+  });
+  it("uses Granby's supplied levels and college catalog", () => {
+    expect(ACADEMIC_LEVELS).toEqual(["COLLEGE", "SENIOR_HIGH", "JUNIOR_HIGH", "ELEMENTARY", "PRE_ELEMENTARY"]);
+    expect(isAcademicLevel("SENIOR_HIGH")).toBe(true);
+    expect(DEFAULT_SHS_STRANDS.map((strand) => strand.code)).toEqual(["STEM", "ABM", "HUMSS", "GAS", "ICT", "TVL"]);
+    expect(DEFAULT_COLLEGE_PROGRAMS.map((program) => program.code)).toEqual([
+      "BSIT", "BSCS", "BSCRIM", "BSISM", "BSBA", "BSED", "BEED", "BSA", "BSTM",
+    ]);
+    expect(termTypesFor("PRE_ELEMENTARY")).toEqual(termTypesFor("ELEMENTARY"));
+    expect(termTypesFor("SENIOR_HIGH")).toEqual(termTypesFor("ELEMENTARY"));
   });
   it("labels sections by year or grade", () => {
     expect(stageLabel({ level: "COLLEGE", yearLevel: "SECOND" })).toBe("Second Year");
-    expect(stageLabel({ level: "ELEMENTARY", gradeLevel: "KINDER" })).toBe("Kindergarten");
+    expect(stageLabel({ level: "PRE_ELEMENTARY", gradeLevel: "NURSERY" })).toBe("Nursery");
+    expect(stageLabel({ level: "PRE_ELEMENTARY", gradeLevel: "PREPARATORY" })).toBe("Preparatory");
+    expect(stageLabel({ level: "PRE_ELEMENTARY", gradeLevel: "KINDER" })).toBe("Kindergarten");
   });
 });
 
@@ -68,11 +85,13 @@ describe("card-flow URL state", () => {
   });
   it("drops a grade that doesn't belong to the level", () => {
     expect(parseFlow({ level: "JUNIOR_HIGH", grade: "GRADE_11" }).grade).toBeNull();
+    expect(parseFlow({ level: "ELEMENTARY", grade: "KINDER" }).grade).toBeNull();
+    expect(parseFlow({ level: "SENIOR_HIGH", grade: "GRADE_11", strand: "stem" })).toMatchObject({ level: "SENIOR_HIGH", grade: "GRADE_11", strand: "stem" });
   });
   it("round-trips through flowHref", () => {
-    const href = flowHref("/sections", { level: "SENIOR_HIGH", grade: "GRADE_11", strand: "stem" });
+    const href = flowHref("/sections", { level: "PRE_ELEMENTARY", grade: "PREPARATORY" });
     const params = Object.fromEntries(new URL(href, "http://x").searchParams);
-    expect(parseFlow(params)).toMatchObject({ level: "SENIOR_HIGH", grade: "GRADE_11", strand: "stem" });
+    expect(parseFlow(params)).toMatchObject({ level: "PRE_ELEMENTARY", grade: "PREPARATORY" });
   });
 });
 
@@ -88,20 +107,22 @@ describe("RBAC route guards", () => {
     expect(rolesForPath("/scheduler")).toBeNull();
   });
 
-  it("matches the menu: a role can open a page exactly when its sidebar or tab bar links to it", () => {
+  it("only links to authorized routes in each role's curated menu", () => {
     const hrefs = [...new Set(NAV_GROUPS.flatMap((g) => g.items.map((i) => i.href)))];
     for (const role of ROLES) {
       const visible = allowedHrefsForRole(role);
-      for (const href of hrefs) expect(canAccessPath(href, role), `${role} ${href}`).toBe(visible.includes(href));
+      for (const href of hrefs.filter((href) => visible.includes(href))) expect(canAccessPath(href, role), `${role} ${href}`).toBe(true);
     }
   });
 
   it("shows tabs only where a role can open more than one page of a group", () => {
-    expect(tabsForPath("/rooms/abc", "REGISTRAR")?.map((t) => t.href)).toContain("/academic-years");
+    expect(tabsForPath("/rooms/abc", "SUPER_ADMINISTRATOR")?.map((t) => t.href)).toContain("/academic-years");
+    expect(tabsForPath("/rooms/abc", "REGISTRAR")).toBeNull();
     expect(tabsForPath("/rooms", "HEAD_OF_DEPARTMENT")?.map((t) => t.href)).not.toContain("/academic-years");
     expect(tabsForPath("/requests", "FACULTY")).toBeNull();
-    expect(tabsForPath("/workload", "FACULTY")?.map((t) => t.href)).toEqual(["/workload", "/my-subjects", "/availability"]);
-    expect(tabsForPath("/workload", "HEAD_OF_DEPARTMENT")?.map((t) => t.href)).toEqual(["/analytics", "/workload", "/reports"]);
+    expect(tabsForPath("/workload", "FACULTY")).toBeNull();
+    expect(tabsForPath("/workload", "HEAD_OF_DEPARTMENT")).toBeNull();
+    expect(tabsForPath("/analytics", "HEAD_OF_DEPARTMENT")?.map((t) => t.href)).toEqual(["/analytics", "/reports"]);
     expect(tabsForPath("/dashboard", "REGISTRAR")).toBeNull();
     expect(tabsForPath("/rooms", "STUDENT")).toBeNull();
   });
@@ -135,8 +156,8 @@ describe("application breadcrumbs", () => {
   });
 
   it("uses only the authenticated department for a Head of Department", () => {
-    const items = buildBreadcrumbs("/scheduler", new URLSearchParams("department=Other Department&level=SENIOR_HIGH"), "HEAD_OF_DEPARTMENT", "College of Informatics");
-    expect(items.map((item) => item.label)).toEqual(["Dashboard", "Senior High School", "College of Informatics", "Class Schedules"]);
+    const items = buildBreadcrumbs("/scheduler", new URLSearchParams("department=Other Department&level=PRE_ELEMENTARY"), "HEAD_OF_DEPARTMENT", "College of Informatics");
+    expect(items.map((item) => item.label)).toEqual(["Dashboard", "Pre-elementary", "College of Informatics", "Class Schedules"]);
     expect(items.some((item) => item.label === "Other Department")).toBe(false);
   });
 

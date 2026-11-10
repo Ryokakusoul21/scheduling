@@ -1,13 +1,13 @@
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 import { prisma } from "@/lib/db/prisma";
 import { requireScope } from "@/lib/permissions/scope";
 import { departmentWhere } from "@/lib/permissions/department";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { ANY_YEAR, GENERAL, flowHref, isComplete, parseFlow } from "@/lib/academics/flow";
-import { LEVELS, gradeLabel, yearLabel } from "@/lib/academics/levels";
+import { PROGRAM_CATALOG_FILTER, LEVELS, gradeLabel, yearLabel } from "@/lib/academics/levels";
 import { LevelFlow } from "@/components/academics/level-flow";
 import { PageHeader } from "@/components/ux/states";
-import { cn } from "@/lib/utils";
 import { SubjectsList } from "./subjects-list";
 import { CurriculumList } from "./curriculum-list";
 import { canManageSubject, canViewSubject } from "@/lib/subjects/permissions";
@@ -24,7 +24,8 @@ export default async function SubjectsPage({ searchParams }: { searchParams: Pro
   const params = await searchParams;
   const flow = parseFlow(params);
 
-  if (scope.role === "HEAD_OF_DEPARTMENT" && params.showOther !== "1") {
+  const hasBasicPrograms = scope.role === "HEAD_OF_DEPARTMENT" && await prisma.program.count({ where: { ...departmentWhere.program(scope), level: "SENIOR_HIGH" } }) > 0;
+  if (scope.role === "HEAD_OF_DEPARTMENT" && params.showOther !== "1" && !hasBasicPrograms && (!flow.level || flow.level === "COLLEGE")) {
     const programSelect = { id: true, code: true, name: true, departmentId: true } as const;
     let programs = await prisma.program.findMany({ where: { departmentId: scope.departmentId, level: "COLLEGE" }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }], select: programSelect });
     // A department without college programs (General Education) sees every curriculum and manages only the subjects it owns.
@@ -64,7 +65,7 @@ export default async function SubjectsPage({ searchParams }: { searchParams: Pro
     ]) : [[], [], null];
     const assign = term && pool ? { ...pool, sections, term: { id: term.id, label: `${term.name} ${term.academicYear.name}` }, terms: terms.map((t) => ({ value: t.id, label: `${t.name} ${t.academicYear.name}` })) } : null;
     // Newest subject change request this department filed for each subject, for the row badge.
-    const requestRows = scope.departmentId ? await prisma.scheduleRequest.findMany({ where: { type: "SUBJECT_CHANGE", departmentId: scope.departmentId }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, details: true } }) : [];
+    const requestRows = scope.role === "HEAD_OF_DEPARTMENT" && scope.departmentId ? await prisma.scheduleRequest.findMany({ where: { type: "SUBJECT_CHANGE", departmentId: scope.departmentId }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, details: true } }) : [];
     const requestFor = new Map<string, SubjectRequestInfo>();
     for (const r of requestRows) {
       const details = r.details as unknown as SubjectRequestDetails;
@@ -86,7 +87,7 @@ export default async function SubjectsPage({ searchParams }: { searchParams: Pro
 
   const [all, programs] = await Promise.all([
     prisma.subject.findMany({ where: { archivedAt: null, ...(params.showOther === "1" ? {} : departmentWhere.subject(scope)) }, select: { level: true, programId: true, yearLevel: true, gradeLevel: true } }),
-    prisma.program.findMany({ where: params.showOther === "1" ? {} : departmentWhere.program(scope), orderBy: [{ sortOrder: "asc" }, { code: "asc" }], select: { id: true, code: true, name: true, level: true } }),
+    prisma.program.findMany({ where: { AND: [PROGRAM_CATALOG_FILTER, params.showOther === "1" ? {} : departmentWhere.program(scope)] }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }], select: { id: true, code: true, name: true, level: true } }),
   ]);
 
   let list: React.ReactNode = null;
@@ -143,7 +144,7 @@ export default async function SubjectsPage({ searchParams }: { searchParams: Pro
           heading={heading}
           context={context}
           showStrand={flow.level === "SENIOR_HIGH"}
-          strands={strands.map((s) => ({ value: s.id, label: `${s.code} — ${s.name}` }))}
+          strands={strands.map((strand) => ({ value: strand.id, label: `${strand.code} - ${strand.name}` }))}
           subjects={subjects.map((s) => ({
             id: s.id,
             code: s.code,

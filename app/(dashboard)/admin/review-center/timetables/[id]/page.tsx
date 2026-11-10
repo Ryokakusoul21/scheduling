@@ -155,7 +155,7 @@ export default async function TimetableReviewPage({ params }: { params: Promise<
               <CardContent><DecisionPanel id={s.id} status={s.status as "SUBMITTED" | "APPROVED"} /></CardContent>
             </Card>
           )}
-          {!PUBLISH_ROLES.includes(scope.role) && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">View only. The Super Administrator decides on timetables.</p>}
+          {!PUBLISH_ROLES.includes(scope.role) && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">View only. The Registrar decides on submitted timetables.</p>}
           <Card>
             <CardHeader><CardTitle className="text-base">Comments</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">

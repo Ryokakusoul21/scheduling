@@ -44,11 +44,22 @@ export const isOverride = (p: Priority) => rank(p) >= rank("URGENT");
 /** A booking takes another booking's room only with strictly higher priority. */
 export const outranks = (incoming: Priority, existing: Priority) => rank(incoming) > rank(existing);
 
-/** Highest priority a role may book at: Faculty Regular, Head of Department up to Urgent, Registrar up to Critical. */
+/** Administrators and Faculty book Regular rooms; only academic authorities may displace classes. */
 export function maxPriority(role: string): Priority {
-  return role === "SUPER_ADMINISTRATOR" || role === "REGISTRAR" ? "CRITICAL" : role === "HEAD_OF_DEPARTMENT" ? "URGENT" : "REGULAR";
+  return role === "REGISTRAR" ? "CRITICAL" : role === "HEAD_OF_DEPARTMENT" ? "URGENT" : "REGULAR";
 }
 export const allowedPriorities = (role: string) => PRIORITIES.slice(0, rank(maxPriority(role)) + 1);
+
+/** System ownership does not confer authority over urgent bookings that move academic classes. */
+export function canManageBooking(actor: { role: string; userId: string; departmentIds?: readonly string[] }, booking: { bookedById: string; priority: string; approvalDepartmentId?: string | null; departmentId?: string | null }) {
+  if (!["HEAD_OF_DEPARTMENT", "FACULTY"].includes(actor.role)) return false;
+  const department = booking.approvalDepartmentId ?? booking.departmentId;
+  return booking.bookedById === actor.userId || (actor.role === "HEAD_OF_DEPARTMENT" && !!department && !!actor.departmentIds?.includes(department));
+}
+
+export function canReviewOverride(actor: { role: string; departmentIds: readonly string[] }, approvalDepartmentId: string | null) {
+  return actor.role === "HEAD_OF_DEPARTMENT" && !!approvalDepartmentId && actor.departmentIds.includes(approvalDepartmentId);
+}
 
 export interface BookingSettings {
   /** Minutes kept free between two bookings of the same room. */

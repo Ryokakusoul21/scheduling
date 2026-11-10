@@ -44,9 +44,9 @@ describe("program restricted policy", () => {
 
 const data: ScopeData = {
   departments: [{ id: "basic" }],
-  programs: [{ id: "stem", level: "SENIOR_HIGH", departmentId: "basic" }, { id: "ict", level: "SENIOR_HIGH", departmentId: "basic" }],
-  sections: [{ id: "s1", level: "SENIOR_HIGH" }, { id: "s2", level: "SENIOR_HIGH" }],
-  terms: [{ id: "t1", level: "SENIOR_HIGH" }],
+  programs: [{ id: "stem", level: "COLLEGE", departmentId: "basic" }, { id: "ict", level: "COLLEGE", departmentId: "basic" }],
+  sections: [{ id: "s1", level: "COLLEGE" }, { id: "s2", level: "COLLEGE" }],
+  terms: [{ id: "t1", level: "COLLEGE" }],
   faculty: [{ id: "f1" }],
   rooms: [{ id: "r1" }],
 };
@@ -54,8 +54,15 @@ const blank: FilterValues = { level: "", departmentId: "", programId: "", yearLe
 
 describe("scheduler filters stay inside the scope", () => {
   it("lists only the levels in scope and pre-selects a single one", () => {
-    expect(scopedLevels(data)).toEqual(["SENIOR_HIGH"]);
-    expect(fixedFilters(data).level).toBe("SENIOR_HIGH");
+    expect(scopedLevels(data)).toEqual(["COLLEGE"]);
+    expect(fixedFilters(data).level).toBe("COLLEGE");
+  });
+
+  it("offers Pre-elementary without requiring a program", () => {
+    const basic = { ...data, programs: [], sections: [{ id: "nursery", level: "PRE_ELEMENTARY" }], terms: [{ id: "quarter", level: "PRE_ELEMENTARY" }] };
+    expect(scopedLevels(basic)).toEqual(["PRE_ELEMENTARY"]);
+    expect(fixedFilters(basic).level).toBe("PRE_ELEMENTARY");
+    expect(fixedFilters(basic).programId).toBeUndefined();
   });
 
   it("pre-selects the only program", () => {
@@ -63,9 +70,9 @@ describe("scheduler filters stay inside the scope", () => {
   });
 
   it("falls back to the default for stale or guessed address parameters", () => {
-    const stale = { ...blank, level: "COLLEGE", programId: "abm", sectionId: "guessed", termId: "old", facultyId: "x", roomId: "y" };
+    const stale = { ...blank, level: "SENIOR_HIGH", programId: "abm", sectionId: "guessed", termId: "old", facultyId: "x", roomId: "y" };
     const clean = sanitizeFilters(stale, data);
-    expect(clean).toMatchObject({ level: "SENIOR_HIGH", programId: "", sectionId: "", termId: "active", facultyId: "", roomId: "" });
+    expect(clean).toMatchObject({ level: "COLLEGE", programId: "", sectionId: "", termId: "active", facultyId: "", roomId: "" });
   });
 
   it("keeps valid parameters", () => {

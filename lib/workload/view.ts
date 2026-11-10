@@ -88,7 +88,7 @@ export async function workloadView(scope: Scope, opts: { history?: number } = {}
   const mine = scope.isAdmin ? {} : { OR: [{ departmentId: { in: scope.departmentIds } }, { rows: { some: { toDepartmentId: { in: scope.departmentIds } } } }] };
   const [nameRows, proposalRows, status, departments, data] = await Promise.all([
     prisma.faculty.findMany({ where: departmentWhere.faculty(scope), select: { id: true, fullName: true } }),
-    scope.role === "FACULTY"
+    scope.role !== "HEAD_OF_DEPARTMENT"
       ? Promise.resolve([])
       : prisma.workloadProposal.findMany({ where: { kind: "WORKLOAD", ...mine }, include: { rows: true }, orderBy: { createdAt: "desc" }, take: 30 }),
     getWorkloadStatus(),
@@ -179,7 +179,7 @@ export async function workloadView(scope: Scope, opts: { history?: number } = {}
   // Faculty of other departments are not named to a Head of Department in the fix log.
   const names = new Map(nameRows.map((f) => [f.id, f.fullName]));
   const OTHER = "A faculty member of another department";
-  const fixRows = await prisma.workloadFix.findMany({
+  const fixRows = scope.isAdmin ? [] : await prisma.workloadFix.findMany({
     where: scope.isAdmin ? {} : { OR: [{ fromFacultyId: { in: [...visibleIds] } }, { toFacultyId: { in: [...visibleIds] } }] },
     orderBy: { appliedAt: "desc" },
     take: opts.history ?? 30,
@@ -193,5 +193,5 @@ export async function workloadView(scope: Scope, opts: { history?: number } = {}
 
   // Flags about people outside the viewer's scope are not shown to a Head of Department.
   const flags = (status?.flags ?? []).filter((f) => scope.isAdmin || !f.facultyId || visibleIds.has(f.facultyId));
-  return { limits, rows, summary, status, flags, fixes, proposals, history: scope.role === "FACULTY" ? [] : history, preview };
+  return { limits, rows, summary, status: scope.isAdmin ? null : status, flags: scope.isAdmin ? [] : flags, fixes, proposals, history: scope.role === "FACULTY" ? [] : history, preview };
 }

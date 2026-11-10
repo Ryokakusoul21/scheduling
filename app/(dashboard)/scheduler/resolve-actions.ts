@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import { narrate } from "@/lib/ai/narrative";
 import { notifyFaculty } from "@/lib/notify";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
-import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { SCHEDULING_ROLES } from "@/lib/permissions/roles";
 import { canManageDepartment, requireScope } from "@/lib/permissions/scope";
 import { departmentWhere, logBlocked } from "@/lib/permissions/department";
 import { refuseSection, sectionAccess } from "@/lib/permissions/section-access";
@@ -72,13 +72,13 @@ const sameSlot = (a: Pick<ResolverEntry, (typeof SAME)[number]>, b: Pick<Resolve
 
 /** Server time the proposal is generated against; applying refuses if its classes changed after it. */
 export async function repairStampAction(): Promise<Result<{ generatedAt: string }>> {
-  await requireScope(...STAFF_ROLES);
+  await requireScope(...SCHEDULING_ROLES);
   return { ok: true, data: { generatedAt: new Date().toISOString() } };
 }
 
 /** Optional plain-language summary from anonymized counts and reasons; null when no language model is configured. */
 export async function narrateRepairAction(facts: unknown): Promise<Result<{ text: string | null }>> {
-  await requireScope(...STAFF_ROLES);
+  await requireScope(...SCHEDULING_ROLES);
   const text = await narrate(
     "Summarize this proposed class timetable repair for the person reviewing it. Say what was fixed, what could not be fixed and why, and suggest one or two concrete actions for the unfixed issues.",
     facts
@@ -92,7 +92,7 @@ export async function narrateRepairAction(facts: unknown): Promise<Result<{ text
  * same validator the resolver used, so nothing the browser sends is trusted.
  */
 export async function applyRepairAction(input: z.infer<typeof applySchema>): Promise<Result<{ proposalId: string; changes: Change[] }>> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope(...SCHEDULING_ROLES);
   const parsed = applySchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "The proposal is not valid. Run Resolve issues again." };
   const { changes, generatedAt, options, summary, narrative } = parsed.data as typeof parsed.data & { changes: Change[] };
@@ -180,7 +180,7 @@ export async function applyRepairAction(input: z.infer<typeof applySchema>): Pro
 
 /** Undoes an applied repair when its classes are untouched since and their original slots are still free. */
 export async function undoRepairAction(id: string): Promise<Result<{ entries: ResolverEntry[]; removedIds: string[] }>> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope(...SCHEDULING_ROLES);
   const proposal = await prisma.workloadProposal.findUnique({ where: { id } });
   if (!proposal || proposal.kind !== "SCHEDULE_REPAIR" || proposal.status !== "APPLIED") return { ok: false, error: "This change no longer exists." };
   if (proposal.undoneAt) return { ok: false, error: "This change was already undone." };

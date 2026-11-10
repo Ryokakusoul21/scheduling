@@ -5,6 +5,8 @@ import { cn } from "cn"
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
     <InputPrimitive
+      // Reset Base UI's uncontrolled field state when its initial value changes.
+      key={JSON.stringify(props.defaultValue)}
       type={type}
       data-slot="input"
       className={cn(

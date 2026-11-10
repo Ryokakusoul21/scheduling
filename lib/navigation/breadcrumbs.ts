@@ -19,7 +19,7 @@ const PAGE_LABELS: Record<string, string> = {
   "/assistant": "Scheduling Assistant",
   "/availability": "Report Unavailability",
   "/academic-years": "Academic Years and Terms",
-  "/programs": "Programs and Strands",
+  "/programs": "Academic Programs",
   "/subjects": "Subjects",
   "/sections": "Sections",
   "/faculty": "Faculty",
@@ -38,7 +38,6 @@ const PAGE_LABELS: Record<string, string> = {
   "/student": "Student Dashboard",
   "/student/schedule": "My Schedule",
   "/student/subjects": "Subjects",
-  "/student/rooms": "Rooms",
   "/student/calendar": "Calendar of Activities",
   "/student/notifications": "Notifications",
   "/student/profile": "Profile",
@@ -58,6 +57,7 @@ const QUEUE_LABELS: Record<string, string> = {
 const LEVEL_LABELS: Record<string, string> = {
   ELEMENTARY: "Elementary School",
   JUNIOR_HIGH: "Junior High School",
+  PRE_ELEMENTARY: "Pre-elementary",
   SENIOR_HIGH: "Senior High School",
   COLLEGE: "College",
 };

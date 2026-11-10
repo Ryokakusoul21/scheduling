@@ -11,9 +11,9 @@ export interface PageTab {
 }
 
 /** Prominent page-level tabs: larger targets, icons, and a filled active tab. */
-export function PageTabs({ label, tabs }: { label: string; tabs: PageTab[] }) {
+export function PageTabs({ label, tabs, className }: { label: string; tabs: PageTab[]; className?: string }) {
   return (
-    <nav aria-label={label} className="flex max-w-full shrink-0 gap-1 self-start overflow-x-auto rounded-xl border bg-card p-1 shadow-xs">
+    <nav aria-label={label} className={cn("flex max-w-full shrink-0 gap-1 self-start overflow-x-auto rounded-xl border bg-card p-1 shadow-xs", className)}>
       {tabs.map((t) => (
         <Link
           key={t.href}
@@ -24,7 +24,7 @@ export function PageTabs({ label, tabs }: { label: string; tabs: PageTab[] }) {
             t.active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
         >
-          <t.icon className="size-4.5" weight={t.active ? "fill" : "regular"} />
+          <t.icon className="size-4.5 shrink-0" weight={t.active ? "fill" : "regular"} />
           {t.label}
           {!!t.badge && <span className="rounded-full bg-amber-500 px-1.5 text-[11px] font-semibold text-white">{t.badge}</span>}
         </Link>

@@ -14,11 +14,11 @@ import { NativeSelect } from "@/components/ux/native-select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ReportButtons } from "@/components/ux/export-buttons";
 import { downloadText } from "@/lib/export/csv";
-import { levelLabel, ACADEMIC_LEVELS } from "@/lib/academics/levels";
+import { levelLabel, isAcademicLevel, ACADEMIC_LEVELS, type AcademicLevel } from "@/lib/academics/levels";
 import { inferActivityCategory, parseActivityDate, parseActivityTime, PROPOSAL_CATEGORIES, type ProposalListItem, type ProposalRowInput } from "@/lib/activities/proposals";
-import { previewProposalAction, reviewProposalAction, saveProposalDraftAction, submitProposalAction } from "./actions";
+import { previewProposalAction, saveProposalDraftAction, submitProposalAction } from "./actions";
 
-const STATUS: Record<string, string> = { DRAFT: "Draft", PENDING_APPROVAL: "Pending Approval", APPROVED: "Approved", REJECTED: "Rejected", CHANGES_REQUESTED: "Changes Requested" };
+const STATUS: Record<string, string> = { DRAFT: "Draft", PENDING_APPROVAL: "Ready to publish", APPROVED: "Published", REJECTED: "Rejected", CHANGES_REQUESTED: "Changes Requested" };
 const LEVEL_OPTIONS = ACADEMIC_LEVELS.map((v) => ({ value: v, label: levelLabel(v) }));
 const CATEGORY_LABELS = { SCHOOL_EVENT: "School event", EXAMINATION_WEEK: "Examinations", HOLIDAY: "Holiday", CLASS_SUSPENSION: "Class suspension" } as const;
 const CATEGORY_OPTIONS = PROPOSAL_CATEGORIES.map((value) => ({ value, label: CATEGORY_LABELS[value] }));
@@ -49,19 +49,18 @@ export function ProposalWorkspace({ isAdmin, ownDepartmentId, selectedId, propos
   const initial = proposals.find((p) => p.id === selectedId) ?? proposals[0] ?? null;
   const [activeId, setActiveId] = useState(initial?.id ?? ""); const active = proposals.find((p) => p.id === activeId) ?? null;
   const [semesterId, setSemesterId] = useState(initial?.semesterId ?? terms[0]?.id ?? "");
-  const [level, setLevel] = useState(initial?.level ?? (terms.find((t) => t.id === semesterId)?.level as ProposalListItem["level"] ?? "COLLEGE"));
+  const [level, setLevel] = useState<AcademicLevel>(isAcademicLevel(initial?.level) ? initial.level : "COLLEGE");
   const [departmentId, setDepartmentId] = useState(initial?.departmentId ?? ownDepartmentId ?? departments[0]?.id ?? "");
   const [preparedBy, setPreparedBy] = useState(initial?.preparedBy ?? "");
   const [designation, setDesignation] = useState(initial?.designation ?? "Program Head (Acting)");
   const [rows, setRows] = useState<ProposalRowInput[]>(initial?.rows.map(({ date, activity, time, location, level, category }) => ({ date, activity, time, location, level, category })) ?? [blank()]);
-  const [errors, setErrors] = useState<string[][]>([]); const [paste, setPaste] = useState(""); const [note, setNote] = useState("");
+  const [errors, setErrors] = useState<string[][]>([]); const [paste, setPaste] = useState("");
   const [detailsRow, setDetailsRow] = useState<number | null>(null); const [previewOpen, setPreviewOpen] = useState(false);
-  const editable = !active || isAdmin || ["DRAFT", "CHANGES_REQUESTED", "REJECTED", "APPROVED"].includes(active.status);
-  const pendingReview = isAdmin && active?.status === "PENDING_APPROVAL";
+  const editable = !isAdmin;
 
   function open(p: ProposalListItem | null) {
-    setActiveId(p?.id ?? ""); setSemesterId(p?.semesterId ?? terms[0]?.id ?? ""); setLevel(p?.level ?? "COLLEGE"); setDepartmentId(p?.departmentId ?? ownDepartmentId ?? departments[0]?.id ?? ""); setPreparedBy(p?.preparedBy ?? ""); setDesignation(p?.designation ?? "Program Head (Acting)");
-    setRows(p?.rows.map(({ date, activity, time, location, level, category }) => ({ date, activity, time, location, level, category })) ?? [blank()]); setErrors([]); setNote("");
+    setActiveId(p?.id ?? ""); setSemesterId(p?.semesterId ?? terms[0]?.id ?? ""); setLevel(isAcademicLevel(p?.level) ? p.level : "COLLEGE"); setDepartmentId(p?.departmentId ?? ownDepartmentId ?? departments[0]?.id ?? ""); setPreparedBy(p?.preparedBy ?? ""); setDesignation(p?.designation ?? "Program Head (Acting)");
+    setRows(p?.rows.map(({ date, activity, time, location, level, category }) => ({ date, activity, time, location, level, category })) ?? [blank()]); setErrors([]);
   }
   function patch(i: number, key: keyof ProposalRowInput, value: string) { setRows((old) => old.map((r, n) => n === i ? { ...r, [key]: value } : r)); setErrors([]); }
   const localErrors = useMemo(() => rows.map((r) => ({ date: !parseActivityDate(r.date) ? "Enter a valid date or range." : "", activity: !r.activity.trim() ? "Activity is required." : "", time: !parseActivityTime(r.time) ? "Enter a valid time range." : "" })), [rows]);
@@ -76,7 +75,7 @@ export function ProposalWorkspace({ isAdmin, ownDepartmentId, selectedId, propos
     department: currentDepartment, preparedBy, designation, officialActivities: true, rows: (active?.status === "APPROVED" ? active.rows.filter((r) => r.status === "APPROVED") : rows).slice().sort((a,b) => (parseActivityDate(a.date)?.startDate ?? "").localeCompare(parseActivityDate(b.date)?.startDate ?? "")),
     columns: [{ header: "Date", value: (r: ProposalRowInput) => r.date }, { header: "Activities", value: (r: ProposalRowInput) => r.activity }],
   };
-  const payload = () => ({ semesterId, departmentId, level, preparedBy, designation, rows });
+  const payload = () => ({ semesterId, departmentId, level, preparedBy, designation, rows: rows.map((row) => ({ ...row, level: isAcademicLevel(row.level) ? row.level : "" as const })) });
 
   return <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
     <Card><CardHeader><CardTitle className="text-base">Proposal history</CardTitle></CardHeader><CardContent className="space-y-2">
@@ -90,16 +89,16 @@ export function ProposalWorkspace({ isAdmin, ownDepartmentId, selectedId, propos
 
     <div className="space-y-4">
       <Card><CardContent className="grid items-end gap-3 pt-6 md:grid-cols-2 xl:grid-cols-4">
-        <div><label className="mb-1 block text-xs font-medium">School year and semester</label><NativeSelect value={semesterId} onChange={(e) => { setSemesterId(e.target.value); const t=terms.find((x)=>x.id===e.target.value); if(t) setLevel(t.level as ProposalListItem["level"]); }} disabled={!editable || !!active} options={terms.map((t) => ({ value: t.id, label: t.label }))} /></div>
+        <div><label className="mb-1 block text-xs font-medium">School year and semester</label><NativeSelect value={semesterId} onChange={(e) => { setSemesterId(e.target.value); const t=terms.find((x)=>x.id===e.target.value); if(t && isAcademicLevel(t.level)) setLevel(t.level); }} disabled={!editable || !!active} options={terms.map((t) => ({ value: t.id, label: t.label }))} /></div>
         <div><label className="mb-1 block text-xs font-medium">College / Department</label><NativeSelect value={departmentId} onChange={(e)=>setDepartmentId(e.target.value)} disabled={!editable || !isAdmin || !!active} options={departments.map((d)=>({value:d.id,label:d.name}))} /></div>
-        <div><label className="mb-1 block text-xs font-medium">School level</label><NativeSelect value={level} onChange={(e) => setLevel(e.target.value as ProposalListItem["level"])} disabled={!editable} options={LEVEL_OPTIONS} /></div>
+        <div><label className="mb-1 block text-xs font-medium">School level</label><NativeSelect value={level} onChange={(e) => setLevel(e.target.value as AcademicLevel)} disabled={!editable} options={LEVEL_OPTIONS} /></div>
         <div><label className="mb-1 block text-xs font-medium">Prepared by (Name)</label><Input value={preparedBy} onChange={(e)=>setPreparedBy(e.target.value)} disabled={!editable} placeholder="MR. MARVIN A. RAMOS" /></div>
         <div className="md:col-span-2"><label className="mb-1 block text-xs font-medium">Designation / Title</label><Input value={designation} onChange={(e)=>setDesignation(e.target.value)} disabled={!editable} placeholder="Program Head (Acting)" /></div>
         {active && <Badge variant="outline" className="h-9 px-3">{STATUS[active.status]} · Version {active.version}</Badge>}
         {active?.status === "APPROVED" && <ReportButtons doc={exportDoc} />}
       </CardContent></Card>
 
-      {active?.reviewNote && <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm"><strong>Registrar note:</strong> {active.reviewNote}</div>}
+      {active?.reviewNote && <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm"><strong>Previous review note:</strong> {active.reviewNote}</div>}
       {editable && !isAdmin && <Card><CardHeader><CardTitle className="text-base">Bulk entry</CardTitle></CardHeader><CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">Paste spreadsheet rows in this order: Date, Activity, Time, Location, School Level.</p>
         <Textarea value={paste} onChange={(e) => setPaste(e.target.value)} placeholder={"July 28, 2026\tFreshmen Orientation\t8:00 AM-10:00 AM\tAuditorium\tCOLLEGE"} rows={3} />
@@ -114,7 +113,7 @@ export function ProposalWorkspace({ isAdmin, ownDepartmentId, selectedId, propos
         <TableBody>{rows.map((r,i)=><TableRow key={i} className={(errors[i]?.length || localErrors[i].date || localErrors[i].activity || localErrors[i].time) ? "bg-destructive/5 align-top" : "align-top"}>
           <TableCell><Input value={r.date} onChange={(e)=>patch(i,"date",e.target.value)} disabled={!editable} placeholder="August 14-17, 2026" />{localErrors[i].date && <p className="mt-1 text-xs text-destructive">{localErrors[i].date}</p>}{errors[i]?.filter((x)=>/date|year|range/i.test(x)).map((x,n)=><p key={n} className="mt-1 text-xs text-destructive">{x}</p>)}</TableCell>
           <TableCell><Input value={r.activity} onChange={(e)=>patch(i,"activity",e.target.value)} disabled={!editable} placeholder="Activity name" />{localErrors[i].activity && <p className="mt-1 text-xs text-destructive">{localErrors[i].activity}</p>}<div className="mt-1 flex flex-wrap items-center gap-1.5"><Badge variant="outline">{CATEGORY_LABELS[(r.category || inferActivityCategory(r.activity)) as keyof typeof CATEGORY_LABELS]}</Badge>{errors[i]?.filter((x)=>!/date|year|range/i.test(x)).map((x,n)=><span key={n} className="text-xs text-destructive">{x}</span>)}</div></TableCell>
-          <TableCell><div className="flex flex-wrap gap-1"><Button size="sm" variant="outline" onClick={()=>setDetailsRow(i)}>Add time &amp; room details</Button>{editable && <Button size="sm" variant="ghost" onClick={()=>setRows((old)=>old.filter((_,n)=>n!==i))}>Remove</Button>}{pendingReview && active?.rows[i] && <><Button size="sm" variant="outline" onClick={()=>run(()=>reviewProposalAction({proposalId:active.id,decision:"APPROVED",rowIds:[active.rows[i].id]}),"Row approved.")}>Approve</Button><Button size="sm" variant="outline" disabled={!note.trim()} onClick={()=>run(()=>reviewProposalAction({proposalId:active.id,decision:"REJECTED",note,rowIds:[active.rows[i].id]}),"Row rejected.")}>Reject</Button></>}</div>{(r.time||r.location) && <p className="mt-1 text-xs text-muted-foreground">{[r.time,r.location].filter(Boolean).join(" · ")}</p>}</TableCell>
+          <TableCell><div className="flex flex-wrap gap-1"><Button size="sm" variant="outline" onClick={()=>setDetailsRow(i)}>{editable ? "Add time & room details" : "View details"}</Button>{editable && <Button size="sm" variant="ghost" onClick={()=>setRows((old)=>old.filter((_,n)=>n!==i))}>Remove</Button>}</div>{(r.time||r.location) && <p className="mt-1 text-xs text-muted-foreground">{[r.time,r.location].filter(Boolean).join(" · ")}</p>}</TableCell>
         </TableRow>)}</TableBody></Table>
         {editable && <Button className="mt-3" variant="outline" onClick={()=>setRows((r)=>[...r,blank()])}>Add row</Button>}
       </CardContent></Card>
@@ -122,13 +121,10 @@ export function ProposalWorkspace({ isAdmin, ownDepartmentId, selectedId, propos
       <div className="flex flex-wrap gap-2">
         {editable && <><Button variant="outline" disabled={busy || hasLocalErrors} onClick={()=>start(async()=>{const res=await previewProposalAction(payload());if(!res.ok){setErrors(res.errors??[]);toast.error(res.error);return;}setPreviewOpen(true);})}>Preview &amp; validate</Button>
           <Button disabled={busy || hasLocalErrors} onClick={()=>run(()=>saveProposalDraftAction(payload(),active?.id),isAdmin?"Proposal changes saved.":"Draft saved.")}>{active?.status==="APPROVED"&&!isAdmin?"Create revision":"Save as Draft"}</Button></>}
-        {!isAdmin && active && ["DRAFT","CHANGES_REQUESTED","REJECTED"].includes(active.status) && <Button disabled={busy} onClick={()=>run(()=>submitProposalAction(active.id),"Proposal submitted.")}>Submit Proposal</Button>}
-        {pendingReview && <><Input className="max-w-md" value={note} onChange={(e)=>setNote(e.target.value)} placeholder="Reason required for rejection or requested changes" />
-          <Button disabled={busy} onClick={()=>run(()=>reviewProposalAction({proposalId:active.id,decision:"APPROVED"}),"Proposal approved and published.")}>Approve all</Button>
-          <Button variant="destructive" disabled={busy||!note.trim()} onClick={()=>run(()=>reviewProposalAction({proposalId:active.id,decision:"REJECTED",note}),"Proposal rejected.")}>Reject all</Button>
-          <Button variant="outline" disabled={busy||!note.trim()} onClick={()=>run(()=>reviewProposalAction({proposalId:active.id,decision:"CHANGES_REQUESTED",note}),"Changes requested.")}>Request changes</Button></>}
+        {!isAdmin && active && ["DRAFT","CHANGES_REQUESTED","REJECTED","PENDING_APPROVAL"].includes(active.status) && <Button disabled={busy || hasLocalErrors} onClick={()=>run(async()=>{const saved=await saveProposalDraftAction(payload(),active.id);if(!saved.ok || !saved.proposalId)return saved;return submitProposalAction(saved.proposalId);},"Activities published.")}>Publish activities</Button>}
+
       </div>
-      <Dialog open={detailsRow !== null} onOpenChange={(o)=>!o&&setDetailsRow(null)}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Add time &amp; room details</DialogTitle></DialogHeader>{detailsRow !== null && <div className="space-y-3"><div><label className="mb-1 block text-xs font-medium">Time (optional)</label><Input value={rows[detailsRow]?.time??""} onChange={(e)=>patch(detailsRow,"time",e.target.value)} placeholder="8:00 AM-10:00 AM" />{localErrors[detailsRow]?.time&&<p className="mt-1 text-xs text-destructive">{localErrors[detailsRow].time}</p>}</div><div><label className="mb-1 block text-xs font-medium">Location (optional)</label><Input value={rows[detailsRow]?.location??""} onChange={(e)=>patch(detailsRow,"location",e.target.value)} placeholder="Auditorium or room" /></div><div><label className="mb-1 block text-xs font-medium">School level</label><NativeSelect value={rows[detailsRow]?.level||level} onChange={(e)=>patch(detailsRow,"level",e.target.value)} options={LEVEL_OPTIONS}/></div><div><label className="mb-1 block text-xs font-medium">Category override (optional)</label><NativeSelect value={rows[detailsRow]?.category??""} onChange={(e)=>patch(detailsRow,"category",e.target.value)} placeholder={`Automatically detected: ${CATEGORY_LABELS[inferActivityCategory(rows[detailsRow]?.activity??"")]}`} options={CATEGORY_OPTIONS}/></div><Button className="w-full" onClick={()=>setDetailsRow(null)}>Done</Button></div>}</DialogContent></Dialog>
+      <Dialog open={detailsRow !== null} onOpenChange={(o)=>!o&&setDetailsRow(null)}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Add time &amp; room details</DialogTitle></DialogHeader>{detailsRow !== null && <div className="space-y-3"><div><label className="mb-1 block text-xs font-medium">Time (optional)</label><Input disabled={!editable} value={rows[detailsRow]?.time??""} onChange={(e)=>patch(detailsRow,"time",e.target.value)} placeholder="8:00 AM-10:00 AM" />{localErrors[detailsRow]?.time&&<p className="mt-1 text-xs text-destructive">{localErrors[detailsRow].time}</p>}</div><div><label className="mb-1 block text-xs font-medium">Location (optional)</label><Input disabled={!editable} value={rows[detailsRow]?.location??""} onChange={(e)=>patch(detailsRow,"location",e.target.value)} placeholder="Auditorium or room" /></div><div><label className="mb-1 block text-xs font-medium">School level</label><NativeSelect disabled={!editable} value={rows[detailsRow]?.level||level} onChange={(e)=>patch(detailsRow,"level",e.target.value)} options={LEVEL_OPTIONS}/></div><div><label className="mb-1 block text-xs font-medium">Category override (optional)</label><NativeSelect disabled={!editable} value={rows[detailsRow]?.category??""} onChange={(e)=>patch(detailsRow,"category",e.target.value)} placeholder={`Automatically detected: ${CATEGORY_LABELS[inferActivityCategory(rows[detailsRow]?.activity??"")]}`} options={CATEGORY_OPTIONS}/></div><Button className="w-full" onClick={()=>setDetailsRow(null)}>Done</Button></div>}</DialogContent></Dialog>
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle>Official School Activities Preview</DialogTitle></DialogHeader><OfficialPreview department={currentDepartment} term={currentTerm} preparedBy={preparedBy} designation={designation} rows={exportDoc.rows}/><div className="flex justify-end"><ReportButtons doc={exportDoc}/></div></DialogContent></Dialog>
     </div>
   </div>;

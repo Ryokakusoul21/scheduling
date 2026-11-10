@@ -126,11 +126,11 @@ export function PendingFixes({ proposals, unit }: { proposals: ProposalView[]; u
             <DialogTitle>Reject this proposal?</DialogTitle>
             <DialogDescription>The classes stay with their current faculty. The reason is saved with the proposal.</DialogDescription>
           </DialogHeader>
-          <label htmlFor="reject-reason" className="text-sm font-medium">Reason (optional)</label>
+          <label htmlFor="reject-reason" className="text-sm font-medium">Reason (required)</label>
           <Textarea id="reject-reason" value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejecting(null)}>Cancel</Button>
-            <Button variant="destructive" disabled={pending} onClick={reject}>
+            <Button variant="destructive" disabled={pending || !reason.trim()} onClick={reject}>
               {pending && <CircleNotch className="size-4 animate-spin" />} Reject proposal
             </Button>
           </DialogFooter>

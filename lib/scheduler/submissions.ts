@@ -20,12 +20,18 @@ export const SUBMISSION_LABEL: Record<TimetableSubmissionStatus, string> = {
   WITHDRAWN: "Withdrawn",
 };
 
-export const LOCKED_MESSAGE = "This timetable is waiting for the Super Administrator's decision and cannot be changed until it is returned or withdrawn.";
+export const LOCKED_MESSAGE = "This timetable is waiting for the Registrar's decision and cannot be changed until it is returned or withdrawn.";
 
 export type SubmissionDecision = "APPROVE" | "PUBLISH" | "RETURN" | "REJECT";
 
 /** One row of a submission snapshot; the same id across versions lets changes be listed. */
 export interface SnapshotRow { id: string; section: string; subject: string; when: string; room: string; person: string }
+
+type SubmissionCreation =
+  | { ok: true; submission: Awaited<ReturnType<typeof prisma.timetableSubmission.create>> }
+  | { ok: false; error: string };
+
+class SubmissionRowsChanged extends Error {}
 
 /** Readable name of a submission, for example "College of Computer Studies class timetable, version 2". */
 export function submissionTitle(s: { kind: SubmissionKind; examType: ExaminationType | null; version: number; department: { name: string } }) {
@@ -43,8 +49,8 @@ export async function lockingSubmission(sectionId: string, semesterId: string, e
   });
 }
 
-export async function notifySuperAdministrators(msg: { title: string; message: string; link: string }) {
-  const users = await prisma.user.findMany({ where: { role: "SUPER_ADMINISTRATOR", status: "ACTIVE", archivedAt: null }, select: { id: true } });
+export async function notifyScheduleApprovers(msg: { title: string; message: string; link: string }) {
+  const users = await prisma.user.findMany({ where: { role: "REGISTRAR", status: "ACTIVE", archivedAt: null }, select: { id: true } });
   await notifyUsers(users.map((u) => u.id), msg);
 }
 
@@ -68,23 +74,52 @@ export async function submissionRows(id: string, kind: SubmissionKind): Promise<
 
 /**
  * Creates a submission for one department and term, moves the given rows to review, and stores a snapshot.
- * Returns null when that timetable is already waiting for a decision.
+ * The period row is locked with the submission transaction, so closing the window cannot race a submission.
  */
-export async function createSubmission(input: { kind: SubmissionKind; examType?: ExaminationType; departmentId: string; semesterId: string; ids: string[]; linkIds?: string[]; userId: string; overrideReason?: string | null }) {
+export async function createSubmission(input: { kind: SubmissionKind; examType?: ExaminationType; departmentId: string; semesterId: string; ids: string[]; linkIds?: string[]; userId: string; overrideReason?: string | null }): Promise<SubmissionCreation> {
   const key = { departmentId: input.departmentId, semesterId: input.semesterId, kind: input.kind, ...(input.examType ? { examType: input.examType } : {}) };
-  if (await prisma.timetableSubmission.count({ where: { ...key, status: { in: LOCKED_STATUSES } } })) return null;
-  const version = (await prisma.timetableSubmission.count({ where: key })) + 1;
-  const submission = await prisma.$transaction(async (tx) => {
+  let created: SubmissionCreation;
+  try {
+    created = await prisma.$transaction(async (tx): Promise<SubmissionCreation> => {
+    const now = new Date();
+    const activePeriods = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id"
+      FROM "SchedulingPeriod"
+      WHERE "semesterId" = ${input.semesterId}
+        AND "kind" = ${input.kind === "EXAMINATION" ? "EXAMINATION" : "CLASS_TIMETABLE"}::"SchedulingPeriodKind"
+        AND "status" = 'OPEN'::"SchedulingPeriodStatus"
+        AND "startsAt" <= ${now}
+        AND "endsAt" >= ${now}
+      FOR UPDATE
+    `;
+    if (!activePeriods.length) {
+      const label = input.kind === "EXAMINATION" ? "examination" : "class timetable";
+      return { ok: false, error: `The ${label} submission period closed before the timetable could be submitted. Contact the Registrar.` };
+    }
+    if (await tx.timetableSubmission.count({ where: { ...key, status: { in: LOCKED_STATUSES } } })) {
+      return { ok: false, error: "A timetable for this term is already waiting for the Registrar's decision." };
+    }
+    const version = (await tx.timetableSubmission.count({ where: key })) + 1;
     const created = await tx.timetableSubmission.create({ data: { ...key, version, classCount: input.ids.length, submittedById: input.userId, overrideReason: input.overrideReason ?? null } });
-    const where = { id: { in: input.ids }, status: "DRAFT" as const };
-    if (input.kind === "EXAMINATION") await tx.examination.updateMany({ where, data: { status: "REVIEW", submittedAt: new Date(), submissionId: created.id } });
-    else await tx.schedule.updateMany({ where, data: { status: "REVIEW", submissionId: created.id } });
+    const where = { id: { in: input.ids }, status: { in: ["DRAFT", "REVIEW"] as ("DRAFT" | "REVIEW")[] } };
+    const moved = input.kind === "EXAMINATION"
+      ? await tx.examination.updateMany({ where, data: { status: "REVIEW", submittedAt: now, submissionId: created.id } })
+      : await tx.schedule.updateMany({ where, data: { status: "REVIEW", submissionId: created.id } });
+    if (moved.count !== input.ids.length) throw new SubmissionRowsChanged("The selected timetable rows changed before submission.");
     if (input.linkIds?.length) await tx.schedule.updateMany({ where: { id: { in: input.linkIds }, status: "PUBLISHED" }, data: { submissionId: created.id } });
-    return created;
+    return { ok: true, submission: created };
+    });
+  } catch (error) {
+    if (error instanceof SubmissionRowsChanged) return { ok: false, error: error.message };
+    throw error;
+  }
+  if (!created.ok) return created;
+  const snapshot = await submissionRows(created.submission.id, input.kind);
+  const submission = await prisma.timetableSubmission.update({
+    where: { id: created.submission.id },
+    data: { snapshot: snapshot as unknown as Prisma.InputJsonValue, classCount: snapshot.length },
   });
-  const snapshot = await submissionRows(submission.id, input.kind);
-  await prisma.timetableSubmission.update({ where: { id: submission.id }, data: { snapshot: snapshot as unknown as Prisma.InputJsonValue, classCount: snapshot.length } });
-  return submission;
+  return { ok: true, submission };
 }
 
 /** Added, removed, and changed rows compared with the previous version of the same timetable. */
@@ -121,12 +156,12 @@ export async function withdrawSubmission(id: string, departmentIds: string[], us
 }
 
 /**
- * Applies the Super Administrator's decision to whole submissions. Approve keeps the timetable locked
+ * Applies the Registrar's decision to whole submissions. Approve keeps the timetable locked
  * (optionally until publishAt), Publish makes it live, Return and Reject send every row back to draft.
  */
 export async function decideSubmissions(ids: string[], decision: SubmissionDecision, userId: string | null, reason?: string, publishAt?: Date) {
   const open = await prisma.timetableSubmission.findMany({
-    where: { id: { in: ids }, status: { in: decision === "PUBLISH" ? LOCKED_STATUSES : ["SUBMITTED"] } },
+    where: { id: { in: ids }, status: { in: decision === "PUBLISH" ? ["APPROVED"] : ["SUBMITTED"] } },
     include: { department: { select: { name: true } } },
   });
   const status: TimetableSubmissionStatus = decision === "APPROVE" ? "APPROVED" : decision === "PUBLISH" ? "PUBLISHED" : decision === "RETURN" ? "RETURNED" : "REJECTED";
@@ -149,7 +184,7 @@ export async function decideSubmissions(ids: string[], decision: SubmissionDecis
       return (await tx.schedule.updateMany({ where, data: { status: back ? "DRAFT" : "PUBLISHED" } })).count;
     });
     const label = submissionTitle(s);
-    const when = publishAt ? ` on ${publishAt.toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })}` : " by the Super Administrator";
+    const when = publishAt ? ` on ${publishAt.toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })}` : " by the Registrar";
     const message = decision === "APPROVE" ? `${label} was approved and will be published${when}.`
       : decision === "PUBLISH" ? `${label} is published and visible to faculty and students.`
       : `${label} was ${decision === "RETURN" ? "returned for revision" : "rejected"}: ${reason}`;
@@ -167,8 +202,16 @@ async function announce(id: string, kind: SubmissionKind, department: string, us
     await Promise.all(exams.map((e) => notifyExamParticipants({ ...e, date: e.date.toISOString().slice(0, 10) }, "SCHEDULED", { actorUserId: userId ?? undefined })));
     return;
   }
-  const faculty = await prisma.schedule.findMany({ where: { submissionId: id }, select: { facultyId: true }, distinct: ["facultyId"] });
-  await notifyFaculty(faculty.map((f) => f.facultyId), { title: "Timetable published", message: `Your classes in the ${department} timetable are now published.`, link: "/scheduler" });
+  const classes = await prisma.schedule.findMany({ where: { submissionId: id }, select: { facultyId: true, sectionId: true }, distinct: ["facultyId", "sectionId"] });
+  const students = await prisma.student.findMany({
+    where: { sectionId: { in: [...new Set(classes.map((entry) => entry.sectionId))] }, user: { status: "ACTIVE", archivedAt: null } },
+    select: { userId: true },
+  });
+  const faculty = [...new Set(classes.map((entry) => entry.facultyId))];
+  await Promise.all([
+    notifyFaculty(faculty, { title: "Timetable published", message: `Your classes in the ${department} timetable are now published.`, link: "/scheduler" }),
+    notifyUsers(students.map((student) => student.userId), { title: "Your class schedule is available", message: `The ${department} timetable is now published.`, link: "/student/schedule" }),
+  ]);
 }
 
 /** Publishes approved timetables whose publish time has passed; called on page loads since there is no scheduler process. */

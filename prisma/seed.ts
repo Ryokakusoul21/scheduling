@@ -65,7 +65,7 @@ async function main() {
   const inFirstSemester = now.getMonth() >= 6;
 
   // -------------------------------------------------------------------
-  // Departments, college programs, and Senior High School strands
+  // Departments and college programs
   // -------------------------------------------------------------------
   const departmentDefs = [
     { code: "CCS", name: "College of Computer Studies" },
@@ -86,6 +86,7 @@ async function main() {
       await prisma.program.create({ data: { code: p.code, name: p.name, level: "COLLEGE", sortOrder: i, departmentId: dept[p.department] } })
     ).id;
   }
+
   for (const [i, s] of DEFAULT_SHS_STRANDS.entries()) {
     program[s.code] = (
       await prisma.program.create({ data: { code: s.code, name: s.name, level: "SENIOR_HIGH", sortOrder: i, departmentId: dept.BED } })
@@ -119,7 +120,7 @@ async function main() {
   const today = fromToday(0);
   const currentQuarter = quarters.find((q) => today >= q.start && today <= q.end) ?? quarters[0];
   const quarterTerm: Partial<Record<AcademicLevel, { id: string }>> = {};
-  for (const level of ["SENIOR_HIGH", "JUNIOR_HIGH", "ELEMENTARY"] as const) {
+  for (const level of ["PRE_ELEMENTARY", "ELEMENTARY", "JUNIOR_HIGH", "SENIOR_HIGH"] as const) {
     for (const q of quarters) {
       const t = await term(level, q.type, q.name, q.start, q.end, q === currentQuarter);
       if (q === currentQuarter) quarterTerm[level] = t;
@@ -208,7 +209,7 @@ async function main() {
     { name: "Information Technology 4-A", program: "BSIT", year: "FOURTH", level: "COLLEGE", count: 28, subjects: ["IT401", "IT302"] },
     { name: "Computer Science 1-A", program: "BSCS", year: "FIRST", level: "COLLEGE", count: 33, subjects: ["GE101", "GE104", "IT101", "GRANBY100"] },
     { name: "Computer Science 2-A", program: "BSCS", year: "SECOND", level: "COLLEGE", count: 29, subjects: ["CS201", "CS202", "IT201"] },
-    { name: "Criminology 1-A", program: "BSCrim", year: "FIRST", level: "COLLEGE", count: 42, subjects: ["GE101", "GE103", "CRIM101", "GRANBY100"] },
+    { name: "Criminology 1-A", program: "BSCRIM", year: "FIRST", level: "COLLEGE", count: 42, subjects: ["GE101", "GE103", "CRIM101", "GRANBY100"] },
     { name: "Accountancy 1-A", program: "BSA", year: "FIRST", level: "COLLEGE", count: 36, subjects: ["GE101", "GE102", "ACC101", "GRANBY100"] },
     { name: "Business Administration 1-A", program: "BSBA", year: "FIRST", level: "COLLEGE", count: 40, subjects: ["GE103", "GE104", "BA101", "GRANBY100"] },
     { name: "Tourism Management 1-A", program: "BSTM", year: "FIRST", level: "COLLEGE", count: 34, subjects: ["GE102", "TM101", "GRANBY100"] },
@@ -229,7 +230,9 @@ async function main() {
     { name: "Grade 8 - Mabini", grade: "GRADE_8", level: "JUNIOR_HIGH", count: 41 },
     { name: "Grade 9 - Luna", grade: "GRADE_9", level: "JUNIOR_HIGH", count: 39 },
     { name: "Grade 10 - Aguinaldo", grade: "GRADE_10", level: "JUNIOR_HIGH", count: 38 },
-    { name: "Kinder - Sampaguita", grade: "KINDER", level: "ELEMENTARY", count: 25 },
+    { name: "Nursery - Daisy", grade: "NURSERY", level: "PRE_ELEMENTARY", count: 20 },
+    { name: "Preparatory - Sunflower", grade: "PREPARATORY", level: "PRE_ELEMENTARY", count: 22 },
+    { name: "Kinder - Sampaguita", grade: "KINDER", level: "PRE_ELEMENTARY", count: 25 },
     { name: "Grade 1 - Rosal", grade: "GRADE_1", level: "ELEMENTARY", count: 32 },
     { name: "Grade 2 - Ilang-Ilang", grade: "GRADE_2", level: "ELEMENTARY", count: 33 },
     { name: "Grade 3 - Gumamela", grade: "GRADE_3", level: "ELEMENTARY", count: 34 },
@@ -280,7 +283,7 @@ async function main() {
     { code: "CS201", name: "Discrete Mathematics", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", program: "BSCS", year: "SECOND" },
     { code: "CS202", name: "Automata Theory", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", program: "BSCS", year: "SECOND" },
     { code: "SCI101", name: "General Chemistry", units: 3, lecture: 2, lab: 1, room: "SCIENCE_LABORATORY", year: "FIRST" },
-    { code: "CRIM101", name: "Introduction to Criminology", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", program: "BSCrim", year: "FIRST" },
+    { code: "CRIM101", name: "Introduction to Criminology", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", program: "BSCRIM", year: "FIRST" },
     { code: "ACC101", name: "Financial Accounting and Reporting", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", program: "BSA", year: "FIRST" },
     { code: "BA101", name: "Principles of Management", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", program: "BSBA", year: "FIRST" },
     { code: "TM101", name: "Macro Perspective of Tourism and Hospitality", units: 3, lecture: 3, lab: 0, room: "LECTURE_ROOM", program: "BSTM", year: "FIRST" },
@@ -307,8 +310,10 @@ async function main() {
     }
   }
   subjectDefs.push(
-    { code: "K-LITERACY", name: "Kindergarten Literacy", units: 1, lecture: 3, lab: 0, room: "LECTURE_ROOM", level: "ELEMENTARY", grade: "KINDER" },
-    { code: "K-NUMERACY", name: "Kindergarten Numeracy", units: 1, lecture: 3, lab: 0, room: "LECTURE_ROOM", level: "ELEMENTARY", grade: "KINDER" },
+    { code: "N-PLAY", name: "Nursery Play and Learning", units: 1, lecture: 3, lab: 0, room: "LECTURE_ROOM", level: "PRE_ELEMENTARY", grade: "NURSERY" },
+    { code: "P-READINESS", name: "Preparatory Learning Readiness", units: 1, lecture: 3, lab: 0, room: "LECTURE_ROOM", level: "PRE_ELEMENTARY", grade: "PREPARATORY" },
+    { code: "K-LITERACY", name: "Kindergarten Literacy", units: 1, lecture: 3, lab: 0, room: "LECTURE_ROOM", level: "PRE_ELEMENTARY", grade: "KINDER" },
+    { code: "K-NUMERACY", name: "Kindergarten Numeracy", units: 1, lecture: 3, lab: 0, room: "LECTURE_ROOM", level: "PRE_ELEMENTARY", grade: "KINDER" },
   );
   const elementaryCore = ["Filipino", "English", "Mathematics", "Science", "Araling Panlipunan", "Music, Arts, Physical Education and Health", "Edukasyon sa Pagpapakatao"];
   for (const g of [1, 2, 3, 4, 5, 6]) {
@@ -369,9 +374,9 @@ async function main() {
     { id: "T-001", name: "Liza Domingo", email: "domingo@granby.edu.ph", dept: "BED", position: "Teacher II", specialization: "English", maxHours: 30, levels: ["JUNIOR_HIGH"] },
     { id: "T-002", name: "Jerome Pascual", email: "pascual@granby.edu.ph", dept: "BED", position: "Teacher I", specialization: "Mathematics", maxHours: 30, levels: ["JUNIOR_HIGH", "SENIOR_HIGH"] },
     { id: "T-003", name: "Rhea Manalo", email: "manalo@granby.edu.ph", dept: "BED", position: "Teacher III", specialization: "Science", maxHours: 30, levels: ["JUNIOR_HIGH"] },
-    { id: "T-004", name: "Joan Velasco", email: "velasco@granby.edu.ph", dept: "BED", position: "Teacher I", specialization: "Filipino", maxHours: 30, levels: ["ELEMENTARY", "JUNIOR_HIGH"] },
-    { id: "T-005", name: "Marites Soriano", email: "soriano@granby.edu.ph", dept: "BED", position: "Teacher II", specialization: "Early Childhood Education", maxHours: 30, levels: ["ELEMENTARY"] },
-    { id: "T-006", name: "Benjie Tolentino", email: "tolentino@granby.edu.ph", dept: "BED", position: "Teacher I", specialization: "Music, Arts, Physical Education and Health", maxHours: 30, levels: ["ELEMENTARY", "JUNIOR_HIGH"] },
+    { id: "T-004", name: "Joan Velasco", email: "velasco@granby.edu.ph", dept: "BED", position: "Teacher I", specialization: "Filipino", maxHours: 30, levels: ["ELEMENTARY", "JUNIOR_HIGH", "PRE_ELEMENTARY"] },
+    { id: "T-005", name: "Marites Soriano", email: "soriano@granby.edu.ph", dept: "BED", position: "Teacher II", specialization: "Early Childhood Education", maxHours: 30, levels: ["ELEMENTARY", "PRE_ELEMENTARY"] },
+    { id: "T-006", name: "Benjie Tolentino", email: "tolentino@granby.edu.ph", dept: "BED", position: "Teacher I", specialization: "Music, Arts, Physical Education and Health", maxHours: 30, levels: ["ELEMENTARY", "JUNIOR_HIGH", "PRE_ELEMENTARY"] },
   ];
   // Ana Santos teaches only Friday mornings, which the scheduler and the automatic adjustments respect.
   const fridayMorningOnly = new Set(["F-001"]);
@@ -512,7 +517,7 @@ async function main() {
   }
   // Demo students (view-only portal at /student); fictional names and numbers.
   const studentDefs = [
-    { email: "student.stem@granby.edu.ph", name: "Paolo Reyes", studentNumber: "136512090001", section: "Grade 11 - Newton" },
+    { email: "student.juniorhigh@granby.edu.ph", name: "Paolo Reyes", studentNumber: "136512090001", section: "Grade 7 - Rizal" },
     { email: "student.college@granby.edu.ph", name: "Bea Villanueva", studentNumber: "2026-00142", section: "Information Technology 1-A" },
   ];
   for (const s of studentDefs) {
@@ -600,11 +605,11 @@ async function main() {
     data: [
       { kind: "NO_DOUBLE_BOOKING", name: "No double-booking of faculty, rooms, or sections", params: {} },
       { kind: "ROOM_CAPACITY", name: "Room capacity must fit the section", params: {} },
-      { kind: "ROOM_DESIGNATION", name: "Room must match the program or strand", params: {} },
+      { kind: "ROOM_DESIGNATION", name: "Room must match the program", params: {} },
       { kind: "MAX_TEACHING_LOAD", name: "Maximum teaching load", params: { maxDailyHours: 8, maxWeeklyHours: 40 } },
       { kind: "LUNCH_BREAK", name: "Lunch break", params: { startMin: toMin("12:00"), endMin: toMin("13:00") } },
       { kind: "MAX_CONSECUTIVE", name: "At most 4 back-to-back classes per section", params: { maxConsecutive: 4, appliesTo: "SECTION" } },
-      { kind: "SUBJECT_TIME_OF_DAY", name: "General Mathematics in the morning", params: { subjectId: subject["SHS-GENMATH"].id, period: "MORNING" } },
+      { kind: "SUBJECT_TIME_OF_DAY", name: "Junior High Mathematics in the morning", params: { subjectId: subject["MATHEM7"].id, period: "MORNING" } },
       { kind: "PREFERRED_TIME", name: "Ana Santos prefers Saturdays off", params: { facultyId: faculty["F-001"].id, startMin: toMin("07:00"), endMin: toMin("17:00"), daysOff: ["SATURDAY"] } },
       { kind: "MINIMUM_GAP", name: "Fifteen minutes between faculty classes", params: { minutes: 15, appliesTo: "FACULTY" }, enabled: false },
     ],

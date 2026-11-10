@@ -26,7 +26,7 @@ export function MobileNav({ role, name, image, roleLabel }: { role: AppRole; nam
 
   return (
     <>
-      <nav aria-label="Main navigation" className="fixed inset-x-3 bottom-3 z-40 flex h-16 items-center justify-around rounded-2xl bg-sidebar px-2 text-sidebar-foreground shadow-lg md:hidden print:hidden">
+      <nav aria-label="Main navigation" className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-40 flex h-16 items-center justify-around rounded-2xl bg-sidebar px-2 text-sidebar-foreground shadow-lg md:hidden print:hidden">
         {bar.map((item) => {
           const active = item.href === activeHref;
           return (

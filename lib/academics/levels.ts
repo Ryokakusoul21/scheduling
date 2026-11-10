@@ -4,10 +4,12 @@
  * Kept free of Prisma imports so it can run in the browser.
  */
 
-export const ACADEMIC_LEVELS = ["COLLEGE", "SENIOR_HIGH", "JUNIOR_HIGH", "ELEMENTARY"] as const;
+export const ACADEMIC_LEVELS = ["COLLEGE", "SENIOR_HIGH", "JUNIOR_HIGH", "ELEMENTARY", "PRE_ELEMENTARY"] as const;
 export type AcademicLevel = (typeof ACADEMIC_LEVELS)[number];
 
 export const GRADE_LEVELS = [
+  "NURSERY",
+  "PREPARATORY",
   "KINDER",
   "GRADE_1",
   "GRADE_2",
@@ -38,12 +40,21 @@ export interface LevelInfo {
   description: string;
   /** Grade levels that belong to this level (empty for College, which uses year levels). */
   grades: readonly GradeLevel[];
-  /** Whether sections/subjects are organised by program (course or strand). */
+  /** Whether sections/subjects are organised by college program. */
   usesPrograms: boolean;
   termKind: "semester" | "quarter";
 }
 
 export const LEVELS: Record<AcademicLevel, LevelInfo> = {
+  SENIOR_HIGH: {
+    value: "SENIOR_HIGH",
+    label: "Senior High School",
+    short: "Senior High",
+    description: "Grades 11–12 with STEM, ABM, HUMSS, GAS, ICT, and TVL strands",
+    grades: ["GRADE_11", "GRADE_12"],
+    usesPrograms: true,
+    termKind: "quarter",
+  },
   COLLEGE: {
     value: "COLLEGE",
     label: "College",
@@ -53,13 +64,13 @@ export const LEVELS: Record<AcademicLevel, LevelInfo> = {
     usesPrograms: true,
     termKind: "semester",
   },
-  SENIOR_HIGH: {
-    value: "SENIOR_HIGH",
-    label: "Senior High School",
-    short: "Senior High",
-    description: "Grades 11–12 with academic and technical-vocational strands",
-    grades: ["GRADE_11", "GRADE_12"],
-    usesPrograms: true,
+  PRE_ELEMENTARY: {
+    value: "PRE_ELEMENTARY",
+    label: "Pre-elementary",
+    short: "Pre-elementary",
+    description: "Nursery, Preparatory, and Kindergarten",
+    grades: ["NURSERY", "PREPARATORY", "KINDER"],
+    usesPrograms: false,
     termKind: "quarter",
   },
   JUNIOR_HIGH: {
@@ -75,8 +86,8 @@ export const LEVELS: Record<AcademicLevel, LevelInfo> = {
     value: "ELEMENTARY",
     label: "Elementary",
     short: "Elementary",
-    description: "Kindergarten to Grade 6",
-    grades: ["KINDER", "GRADE_1", "GRADE_2", "GRADE_3", "GRADE_4", "GRADE_5", "GRADE_6"],
+    description: "Grades 1–6",
+    grades: ["GRADE_1", "GRADE_2", "GRADE_3", "GRADE_4", "GRADE_5", "GRADE_6"],
     usesPrograms: false,
     termKind: "quarter",
   },
@@ -99,6 +110,8 @@ export function isYearLevel(v: unknown): v is YearLevel {
 }
 
 export function gradeLabel(grade: string) {
+  if (grade === "NURSERY") return "Nursery";
+  if (grade === "PREPARATORY") return "Preparatory";
   if (grade === "KINDER") return "Kindergarten";
   const n = grade.replace("GRADE_", "");
   return `Grade ${n}`;
@@ -145,25 +158,32 @@ export function stageLabel(row: { level: string; yearLevel?: string | null; grad
   return row.gradeLevel ? gradeLabel(row.gradeLevel) : "Any grade";
 }
 
-/** College programs and SHS strands offered by the school (used by the seed and as hints in forms). */
+/** Granby's complete college catalog, in the school's supplied order. */
 export const DEFAULT_COLLEGE_PROGRAMS = [
   { code: "BSIT", name: "Bachelor of Science in Information Technology", department: "CCS" },
   { code: "BSCS", name: "Bachelor of Science in Computer Science", department: "CCS" },
-  { code: "BSCrim", name: "Bachelor of Science in Criminology", department: "CCJE" },
+  { code: "BSCRIM", name: "Bachelor of Science in Criminology", department: "CCJE" },
   { code: "BSISM", name: "Bachelor of Science in Industrial Security Management", department: "CCJE" },
-  { code: "BSA", name: "Bachelor of Science in Accountancy", department: "CBA" },
   { code: "BSBA", name: "Bachelor of Science in Business Administration", department: "CBA" },
-  { code: "BSTM", name: "Bachelor of Science in Tourism Management", department: "CHTM" },
-  { code: "BEED", name: "Bachelor of Elementary Education", department: "CTE" },
   { code: "BSED", name: "Bachelor of Secondary Education", department: "CTE" },
+  { code: "BEED", name: "Bachelor of Elementary Education", department: "CTE" },
+  { code: "BSA", name: "Bachelor of Science in Accountancy", department: "CBA" },
+  { code: "BSTM", name: "Bachelor of Science in Tourism Management", department: "CHTM" },
 ] as const;
 
 export const DEFAULT_SHS_STRANDS = [
+  { code: "STEM", name: "Science, Technology, Engineering and Mathematics" },
   { code: "ABM", name: "Accountancy, Business and Management" },
   { code: "HUMSS", name: "Humanities and Social Sciences" },
   { code: "GAS", name: "General Academic Strand" },
-  { code: "STEM", name: "Science, Technology, Engineering and Mathematics" },
   { code: "ICT", name: "Information and Communications Technology" },
   { code: "TVL", name: "Technical-Vocational-Livelihood" },
-  { code: "IA", name: "Industrial Arts" },
 ] as const;
+
+/** Historical strands outside Granby's supplied catalog stay out of current selectors. */
+export const PROGRAM_CATALOG_FILTER = {
+  OR: [
+    { level: "COLLEGE" as const },
+    { level: "SENIOR_HIGH" as const, code: { in: DEFAULT_SHS_STRANDS.map((strand) => strand.code) } },
+  ],
+};

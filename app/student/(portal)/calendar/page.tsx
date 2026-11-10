@@ -21,7 +21,7 @@ export default async function StudentCalendarPage() {
       <StudentPageHeader
         title="Calendar of Activities"
         portal={portal}
-        actions={<ActivitiesReportButtons title={`School Activities: ${section}`} term={portal.term} rows={rows} filename={`school-activities-${section.replace(/\W+/g, "-").toLowerCase()}`} />}
+        actions={<ActivitiesReportButtons title={`School Activities: ${section}`} term={portal.term} rows={rows} filename={`school-activities-${section.replace(/\W+/g, "-").toLowerCase()}`} official department={portal.section.program ?? "All Departments"} />}
       />
       <Card>
         <CardContent>

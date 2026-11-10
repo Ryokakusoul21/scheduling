@@ -50,7 +50,7 @@ export function YearsManager({ years }: { years: Year[] }) {
     <div className="space-y-4">
       <PageHeader
         title="Academic Years and Terms"
-        description="Create or select an academic year, then set up semesters per course (College) and quarters (Senior High School, Junior High School, Elementary)."
+        description="Create or select an academic year, then set up semesters per course (College) and quarters (Pre-elementary, Elementary, Junior High School, Senior High School)."
         actions={
           <Button onClick={dialog.openCreate} aria-keyshortcuts="n">
             <Plus className="size-4" /> New academic year

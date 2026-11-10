@@ -2,11 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireScope } from "@/lib/permissions/scope";
-import { notifyManagers, notifyUsers } from "@/lib/notify";
-import { ACADEMIC_LEVELS } from "@/lib/academics/levels";
+import { ACADEMIC_LEVELS, isAcademicLevel } from "@/lib/academics/levels";
 import { inferActivityCategory, parseActivityDate, parseActivityTime, PROPOSAL_CATEGORIES } from "@/lib/activities/proposals";
 
 const rowSchema = z.object({
@@ -61,10 +59,10 @@ async function validateInput(input: Input, departmentId: string, excludeProposal
 }
 
 export async function previewProposalAction(input: Input): Promise<Result> {
-  const scope = await requireScope("HEAD_OF_DEPARTMENT", "SUPER_ADMINISTRATOR", "REGISTRAR");
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
   if (!scope.departmentId && !scope.isAdmin) return { ok: false, error: "Your account is not linked to a department." };
-  const departmentId = scope.isAdmin ? input.departmentId : scope.departmentId ?? "";
-  if (!departmentId || (!scope.isAdmin && departmentId !== input.departmentId)) return { ok: false, error: "You can only prepare proposals for your department." };
+  const departmentId = input.departmentId;
+  if (!departmentId || !scope.departmentIds.includes(departmentId)) return { ok: false, error: "You can only prepare proposals for your department." };
   const checked = await validateInput(input, departmentId);
   if ("error" in checked) return { ok: false, error: checked.error ?? "Check the proposal." };
   const errors = checked.rows.map((r) => r.errors);
@@ -72,11 +70,12 @@ export async function previewProposalAction(input: Input): Promise<Result> {
 }
 
 export async function saveProposalDraftAction(input: Input, proposalId?: string): Promise<Result> {
-  const scope = await requireScope("HEAD_OF_DEPARTMENT", "SUPER_ADMINISTRATOR", "REGISTRAR");
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const existing = proposalId ? await prisma.activityProposal.findUnique({ where: { id: proposalId }, include: { rows: true } }) : null;
-  const departmentId = existing?.departmentId ?? (scope.isAdmin ? input.departmentId : scope.departmentId);
-  if (!departmentId || (!scope.isAdmin && departmentId !== scope.departmentId)) return { ok: false, error: "You can only edit your department's proposal." };
-  if (existing && !scope.isAdmin && !["DRAFT", "CHANGES_REQUESTED", "REJECTED", "APPROVED"].includes(existing.status)) return { ok: false, error: "A pending proposal cannot be edited." };
+  if (proposalId && !existing) return { ok: false, error: "This proposal no longer exists." };
+  const departmentId = existing?.departmentId ?? input.departmentId;
+  if (!departmentId || !scope.departmentIds.includes(departmentId)) return { ok: false, error: "You can only edit your department's proposal." };
+  if (existing && !scope.isAdmin && !["DRAFT", "CHANGES_REQUESTED", "REJECTED", "APPROVED", "PENDING_APPROVAL"].includes(existing.status)) return { ok: false, error: "A pending proposal cannot be edited." };
   const checked = await validateInput(input, departmentId, existing?.id);
   if ("error" in checked) return { ok: false, error: checked.error ?? "Check the proposal." };
   const errors = checked.rows.map((r) => r.errors);
@@ -99,47 +98,40 @@ export async function saveProposalDraftAction(input: Input, proposalId?: string)
   refresh(); return { ok: true, proposalId: saved.id, version: saved.version };
 }
 
+/** Publishes validated department activities directly; no separate proposal approval. */
 export async function submitProposalAction(id: string): Promise<Result> {
   const scope = await requireScope("HEAD_OF_DEPARTMENT");
-  const proposal = await prisma.activityProposal.findUnique({ where: { id }, include: { rows: true, semester: { include: { academicYear: true } }, department: true } });
-  if (!proposal || proposal.departmentId !== scope.departmentId || !["DRAFT", "CHANGES_REQUESTED", "REJECTED"].includes(proposal.status)) return { ok: false, error: "This proposal cannot be submitted." };
-  if (!proposal.rows.length) return { ok: false, error: "Add at least one activity." };
-  await prisma.activityProposal.update({ where: { id }, data: { status: "PENDING_APPROVAL", submittedAt: new Date(), reviewNote: null, rows: { updateMany: { where: {}, data: { status: "PENDING", reviewNote: null } } } } });
-  await notifyManagers(null, { title: "School activities proposal", message: `${scope.name} submitted ${proposal.department.name} activities for ${proposal.semester.academicYear.name}, ${proposal.semester.name}.`, link: `/calendar/proposals?proposal=${id}` });
-  refresh(); return { ok: true };
-}
-
-const reviewSchema = z.object({ proposalId: z.string(), decision: z.enum(["APPROVED", "REJECTED", "CHANGES_REQUESTED"]), note: z.string().trim().max(500).optional(), rowIds: z.array(z.string()).optional() }).refine((x) => x.decision === "APPROVED" || !!x.note, { message: "A reason is required." });
-export async function reviewProposalAction(input: z.input<typeof reviewSchema>): Promise<Result> {
-  const scope = await requireScope("SUPER_ADMINISTRATOR", "REGISTRAR"); const parsed = reviewSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid decision." };
-  const p = await prisma.activityProposal.findUnique({ where: { id: parsed.data.proposalId }, include: { rows: true, semester: { include: { academicYear: true } }, department: true } });
-  if (!p || p.status !== "PENDING_APPROVAL") return { ok: false, error: "This proposal is not awaiting review." };
-  const ids = parsed.data.rowIds?.length ? parsed.data.rowIds : p.rows.map((r) => r.id);
-  const rowStatus = parsed.data.decision === "APPROVED" ? "APPROVED" : parsed.data.decision;
-  await prisma.activityProposalRow.updateMany({ where: { proposalId: p.id, id: { in: ids } }, data: { status: rowStatus, reviewNote: parsed.data.note || null } });
-  const rows = await prisma.activityProposalRow.findMany({ where: { proposalId: p.id }, orderBy: { sortOrder: "asc" } });
-  const pending = rows.some((r) => r.status === "PENDING");
-  const requested = rows.some((r) => r.status === "CHANGES_REQUESTED");
-  const allRejected = rows.every((r) => r.status === "REJECTED");
-  const status = pending ? "PENDING_APPROVAL" : requested ? "CHANGES_REQUESTED" : allRejected ? "REJECTED" : "APPROVED";
-  if (!pending) {
-    await prisma.$transaction(async (tx) => {
-      const approved = rows.filter((r) => r.status === "APPROVED" && !r.activityId).map((row) => ({ row, activityId: crypto.randomUUID() }));
-      if (approved.length) {
-        await tx.activity.createMany({
-          data: approved.map(({ row, activityId }) => {
-            const category = row.category ?? inferActivityCategory(row.title);
-            const examType = category === "EXAMINATION_WEEK" ? (/prelim/i.test(row.title) ? "PRELIMINARY" : /midterm/i.test(row.title) ? "MIDTERM" : /semi/i.test(row.title) ? "SEMI_FINAL" : /final/i.test(row.title) ? "FINAL" : null) : null;
-            return { id: activityId, type: category, examinationType: examType, title: row.title, startDate: row.startDate, endDate: row.endDate, startMin: row.startMin, endMin: row.endMin, sectionIds: [], departmentId: p.departmentId, level: row.level ?? p.level, location: row.location, status: "APPROVED" as const, createdById: p.createdById, reviewedById: scope.userId, reviewedAt: new Date() };
-          }),
-        });
-        await tx.$executeRaw`UPDATE "ActivityProposalRow" AS r SET "activityId" = v.aid FROM (VALUES ${Prisma.join(approved.map((a) => Prisma.sql`(${a.row.id}, ${a.activityId})`))}) AS v(id, aid) WHERE r."id" = v.id`;
-      }
-      await tx.activityProposal.update({ where: { id: p.id }, data: { status, reviewNote: parsed.data.note || null, reviewedById: scope.userId, reviewedAt: new Date() } });
-      await tx.auditLog.create({ data: { userId: scope.userId, action: `Reviewed school activities proposal v${p.version}: ${status}`, entity: "ActivityProposal", entityId: p.id, newValue: { status, note: parsed.data.note || null } } });
-    });
-    await notifyUsers([p.createdById], { title: `Activities proposal ${status.toLowerCase().replaceAll("_", " ")}`, message: `${p.department.name} v${p.version} was ${status.toLowerCase().replaceAll("_", " ")}${parsed.data.note ? `: ${parsed.data.note}` : "."}`, link: `/calendar/proposals?proposal=${p.id}`, type: status === "APPROVED" ? "SUCCESS" : status === "REJECTED" ? "ERROR" : "WARNING" });
-  }
+  const proposal = await prisma.activityProposal.findUnique({ where: { id }, include: { rows: { orderBy: { sortOrder: "asc" } } } });
+  if (!proposal || !scope.departmentIds.includes(proposal.departmentId) || !["DRAFT", "CHANGES_REQUESTED", "REJECTED", "PENDING_APPROVAL"].includes(proposal.status)) return { ok: false, error: "This proposal cannot be published." };
+  if (!isAcademicLevel(proposal.level) || proposal.rows.some((row) => row.level && !isAcademicLevel(row.level))) return { ok: false, error: "Choose an academic level offered by Granby." };
+  const proposalLevel = proposal.level;
+  const iso = (date: Date) => date.toISOString().slice(0, 10);
+  const clock = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  const checked = await validateInput({
+    semesterId: proposal.semesterId, departmentId: proposal.departmentId, level: proposalLevel,
+    preparedBy: proposal.preparedBy ?? scope.name, designation: proposal.designation ?? "Head of Department",
+    rows: proposal.rows.map((row) => ({
+      date: row.startDate.getTime() === row.endDate.getTime() ? iso(row.startDate) : `${iso(row.startDate)} to ${iso(row.endDate)}`,
+      activity: row.title, time: row.startMin === null || row.endMin === null ? "" : `${clock(row.startMin)}-${clock(row.endMin)}`,
+      location: row.location ?? "", level: isAcademicLevel(row.level) ? row.level : proposalLevel, category: row.category ?? "",
+    })),
+  }, proposal.departmentId, proposal.id);
+  if ("error" in checked) return { ok: false, error: checked.error ?? "Check the activities." };
+  const errors = checked.rows.map((row) => row.errors);
+  if (errors.some((row) => row.length)) return { ok: false, error: "Resolve the highlighted rows before publishing.", errors };
+  const published = await prisma.$transaction(async (tx) => {
+    const claim = await tx.activityProposal.updateMany({ where: { id, status: proposal.status, updatedAt: proposal.updatedAt }, data: { status: "APPROVED", submittedAt: new Date(), reviewedById: scope.userId, reviewedAt: new Date(), reviewNote: null } });
+    if (claim.count !== 1) return false;
+    for (const row of proposal.rows) {
+      if (row.activityId) continue;
+      const category = row.category ?? inferActivityCategory(row.title);
+      const examinationType = category === "EXAMINATION_WEEK" ? (/prelim/i.test(row.title) ? "PRELIMINARY" : /midterm/i.test(row.title) ? "MIDTERM" : /semi/i.test(row.title) ? "SEMI_FINAL" : /final/i.test(row.title) ? "FINAL" : null) : null;
+      const activity = await tx.activity.create({ data: { type: category, examinationType, title: row.title, startDate: row.startDate, endDate: row.endDate, startMin: row.startMin, endMin: row.endMin, sectionIds: [], departmentId: proposal.departmentId, level: row.level ?? proposal.level, location: row.location, status: "APPROVED", createdById: proposal.createdById, reviewedById: scope.userId, reviewedAt: new Date() } });
+      await tx.activityProposalRow.update({ where: { id: row.id }, data: { activityId: activity.id, status: "APPROVED", reviewNote: null } });
+    }
+    await tx.auditLog.create({ data: { userId: scope.userId, role: scope.role, departmentId: proposal.departmentId, action: `Published school activities v${proposal.version}`, entity: "ActivityProposal", entityId: id } });
+    return true;
+  });
+  if (!published) return { ok: false, error: "These activities changed. Refresh before publishing." };
   refresh(); return { ok: true };
 }

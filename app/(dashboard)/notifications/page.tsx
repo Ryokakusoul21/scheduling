@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { requireUser } from "@/lib/auth/session";
+import { notificationVisibility } from "@/lib/permissions/notifications";
 import { NotificationsList } from "./notifications-list";
 
 export const metadata = { title: "Notifications · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
@@ -7,7 +8,7 @@ export const metadata = { title: "Notifications · GRANBY COLLEGES OF SCIENCE AN
 export default async function NotificationsPage() {
   const user = await requireUser();
   const notifications = await prisma.notification.findMany({
-    where: { userId: user.id },
+    where: { userId: user.id, ...notificationVisibility(user.role) },
     orderBy: { createdAt: "desc" },
     take: 100,
   });

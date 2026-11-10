@@ -41,6 +41,8 @@ const actorOf = (scope: Scope) => ({ isAdmin: scope.isAdmin, departmentIds: scop
  * transaction guarded by the proposal version; anything stale is refused and the proposal superseded.
  */
 export async function reviewProposal(scope: Scope, input: { proposalId: string; version: number; decision: "APPROVE" | "REJECT"; itemIds?: string[]; reason?: string }) {
+  if (scope.role !== "HEAD_OF_DEPARTMENT") return { ok: false, error: "Only department heads can review workload fixes." } satisfies Fail;
+  if (input.decision === "REJECT" && !input.reason?.trim()) return { ok: false, error: "A rejection reason is required." } satisfies Fail;
   const found = await open(input.proposalId, input.version);
   if ("error" in found) return { ok: false, error: found.error! } satisfies Fail;
   const { p } = found;
@@ -139,6 +141,7 @@ async function notifyLoadChanges(data: WorkloadData, moves: Move[]) {
 
 /** Gives a proposed row to a different faculty member after re-validating it; both approvals start over. */
 export async function editProposalRow(scope: Scope, input: { proposalId: string; version: number; itemId: string; toFacultyId: string }) {
+  if (scope.role !== "HEAD_OF_DEPARTMENT") return { ok: false, error: "Only department heads can edit workload fixes." } satisfies Fail;
   const found = await open(input.proposalId, input.version);
   if ("error" in found) return { ok: false, error: found.error! } satisfies Fail;
   const { p } = found;

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { getScope } from "@/lib/permissions/scope";
+import { requireScope } from "@/lib/permissions/scope";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { RequestsManager } from "./manager";
 import { canCancelRequest, canEditRequest, canReviewRequest, type RequestDetails, type RequestRow } from "@/lib/requests/rules";
@@ -13,16 +13,14 @@ import type { CrossDepartmentDetails } from "@/lib/requests/cross-department";
 export const metadata = { title: "Schedule Requests · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function RequestsPage() {
-  const scope = await getScope();
+  const scope = await requireScope("HEAD_OF_DEPARTMENT", "FACULTY");
   const isStaff = STAFF_ROLES.includes(scope.role);
   const own = scope.manageDepartmentId;
 
-  // The Registrar sees every request; a Head of Department their own, their department's, and requests
-  // aimed at their department; faculty only their own.
-  const where = scope.isAdmin
-    ? {}
-    : isStaff
-      ? { OR: [{ requestedById: scope.userId }, { targetDepartmentId: own }, { requestedBy: { faculty: { departmentId: own } }, type: { notIn: ["CROSS_DEPARTMENT" as const, "FACULTY_CHANGE" as const] } }] }
+  // Heads see their department's requests and cross-department requests requiring their approval;
+  // faculty see only their own. Administrative roles are refused before any queries run.
+  const where = isStaff
+      ? { OR: [{ requestedById: scope.userId }, { targetDepartmentId: { in: scope.departmentIds } }, { departmentId: { in: scope.departmentIds } }, ...scope.departmentIds.map((id) => ({ details: { path: ["requiredDepartmentIds"], array_contains: [id] } }))] }
       : { requestedById: scope.userId };
 
   const [requests, schedules, rooms, faculty] = await Promise.all([

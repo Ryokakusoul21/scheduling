@@ -3,7 +3,6 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
-import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { requireScope } from "@/lib/permissions/scope";
 import { departmentWhere } from "@/lib/permissions/department";
 import { ACADEMIC_LEVELS } from "@/lib/academics/levels";
@@ -41,7 +40,7 @@ function revalidate() {
  * and every new submission or edit waits for the Registrar's approval again.
  */
 export async function saveActivityAction(input: ActivityInput, id?: string): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope("REGISTRAR", "HEAD_OF_DEPARTMENT");
   const parsed = activitySchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the activity details." };
   const d = parsed.data;
@@ -89,7 +88,7 @@ export async function saveActivityAction(input: ActivityInput, id?: string): Pro
 }
 
 export async function deleteActivityAction(id: string): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope("REGISTRAR", "HEAD_OF_DEPARTMENT");
   const existing = await prisma.activity.findUnique({ where: { id } });
   if (!existing) return { ok: true };
   if (existing.type === "CLASS_SUSPENSION") return { ok: false, error: "Lift class suspensions in Schedule Adjustments so cancelled classes are restored." };
@@ -112,7 +111,7 @@ const DECISION_TEXT = { APPROVED: "approved", REJECTED: "rejected", CHANGES_REQU
 
 /** Approves, rejects, or returns one or more submitted activities and notifies each submitter. */
 export async function reviewActivitiesAction(input: z.input<typeof reviewSchema>): Promise<Result & { count?: number }> {
-  const scope = await requireScope("SUPER_ADMINISTRATOR", "REGISTRAR");
+  const scope = await requireScope("REGISTRAR");
   const parsed = reviewSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid review." };
   const { ids, decision, note } = parsed.data;

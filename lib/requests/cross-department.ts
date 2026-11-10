@@ -22,6 +22,8 @@ export interface CrossDepartmentDetails {
   input: ClassData;
   summary: string;
   requesterRole: AppRole;
+  requiredDepartmentIds?: string[];
+  approvedDepartmentIds?: string[];
 }
 
 /**
@@ -38,7 +40,7 @@ export async function requestCrossDepartment(scope: Scope, input: ClassData, dep
   ]);
   const summary = `${subject?.code} ${section?.name}, ${DAY_LONG[input.dayOfWeek]} ${formatRange(input.startMin, input.endMin)}, ${room?.roomName}, ${faculty?.fullName}`;
   const target = departments.length === 1 ? departments[0] : null;
-  const details: CrossDepartmentDetails = { kind: "CROSS_DEPARTMENT_CLASS", input, summary, requesterRole: scope.role };
+  const details: CrossDepartmentDetails = { kind: "CROSS_DEPARTMENT_CLASS", input, summary, requesterRole: scope.role, requiredDepartmentIds: [...new Set(departments)], approvedDepartmentIds: [] };
   const request = await prisma.scheduleRequest.create({
     data: {
       type: "CROSS_DEPARTMENT",
@@ -50,7 +52,7 @@ export async function requestCrossDepartment(scope: Scope, input: ClassData, dep
       reason: `Uses another department's ${departments.length > 1 ? "faculty member and room" : "resource"}: ${summary}`,
     },
   });
-  await notifyManagers(target, {
+  for (const departmentId of new Set(departments)) await notifyManagers(departmentId, {
     title: "Request to use your department's resource",
     message: `${scope.name} asks to schedule ${summary}. Approve or reject it in Schedule Requests.`,
     link: "/requests",

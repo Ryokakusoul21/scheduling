@@ -1,3 +1,4 @@
+import { PROGRAM_CATALOG_FILTER } from "@/lib/academics/levels";
 import "server-only";
 import type { AcademicLevel } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
@@ -18,7 +19,7 @@ export async function handledScope(scope: Scope): Promise<Handled | null> {
   }
   if (scope.role !== "HEAD_OF_DEPARTMENT") return null;
   const [programs, sections] = await Promise.all([
-    prisma.program.findMany({ where: departmentWhere.program(scope), select: { id: true, level: true } }),
+    prisma.program.findMany({ where: { AND: [PROGRAM_CATALOG_FILTER, departmentWhere.program(scope)] }, select: { id: true, level: true } }),
     prisma.section.findMany({ where: departmentWhere.section(scope), select: { level: true }, distinct: ["level"] }),
   ]);
   return { levels: [...new Set([...programs.map((p) => p.level), ...sections.map((s) => s.level)])], programIds: new Set(programs.map((p) => p.id)) };

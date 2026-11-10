@@ -36,7 +36,7 @@ const schema = z
 
 async function clean(d: z.infer<typeof schema>) {
   let programId = d.programId || null;
-  if (d.level === "JUNIOR_HIGH" || d.level === "ELEMENTARY") programId = null;
+  if (d.level !== "COLLEGE" && d.level !== "SENIOR_HIGH") programId = null;
   if (programId) {
     const program = await prisma.program.findUnique({ where: { id: programId }, select: { level: true } });
     if (!program || program.level !== d.level) programId = null;
@@ -108,7 +108,7 @@ export async function createSubjectRequestAction(input: SubjectRequestInput): Pr
     data: { type: "SUBJECT_CHANGE", requestedById: scope.userId, departmentId: scope.departmentId, targetDepartmentId: subject.departmentId, details: details as never, reason: summary },
   });
   const recipients = await prisma.user.findMany({
-    where: { status: "ACTIVE", archivedAt: null, OR: [{ role: { in: ["SUPER_ADMINISTRATOR", "REGISTRAR"] } }, ...(subject.departmentId ? [{ role: "HEAD_OF_DEPARTMENT" as const, faculty: { departmentId: subject.departmentId } }] : [])] },
+    where: { status: "ACTIVE", archivedAt: null, role: "HEAD_OF_DEPARTMENT", faculty: { departmentId: subject.departmentId ?? scope.departmentId ?? "__none__" } },
     select: { id: true },
   });
   if (recipients.length) await prisma.notification.createMany({ data: recipients.map(({ id: userId }) => ({ userId, type: "INFO" as const, title: `Subject change requested for ${subject.code}`, message: summary.slice(0, 240), link: "/requests" })) });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -68,6 +68,8 @@ export function LoginForm({ callbackUrl, audience = "staff" }: { callbackUrl?: s
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle");
   const [showPassword, setShowPassword] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
+  const [demoExpanded, setDemoExpanded] = useState(false);
+  const demoAccountsId = useId();
 
   const {
     register,
@@ -279,31 +281,39 @@ export function LoginForm({ callbackUrl, audience = "staff" }: { callbackUrl?: s
       </form>
 
       {SHOW_DEMO && !needsCode && (
-        <details className="group rounded-xl border border-dashed p-3 text-sm">
-          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-sm text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">
+        <div className="rounded-xl border border-dashed p-3 text-sm">
+          <button
+            type="button"
+            aria-expanded={demoExpanded}
+            aria-controls={demoAccountsId}
+            onClick={() => setDemoExpanded((expanded) => !expanded)}
+            className="flex w-full cursor-pointer items-center gap-2 rounded-sm text-left text-xs font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
+          >
             <span className="rounded bg-brand-gold/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-amber-800 dark:text-brand-gold">DEV</span>
             Demo accounts
-            <span className="ml-auto transition-transform duration-150 group-open:rotate-180" aria-hidden>
+            <span className={`ml-auto transition-transform duration-150 ${demoExpanded ? "rotate-180" : ""}`} aria-hidden>
               &#9662;
             </span>
-          </summary>
-          <p className="mt-3 mb-2 text-xs text-muted-foreground">Click a role to autofill.</p>
-          <div className="flex flex-wrap gap-1.5">
-            {DEMO_ACCOUNTS[audience].map((a) => (
-              <button
-                key={a.email}
-                type="button"
-                onClick={() => {
-                  setValue("email", a.email, { shouldValidate: !!errors.email });
-                  setValue("password", DEMO_PASSWORD, { shouldValidate: !!errors.password });
-                }}
-                className="rounded-full border bg-background px-3 py-1.5 text-xs font-medium transition-colors duration-150 hover:bg-accent"
-              >
-                {a.label}
-              </button>
-            ))}
+          </button>
+          <div id={demoAccountsId} hidden={!demoExpanded}>
+            <p className="mt-3 mb-2 text-xs text-muted-foreground">Click a role to autofill.</p>
+            <div className="flex flex-wrap gap-1.5">
+              {DEMO_ACCOUNTS[audience].map((a) => (
+                <button
+                  key={a.email}
+                  type="button"
+                  onClick={() => {
+                    setValue("email", a.email, { shouldValidate: !!errors.email });
+                    setValue("password", DEMO_PASSWORD, { shouldValidate: !!errors.password });
+                  }}
+                  className="rounded-full border bg-background px-3 py-1.5 text-xs font-medium transition-colors duration-150 hover:bg-accent"
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </details>
+        </div>
       )}
     </div>
   );
