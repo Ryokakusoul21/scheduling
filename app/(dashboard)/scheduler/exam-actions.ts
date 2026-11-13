@@ -59,11 +59,13 @@ const refresh = () => {
 
 /** Hard conflicts of a proposed examination: occupancy clashes, capacity, the official window, and blocked dates. */
 async function examProblems(scope: Scope, d: ExamInput, excludeId?: string) {
-  const [plan, section, room, context] = await Promise.all([
+  const [plan, section, room, context, subject, term] = await Promise.all([
     loadPlan(d.date, d.date),
     prisma.section.findUnique({ where: { id: d.sectionId }, select: { studentCount: true, name: true, level: true, archivedAt: true, departmentId: true } }),
     prisma.room.findUnique({ where: { id: d.roomId }, select: { capacity: true, roomName: true, status: true, archivedAt: true } }),
     loadExamContext(d.type, null, scope.isAdmin ? null : scope.departmentIds),
+    prisma.subject.findUnique({ where: { id: d.subjectId }, select: { level: true } }),
+    prisma.semester.findUnique({ where: { id: d.semesterId }, select: { level: true } }),
   ]);
   const previous = excludeId ? await prisma.examination.findUnique({ where: { id: excludeId } }) : null;
   const timeChanged = !previous || previous.sectionId !== d.sectionId || previous.semesterId !== d.semesterId || previous.date.toISOString().slice(0, 10) !== d.date || previous.startMin !== d.startMin || previous.endMin !== d.endMin;
@@ -76,6 +78,8 @@ async function examProblems(scope: Scope, d: ExamInput, excludeId?: string) {
   if (timeError) conflicts.push(timeError);
   if (room?.status !== "AVAILABLE" || room?.archivedAt) conflicts.push(`${room?.roomName ?? "The room"} is not open for use.`);
   if (section?.archivedAt) conflicts.push(`${section.name} is archived.`);
+  // Academic levels are never mixed: section, subject, and term share one level.
+  if (section && ((subject && subject.level !== section.level) || (term && term.level !== section.level))) conflicts.push("The section, subject, and term must belong to the same academic level.");
   if (!plan.ctx.faculty.has(d.proctorId)) conflicts.push("The proctor is archived or inactive.");
   if (plan.ctx.unavailable.some((u) => u.facultyId === d.proctorId && d.date >= u.start && d.date <= u.end)) conflicts.push("The proctor reported being unavailable on this date.");
   const slot: ExamSlot = { id: excludeId ?? "new", date: d.date, startMin: d.startMin, endMin: d.endMin, sectionId: d.sectionId, roomId: d.roomId, proctorId: d.proctorId };

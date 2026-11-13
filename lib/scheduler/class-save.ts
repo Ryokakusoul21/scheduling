@@ -103,7 +103,7 @@ export async function checkClass(d: ClassData, actor: { userId: string }, opts: 
   const [section, subject, faculty, room, term] = await Promise.all([
     prisma.section.findUnique({ where: { id: d.sectionId }, select: { id: true, archivedAt: true, departmentId: true, level: true } }),
     prisma.subject.findUnique({ where: { id: d.subjectId }, select: { id: true, archivedAt: true, lectureHours: true, labHours: true, level: true } }),
-    prisma.faculty.findUnique({ where: { id: d.facultyId }, select: { id: true, archivedAt: true } }),
+    prisma.faculty.findUnique({ where: { id: d.facultyId }, select: { id: true, archivedAt: true, teachingLevels: true } }),
     prisma.room.findUnique({ where: { id: d.roomId }, select: { id: true, archivedAt: true } }),
     prisma.semester.findUnique({ where: { id: d.semesterId }, select: { id: true, level: true } }),
   ]);
@@ -117,6 +117,10 @@ export async function checkClass(d: ClassData, actor: { userId: string }, opts: 
   // Archived records may stay on an existing class but can never be newly assigned.
   const before = d.id ? await prisma.schedule.findUnique({ where: { id: d.id }, select: { sectionId: true, subjectId: true, facultyId: true, roomId: true, component: true, semesterId: true, dayOfWeek: true, startMin: true, endMin: true } }) : null;
   if (d.id && !before) return { ok: false as const, error: "This class was deleted by someone else." };
+  // A faculty member can only be newly assigned to a level they teach; existing classes stay editable.
+  if ((!before || before.facultyId !== d.facultyId || before.sectionId !== d.sectionId) && !faculty.teachingLevels.includes(section.level)) {
+    return { ok: false as const, error: "This faculty member does not teach this academic level. Update their teaching levels first." };
+  }
   const timeChanged = !before || before.sectionId !== d.sectionId || before.semesterId !== d.semesterId || before.dayOfWeek !== d.dayOfWeek || before.startMin !== d.startMin || before.endMin !== d.endMin;
   if (timeChanged) {
     const error = timetableTimeError(await getTimetableConfig(d.semesterId, section.departmentId), d);

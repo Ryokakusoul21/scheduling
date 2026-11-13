@@ -103,6 +103,8 @@ export interface LoadRow {
   minimum: number;
   maximum: number;
   status: LoadStatus;
+  /** The same load split by academic level; the total above stays combined. */
+  byLevel: { level: string; load: number }[];
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -141,7 +143,10 @@ export function loadReport(faculty: WFaculty[], assignments: Assignment[], limit
     const units = round1(own.reduce((s, a) => s + a.subjectUnits, 0));
     const minimum = minimumFor(f, limits);
     const maximum = maximumFor(f, limits);
-    return { facultyId: f.id, name: f.name, load, units, minimum, maximum, status: statusOf(load, minimum, maximum, units, unitCap(limits)) };
+    const levels = new Map<string, number>();
+    for (const a of own) levels.set(a.sectionLevel, (levels.get(a.sectionLevel) ?? 0) + amountOf(a, limits));
+    const byLevel = [...levels].filter(([level]) => level).map(([level, n]) => ({ level, load: round1(n) }));
+    return { facultyId: f.id, name: f.name, load, units, minimum, maximum, status: statusOf(load, minimum, maximum, units, unitCap(limits)), byLevel };
   });
 }
 

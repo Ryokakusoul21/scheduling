@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
 import { NativeSelect } from "@/components/ux/native-select";
 import { ExportButtons, PrintHeader } from "@/components/ux/export-buttons";
+import { levelLabel } from "@/lib/academics/levels";
 import { LOAD_STATUS, NEAR_LIMIT, LoadBar, LoadStatusLabel } from "@/components/workload/load-bar";
 import { FixLog, FlagList } from "@/components/workload/fix-log";
 import { ProposalCards } from "@/components/workload/proposals";
@@ -148,7 +149,7 @@ export function WorkloadBoard(props: {
                   <TableBody>{rows.map((r) => [
                     <TableRow key={r.facultyId}>
                       <TableCell><button type="button" onClick={() => toggle(r.facultyId)} aria-expanded={open === r.facultyId} aria-controls={open === r.facultyId ? `classes-desktop-${r.facultyId}` : undefined} className="flex items-center gap-2 rounded-sm text-left outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"><CaretDown aria-hidden className={cn("size-3.5 shrink-0 transition-transform", open === r.facultyId && "rotate-180")} /><span><span className="block font-semibold">{r.name}</span><span className="text-xs text-muted-foreground">{r.department}</span></span></button></TableCell>
-                      <TableCell><p className="mb-2 font-semibold tabular-nums">{r.load} <span className="text-xs font-normal text-muted-foreground">{unit}</span></p><LoadBar r={r} />{props.measure === "HOURS" && <p className="mt-1 text-xs text-muted-foreground">{r.units} units</p>}</TableCell>
+                      <TableCell><p className="mb-2 font-semibold tabular-nums">{r.load} <span className="text-xs font-normal text-muted-foreground">{unit}</span></p><LoadBar r={r} />{props.measure === "HOURS" && <p className="mt-1 text-xs text-muted-foreground">{r.units} units</p>}{r.byLevel.length > 1 && <p className="mt-1 text-xs text-muted-foreground">{r.byLevel.map((x) => `${levelLabel(x.level)} ${x.load}`).join(" · ")}</p>}</TableCell>
                       <TableCell className="whitespace-nowrap text-xs tabular-nums">{r.minimum}–{r.maximum} {unit}</TableCell>
                       <TableCell><LoadStatusLabel status={r.status} r={r} />{r.pendingChange !== null && <p className="mt-1 text-xs text-muted-foreground">{approval(r)}</p>}</TableCell>
                       <TableCell className="text-right tabular-nums">{r.classes.length}</TableCell>
@@ -160,7 +161,7 @@ export function WorkloadBoard(props: {
               <ul aria-label="Faculty loads" className="grid gap-3 lg:grid-cols-2">{rows.map((r) => <li key={r.facultyId} className="space-y-3 rounded-lg border p-3">
                 <button type="button" onClick={() => toggle(r.facultyId)} aria-expanded={open === r.facultyId} aria-controls={open === r.facultyId ? `classes-mobile-${r.facultyId}` : undefined} className="flex w-full items-center justify-between gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="min-w-0"><span className="block font-semibold">{r.name}</span><span className="text-xs text-muted-foreground">{r.department}</span></span><CaretDown aria-hidden className={cn("size-4 shrink-0", open === r.facultyId && "rotate-180")} /></button>
                 <div className="flex items-center justify-between gap-2"><p className="font-semibold tabular-nums">{r.load} {unit}</p><LoadStatusLabel status={r.status} r={r} /></div><LoadBar r={r} />
-                <p className="text-xs text-muted-foreground">Allowed {r.minimum}–{r.maximum} {unit} · {r.classes.length} classes{props.measure === "HOURS" ? ` · ${r.units} units` : ""}</p>
+                <p className="text-xs text-muted-foreground">{r.byLevel.length > 1 && `${r.byLevel.map((x) => `${levelLabel(x.level)} ${x.load}`).join(" · ")} · `}Allowed {r.minimum}–{r.maximum} {unit} · {r.classes.length} classes{props.measure === "HOURS" ? ` · ${r.units} units` : ""}</p>
                 {r.pendingChange !== null && <p className="text-xs font-medium text-primary">{approval(r)}</p>}
                 {open === r.facultyId && <div id={`classes-mobile-${r.facultyId}`} className="border-t pt-3"><FacultyClasses r={r} unit={unit} /></div>}
               </li>)}</ul>

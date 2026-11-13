@@ -24,6 +24,13 @@ describe("workload optimizer", () => {
     expect(report.map((r) => r.status)).toEqual(["OVERLOADED", "UNDERLOADED"]);
   });
 
+  it("keeps one combined load and splits it by academic level", () => {
+    const as = [asg("a", "both", 0), asg("b", "both", 1, { sectionLevel: "SENIOR_HIGH" })];
+    const [row] = loadReport([fac("both", { teachingLevels: ["COLLEGE", "SENIOR_HIGH"] })], as, limits);
+    expect(row.load).toBe(6);
+    expect(row.byLevel).toEqual([{ level: "COLLEGE", load: 3 }, { level: "SENIOR_HIGH", load: 3 }]);
+  });
+
   it("moves classes from the overloaded to the underloaded and explains why", () => {
     const as = [asg("a", "busy", 0), asg("b", "busy", 1), asg("c", "busy", 2), asg("d", "busy", 3), asg("e", "idle", 4)];
     const faculty = [fac("busy"), fac("idle", { specialization: "Programming" })];
