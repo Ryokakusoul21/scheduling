@@ -58,7 +58,8 @@ export function FacultyBrowser({
   initialQuery: string;
 }) {
   const [query, setQuery] = useState(initialQuery);
-  const [level, setLevel] = useState("");
+  // Levels are never combined: one level is always selected.
+  const [level, setLevel] = useState<string>(ACADEMIC_LEVELS[0]);
   const [department, setDepartment] = useState("");
   const [status, setStatus] = useState("");
   const [view, setView] = useState<"cards" | "table">("cards");
@@ -83,7 +84,7 @@ export function FacultyBrowser({
   }, [faculty, query, level, department, status]);
 
   const editing = dialog.state?.mode === "edit" ? dialog.state.item : null;
-  const filtersOn = !!(query || level || department || status);
+  const filtersOn = !!(query || department || status);
 
   const fields: FormField[] = [
     { name: "employeeId", label: "Employee ID", type: "text", required: true, placeholder: "F-019" },
@@ -134,7 +135,7 @@ export function FacultyBrowser({
     <div className="space-y-4">
       <PageHeader
         title="Faculty"
-        description={`${faculty.length} faculty members across all levels`}
+        description={`${faculty.filter((f) => f.teachingLevels.includes(level)).length} faculty members teaching ${levelLabel(level)}`}
         actions={
           <Button onClick={dialog.openCreate} aria-keyshortcuts="n">
             <Plus className="size-4" /> Add faculty
@@ -142,6 +143,13 @@ export function FacultyBrowser({
         }
       />
 
+      <div role="group" aria-label="Academic level" className="flex gap-1 overflow-x-auto rounded-xl border bg-card p-1">
+        {ACADEMIC_LEVELS.map((l) => (
+          <Button key={l} type="button" variant={level === l ? "default" : "ghost"} aria-pressed={level === l} onClick={() => setLevel(l)} className="shrink-0">
+            {levelLabel(l)} <Badge variant={level === l ? "outline" : "secondary"}>{faculty.filter((f) => f.teachingLevels.includes(l)).length}</Badge>
+          </Button>
+        ))}
+      </div>
       <Card className="flex-row flex-wrap items-center gap-3 p-3">
         <div className="relative w-full min-w-0 flex-1 sm:min-w-56">
           <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -155,7 +163,6 @@ export function FacultyBrowser({
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <NativeSelect aria-label="Filter by level" className="w-44" value={level} onChange={(e) => setLevel(e.target.value)} placeholder="All levels" options={ACADEMIC_LEVELS.map((l) => ({ value: l, label: levelLabel(l) }))} />
         <NativeSelect aria-label="Filter by department" className="w-52" value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="All departments" options={departments} />
         <NativeSelect aria-label="Filter by status" className="w-36" value={status} onChange={(e) => setStatus(e.target.value)} placeholder="Any status" options={STATUS} />
         {filtersOn && (
@@ -163,7 +170,6 @@ export function FacultyBrowser({
             variant="ghost"
             onClick={() => {
               setQuery("");
-              setLevel("");
               setDepartment("");
               setStatus("");
             }}

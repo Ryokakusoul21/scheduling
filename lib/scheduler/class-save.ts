@@ -99,17 +99,21 @@ async function bookingClash(d: ClassData) {
 /** Every check a class must pass before it is written: archived records, double booking, constraints. */
 export async function checkClass(d: ClassData, actor: { userId: string }, opts: { overrideSoft: boolean; viewerDepartmentId?: string | null }) {
   const [section, subject, faculty, room, term] = await Promise.all([
-    prisma.section.findUnique({ where: { id: d.sectionId }, select: { id: true, archivedAt: true } }),
-    prisma.subject.findUnique({ where: { id: d.subjectId }, select: { id: true, archivedAt: true } }),
+    prisma.section.findUnique({ where: { id: d.sectionId }, select: { id: true, archivedAt: true, departmentId: true, level: true } }),
+    prisma.subject.findUnique({ where: { id: d.subjectId }, select: { id: true, archivedAt: true, lectureHours: true, labHours: true, level: true } }),
     prisma.faculty.findUnique({ where: { id: d.facultyId }, select: { id: true, archivedAt: true } }),
     prisma.room.findUnique({ where: { id: d.roomId }, select: { id: true, archivedAt: true } }),
-    prisma.semester.findUnique({ where: { id: d.semesterId }, select: { id: true } }),
+    prisma.semester.findUnique({ where: { id: d.semesterId }, select: { id: true, level: true } }),
   ]);
   if (!section || !subject || !faculty || !room || !term) {
     return { ok: false as const, error: "The section, subject, faculty, room, or term no longer exists. Refresh and try again." };
   }
   // Archived records may stay on an existing class but can never be newly assigned.
   const before = d.id ? await prisma.schedule.findUnique({ where: { id: d.id }, select: { sectionId: true, subjectId: true, facultyId: true, roomId: true } }) : null;
+  // Academic levels are never mixed: section, subject, and term must share one level.
+  if (subject.level !== section.level || term.level !== section.level) {
+    return { ok: false as const, error: "The section, subject, and term must belong to the same academic level." };
+  }
   if (d.id && !before) return { ok: false as const, error: "This class was deleted by someone else." };
   const archived = [
     { label: "section", row: section, prev: before?.sectionId },

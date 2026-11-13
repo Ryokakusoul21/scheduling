@@ -19,6 +19,7 @@ import {
 import {
   CalendarDots,
   CheckCircle,
+  CircleNotch,
   FunnelSimple,
   Lightning,
   MagicWand,
@@ -28,6 +29,9 @@ import {
   X,
 } from "@phosphor-icons/react/ssr";
 
+import { TimetableConfiguration } from "./timetable-configuration";
+import { effectiveTimetable, timetableGrid, timetableDisplayDays, timetableStarts, timetableTimeError, snapTimetableTime, timetableHours } from "@/lib/timetable/config";
+import type { SlotReason } from "@/lib/scheduler/slot-check";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -41,9 +45,6 @@ import { cn } from "@/lib/utils";
 import { detectConflicts, isOverlapConflict, type ConflictContext } from "@/lib/scheduler/conflictDetector";
 import {
   DAY_LONG,
-  DEFAULT_GRID,
-  WEEK_DAYS,
-  clampStart,
   defaultDuration,
   formatTime,
   indexConflicts,
@@ -58,7 +59,7 @@ import { levelLabel, stageLabel } from "@/lib/academics/levels";
 import { SubmitTimetableDialog, type SubmitSummary } from "./submit-timetable-dialog";
 import { deleteClassAction, moveClassAction, publishClassesAction, saveClassAction, submitClassesAction, type ClassInput } from "@/app/(dashboard)/scheduler/actions";
 
-import { collision, gridKeyboardCoordinates } from "./dnd-grid";
+import { collision, gridKeyboardCoordinatesFor } from "./dnd-grid";
 import { Timetable, PALETTE, type BlockInfo, type DropPreview } from "./timetable";
 import { ClassDialog, type ClassDraft } from "./class-dialog";
 import { ChecksHeading, ChecksRail, FilterCard, FilterSelect, PanelSection, ScheduleHeader } from "./schedule-chrome";
@@ -83,7 +84,7 @@ type ActiveDrag =
   | { kind: "entry"; entry: SchedulerEntry; duration: number }
   | { kind: "need"; need: SubjectNeed; duration: number; draft: ClassDraft | null };
 
-const GRID = DEFAULT_GRID;
+
 
 export function SchedulerWorkspace({
   data: initial,
@@ -116,6 +117,10 @@ export function SchedulerWorkspace({
     defaults
   );
 
+  const configurationFor = useCallback((sectionId: string, termId?: string) => effectiveTimetable(data.timetable, data.sections.find((s) => s.id === sectionId)?.departmentId, termId), [data.timetable, data.sections]);
+  const selectedTermId = filters.termId !== ACTIVE_TERMS ? filters.termId : data.terms.find((t) => t.isActive)?.id;
+  const timeConfig = useMemo(() => effectiveTimetable(data.timetable, data.sections.find((s) => s.id === filters.sectionId)?.departmentId || filters.departmentId || (data.departments.length === 1 ? data.departments[0].id : null), selectedTermId), [data.timetable, data.sections, data.departments, filters.sectionId, filters.departmentId, selectedTermId]);
+  const GRID = useMemo(() => timetableGrid(timeConfig, visibleEntries), [timeConfig, visibleEntries]);
   const dndId = useId();
   const router = useRouter();
   const [submitSummary, setSubmitSummary] = useState<SubmitSummary | null>(null);
@@ -127,6 +132,8 @@ export function SchedulerWorkspace({
   const [perspective, setPerspective] = useState<"section" | "faculty" | "room">("section");
   // Requests still being saved; together with an open class dialog these count as unsaved changes.
   const [pending, setPending] = useState(0);
+  const [autoScheduling, setAutoScheduling] = useState(false);
+  const autoSchedulingRef = useRef(false);
   const { prompt: promptOverride, dialog: overrideDialog } = useOverridePrompt();
   const workloadOverride = useWorkloadOverride();
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
@@ -515,9 +522,12 @@ export function SchedulerWorkspace({
 
   /** Shared slot validation for drag-and-drop and the unscheduled tray. */
   const slotReasons = useCallback(
-    (c: SchedEntry, others: SchedEntry[]) =>
-      checkSlot(c, others, { faculty: buildContext().facultyById.get(c.facultyId), room: buildContext().roomById.get(c.roomId), bounds: { startMin: GRID.dayStart, endMin: GRID.dayEnd } }),
-    [buildContext]
+    (c: SchedEntry, others: SchedEntry[]): SlotReason[] => {
+      const reasons = checkSlot(c, others, { faculty: buildContext().facultyById.get(c.facultyId), room: buildContext().roomById.get(c.roomId), bounds: { startMin: 0, endMin: 1440 } });
+      if (timetableTimeError(configurationFor(c.sectionId, c.semesterId), c)) reasons.push("Timetable configuration");
+      return reasons;
+    },
+    [buildContext, configurationFor]
   );
 
   const suggest = useCallback(
@@ -552,30 +562,45 @@ export function SchedulerWorkspace({
   );
 
   const autoAssignRemaining = useCallback(async () => {
-    if (!focusedSection || needs.length === 0) return;
-    let placed = 0;
-    let working = [...entries];
-    for (const need of needs) {
-      const duration = Math.min(defaultDuration(need.component, focusedSection.level), need.requiredMin - need.scheduledMin);
-      let chosen: ClassDraft | null = null;
-      for (const day of WEEK_DAYS.filter((d) => d !== "SUNDAY")) {
-        for (let startMin = GRID.dayStart; startMin + duration <= GRID.dayEnd; startMin += GRID.slot) {
-          const draft = suggest({ semesterId: termForSection(focusedSection.id), sectionId: focusedSection.id, subjectId: need.subjectId, facultyId: "", roomId: "", component: need.component, dayOfWeek: day, startMin, endMin: startMin + duration });
-          if (!draft.facultyId || !draft.roomId) continue;
-          const candidate: SchedulerEntry = { ...draft, id: `auto-${need.subjectId}-${day}-${startMin}`, status: "DRAFT", notes: "Generated automatically; review before submitting." };
-          const hard = detectConflicts([...working, ...data.busy, candidate], buildContext()).some((c) => isOverlapConflict(c) && (c.entryA.id === candidate.id || c.entryB?.id === candidate.id));
-          if (!hard) { chosen = draft; break; }
+    if (!focusedSection || needs.length === 0 || autoSchedulingRef.current) return;
+    autoSchedulingRef.current = true; setAutoScheduling(true); setPending((n) => n + 1);
+    try {
+      let placed = 0, incomplete = 0;
+      let working = [...entries];
+      const termId = termForSection(focusedSection.id);
+      const config = configurationFor(focusedSection.id, termId);
+      for (const need of needs) {
+        let remaining = need.requiredMin - need.scheduledMin;
+        while (remaining > 0) {
+          const duration = Math.min(defaultDuration(need.component, focusedSection.level, config), remaining);
+          let chosen: ClassDraft | null = null;
+          // Split meetings favor separate days, then the lightest teaching day.
+          const sameComponent = (day: DayOfWeek) => working.filter((e) => e.status !== "ARCHIVED" && e.semesterId === termId && e.sectionId === focusedSection.id && e.subjectId === need.subjectId && e.component === need.component && e.dayOfWeek === day).length;
+          const minutesOn = (day: DayOfWeek) => working.filter((e) => e.status !== "ARCHIVED" && e.semesterId === termId && e.sectionId === focusedSection.id && e.dayOfWeek === day).reduce((sum, e) => sum + e.endMin - e.startMin, 0);
+          const days = [...config.days].sort((a, b) => sameComponent(a) - sameComponent(b) || minutesOn(a) - minutesOn(b));
+          for (const day of days) {
+            for (const startMin of timetableStarts(config, day, duration)) {
+              const draft = suggest({ semesterId: termId, sectionId: focusedSection.id, subjectId: need.subjectId, facultyId: "", roomId: "", component: need.component, dayOfWeek: day, startMin, endMin: startMin + duration });
+              if (!draft.facultyId || !draft.roomId) continue;
+              const candidate: SchedulerEntry = { ...draft, id: `auto-${need.subjectId}-${day}-${startMin}`, status: "DRAFT", notes: "Generated automatically; review before submitting." };
+              const hard = detectConflicts([...working, ...data.busy, candidate], buildContext()).some((c) => isOverlapConflict(c) && (c.entryA.id === candidate.id || c.entryB?.id === candidate.id));
+              if (!hard) { chosen = draft; break; }
+            }
+            if (chosen) break;
+          }
+          if (!chosen) break;
+          const res = await saveClassAction({ ...chosen, source: "CURRICULUM_QUEUE", notes: "Generated automatically; review before submitting." });
+          if (!res.ok) break;
+          working = [...working, res.data]; placed++;
+          remaining -= res.data.endMin - res.data.startMin;
         }
-        if (chosen) break;
+        if (remaining > 0) incomplete++;
       }
-      if (!chosen) continue;
-      const res = await saveClassAction({ ...chosen, source: "CURRICULUM_QUEUE", notes: "Generated automatically; review before submitting." });
-      if (res.ok) { working = [...working, res.data]; placed++; }
-    }
-    setEntries(working);
-    if (placed) toast.success(`${placed} class${placed === 1 ? "" : "es"} added as a draft.`, { description: "Choices favor conflict-free slots, suitable rooms, and available faculty. Review before submitting." });
-    if (placed < needs.length) toast.warning(`${needs.length - placed} class${needs.length - placed === 1 ? "" : "es"} could not be placed.`, { description: "Try changing room or faculty availability, then regenerate." });
-  }, [focusedSection, needs, entries, data.busy, suggest, termForSection, buildContext]);
+      setEntries(working);
+      if (placed) toast.success(`${placed} meeting${placed === 1 ? "" : "s"} added as drafts.`, { description: "Review the meetings before submitting." });
+      if (incomplete) toast.warning(`${incomplete} subject component${incomplete === 1 ? "" : "s"} still need${incomplete === 1 ? "s" : ""} time.`, { description: "Check availability or choose a different meeting length." });
+    } finally { autoSchedulingRef.current = false; setAutoScheduling(false); setPending((n) => n - 1); }
+  }, [focusedSection, needs, entries, data.busy, suggest, termForSection, buildContext, configurationFor]);
 
   /** Opens Resolve issues for one panel finding, scoped to the sections it involves. */
   const fixIssue = useCallback(
@@ -636,30 +661,33 @@ export function SchedulerWorkspace({
         component,
         dayOfWeek: "MONDAY",
         startMin,
-        endMin: startMin + defaultDuration(component, level),
+        endMin: startMin + defaultDuration(component, level, configurationFor(sectionId, termForSection(sectionId))),
         ...patch,
       };
       setDialog(draft.subjectId ? suggest(draft) : draft);
     },
-    [permissions.canEdit, focusedSection, options.sections, maps.section, termForSection, filters.facultyId, filters.roomId, suggest]
+    [permissions.canEdit, focusedSection, options.sections, maps.section, termForSection, filters.facultyId, filters.roomId, suggest, configurationFor]
   );
 
   const openNeed = useCallback(
     (need: SubjectNeed, day: DayOfWeek = "MONDAY", startMin = 8 * 60) => {
       const level = maps.section.get(need.sectionId)?.level ?? "COLLEGE";
-      const duration = Math.min(defaultDuration(need.component, level), need.requiredMin - need.scheduledMin);
-      const start = clampStart(startMin, duration, GRID);
+      const duration = Math.min(defaultDuration(need.component, level, configurationFor(need.sectionId, termForSection(need.sectionId))), need.requiredMin - need.scheduledMin);
+      const config = configurationFor(need.sectionId, termForSection(need.sectionId));
+      const chosenDay = config.days.includes(day) ? day : config.days[0];
+      const hours = timetableHours(config, chosenDay);
+      const start = snapTimetableTime(Math.max(hours.startMin, Math.min(startMin, hours.endMin - duration)), config, chosenDay);
       openNew({
         sectionId: need.sectionId,
         subjectId: need.subjectId,
         component: need.component,
-        dayOfWeek: day,
+        dayOfWeek: chosenDay,
         startMin: start,
         endMin: start + duration,
         source: "CURRICULUM_QUEUE",
       });
     },
-    [maps.section, openNew]
+    [maps.section, openNew, configurationFor, termForSection]
   );
 
   const openEntry = useCallback((e: SchedulerEntry) => {
@@ -683,7 +711,7 @@ export function SchedulerWorkspace({
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, {
-      coordinateGetter: gridKeyboardCoordinates,
+      coordinateGetter: gridKeyboardCoordinatesFor(GRID),
       keyboardCodes: { start: ["Space"], cancel: ["Escape"], end: ["Space", "Enter"] },
     })
   );
@@ -703,7 +731,10 @@ export function SchedulerWorkspace({
     } else {
       return null;
     }
-    const startMin = clampStart(yToMinutes(y, GRID), drag.duration, GRID);
+    const base = drag.kind === "entry" ? drag.entry : drag.draft;
+    const config = base ? configurationFor(base.sectionId, base.semesterId) : timeConfig;
+    const hours = timetableHours(config, day);
+    const startMin = Math.max(hours.startMin, snapTimetableTime(Math.min(yToMinutes(y, { ...GRID, snapStep: 1 }), hours.endMin - drag.duration), config, day));
     return { day, startMin, endMin: startMin + drag.duration };
   }
 
@@ -713,7 +744,7 @@ export function SchedulerWorkspace({
     if (d.kind === "entry") setActiveDrag({ kind: "entry", entry: d.entry, duration: d.entry.endMin - d.entry.startMin });
     else {
       const level = maps.section.get(d.need.sectionId)?.level ?? "COLLEGE";
-      const duration = Math.min(defaultDuration(d.need.component, level), d.need.requiredMin - d.need.scheduledMin);
+      const duration = Math.min(defaultDuration(d.need.component, level, configurationFor(d.need.sectionId, termOf(d.need.sectionId))), d.need.requiredMin - d.need.scheduledMin);
       // Faculty and room are chosen once, so the highlighted slots match what a drop will save.
       const draft = suggest({
         semesterId: termOf(d.need.sectionId), sectionId: d.need.sectionId, subjectId: d.need.subjectId, facultyId: filters.facultyId, roomId: filters.roomId,
@@ -791,8 +822,8 @@ export function SchedulerWorkspace({
   // Render
   // ---------------------------------------------------------------------------
   const days = useMemo(
-    () => WEEK_DAYS.filter((d) => d !== "SUNDAY" || visibleEntries.some((e) => e.dayOfWeek === "SUNDAY")),
-    [visibleEntries]
+    () => timetableDisplayDays(timeConfig, visibleEntries),
+    [timeConfig, visibleEntries]
   );
   const visibleTimetable = useMemo(() => {
     const base = [...visibleEntries, ...ghostEntries].filter((e) => e.status !== "ARCHIVED");
@@ -808,7 +839,7 @@ export function SchedulerWorkspace({
   const dragHeatmap = useMemo(() => {
     const result = new Map<DayOfWeek, "valid" | "warning" | "conflict">();
     if (!activeDrag) return result;
-    for (const day of WEEK_DAYS.filter((d) => d !== "SUNDAY")) {
+    for (const day of days) {
       const startMin = preview?.startMin ?? (activeDrag.kind === "entry" ? activeDrag.entry.startMin : 8 * 60);
       let candidate: SchedulerEntry | null = null;
       if (activeDrag.kind === "entry") {
@@ -829,17 +860,22 @@ export function SchedulerWorkspace({
       result.set(day, findings.some(isOverlapConflict) ? "conflict" : findings.length ? "warning" : "valid");
     }
     return result;
-  }, [activeDrag, preview?.startMin, focusedSection, suggest, termForSection, filters.facultyId, filters.roomId, entries, data.busy, buildContext]);
+  }, [activeDrag, preview?.startMin, focusedSection, suggest, termForSection, filters.facultyId, filters.roomId, entries, data.busy, buildContext, days]);
   // Valid and invalid slot starts for the class being dragged.
   const dragSlots = useMemo(() => {
     if (!activeDrag) return undefined;
     const base = activeDrag.kind === "entry" ? activeDrag.entry : activeDrag.draft;
     if (!base) return undefined;
     const others = concurrentWith(base.semesterId);
-    return slotMap(days.filter((d) => d !== "SUNDAY"), { startMin: GRID.dayStart, endMin: GRID.dayEnd }, GRID.slot, activeDrag.duration, (dayOfWeek, startMin, endMin) =>
-      slotReasons({ ...base, id: "id" in base ? base.id : undefined, dayOfWeek, startMin, endMin }, others)
-    );
-  }, [activeDrag, concurrentWith, days, slotReasons]);
+    const config = configurationFor(base.sectionId, base.semesterId);
+    return new Map(days.map((day) => {
+      const hours = timetableHours(config, day);
+      const slots = slotMap([day], hours, config.mode === "STATIC" ? config.gridInterval : config.adjustmentStep, activeDrag.duration, (dayOfWeek, startMin, endMin) =>
+        slotReasons({ ...base, id: "id" in base ? base.id : undefined, dayOfWeek, startMin, endMin }, others));
+      return [day, slots.get(day) ?? []];
+    }));
+  }, [activeDrag, concurrentWith, days, slotReasons, configurationFor]);
+  const configurationIssues = visibleEntries.filter((e) => timetableTimeError(configurationFor(e.sectionId, e.semesterId), e));
   const pendingPublish = visibleEntries.filter((e) => e.status === "DRAFT" || e.status === "REVIEW").length;
 
   const focusTitle = focus
@@ -866,8 +902,8 @@ export function SchedulerWorkspace({
     const details = focus.kind === "section"
       ? { course: program?.name, year: section ? stageLabel(section) : undefined, section: section?.shortName, studentCount: section?.studentCount, department }
       : { focus: focus.kind, focusName: focusTitle };
-    return timetableDoc(`${kind} Timetable: ${focusTitle}`, term || "No term selected", rows, `${kind.toLowerCase()}-timetable-${focusTitle.replace(/\W+/g, "-").toLowerCase()}`, details);
-  }, [focus, focusTitle, visibleTimetable, maps.term, maps.subject, maps.section, maps.program, filters.termId, rowInfo, data.departments]);
+    return timetableDoc(`${kind} Timetable: ${focusTitle}`, term || "No term selected", rows, `${kind.toLowerCase()}-timetable-${focusTitle.replace(/\W+/g, "-").toLowerCase()}`, { ...details, timeConfig });
+  }, [focus, focusTitle, visibleTimetable, maps.term, maps.subject, maps.section, maps.program, filters.termId, rowInfo, data.departments, timeConfig]);
 
   const unscheduledCount = focusedSection ? needs.length : allNeeds.length;
   const isOpen = (key: PanelKey, count: number | null) => openPanels[key] ?? (count === null ? false : count > 0);
@@ -933,7 +969,7 @@ export function SchedulerWorkspace({
         container: typeof document === "undefined" ? undefined : document.body,
         screenReaderInstructions: {
           draggable:
-            "Press Space to pick up this class. Use the arrow keys to move it by 30 minutes or by one day, Space to drop, or Escape to cancel. Press Enter to edit.",
+            "Press Space to pick up this class. Use the arrow keys to move it by the configured adjustment step or by one day, Space to drop, or Escape to cancel. Press Enter to edit.",
         },
         announcements: {
           onDragStart: () => "Picked up class.",
@@ -957,6 +993,7 @@ export function SchedulerWorkspace({
           help="Drag classes to reschedule. Hard constraints block a save; soft ones ask before overriding."
           leading={<>
             {academicYearControl}
+            {permissions.canConfigureTimetable && <TimetableConfiguration terms={data.terms} departments={data.departments} canManageSchool={!!permissions.canManageSchoolTimetable} termId={selectedTermId} departmentId={filters.departmentId || data.sections.find((s) => s.id === filters.sectionId)?.departmentId || undefined} />}
             <div className="min-w-0 space-y-1 xl:w-64">
               <label htmlFor="scheduler-term" className="block text-sm text-muted-foreground">Term</label>
               <NativeSelect id="scheduler-term" value={filters.termId} onChange={(e) => update({ termId: e.target.value || ACTIVE_TERMS })} options={options.terms} />
@@ -993,13 +1030,14 @@ export function SchedulerWorkspace({
                 {issueTotal > 0 && <Badge variant="secondary" className="ml-0.5">{issueTotal}</Badge>}
               </Button>
             )}
-            {permissions.canSubmit && <Button variant="outline" onClick={() => focusedSection ? void autoAssignRemaining() : setPanel("todo")}><Lightning className="size-4" /> Auto-Schedule</Button>}
+            {permissions.canSubmit && <Button variant="outline" disabled={autoScheduling} onClick={() => focusedSection ? void autoAssignRemaining() : setPanel("todo")}>{autoScheduling ? <CircleNotch className="size-4 animate-spin" /> : <Lightning className="size-4" />} Auto-Schedule</Button>}
             {permissions.canEdit && !permissions.queueOnly && (
               <Button onClick={() => openNew()} aria-keyshortcuts="n">
                 <Plus className="size-4" /> Add class
               </Button>
             )}
         </ScheduleHeader>
+        {configurationIssues.length > 0 && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{configurationIssues.length} existing meeting(s) fall outside the current timetable configuration. Their original times are preserved; open a meeting to review its time.</p>}
 
         {/* Cascading filters */}
         <FilterCard
@@ -1010,7 +1048,7 @@ export function SchedulerWorkspace({
           perspective={permissions.queueOnly ? undefined : perspective}
           onPerspective={(kind) => { setPerspective(kind); if (kind !== "section") update({ sectionId: "" }); }}
         >
-            {!permissions.lockedLevel && !options.levelFixed && <FilterSelect label="Academic level" value={filters.level} onChange={(v) => update({ level: v as Filters["level"] })} placeholder="All levels" options={options.levels} />}
+            {!permissions.lockedLevel && !options.levelFixed && <FilterSelect label="Academic level" value={filters.level} onChange={(v) => update({ level: v as Filters["level"] })} options={options.levels} />}
             {options.showDepartment && !options.departmentFixed && (
               <FilterSelect label="Department" value={filters.departmentId} onChange={(v) => update({ departmentId: v })} placeholder="All departments" options={options.departments} />
             )}
@@ -1032,12 +1070,12 @@ export function SchedulerWorkspace({
             <FilterSelect label="Section" value={filters.sectionId} onChange={(v) => update({ sectionId: v })} placeholder={`All sections (${options.sections.length})`} options={options.sectionOptions} />
             <FilterSelect label="Faculty" value={filters.facultyId} onChange={(v) => update({ facultyId: v })} placeholder="Any faculty" options={options.faculty} />
             <FilterSelect label="Room" value={filters.roomId} onChange={(v) => update({ roomId: v })} placeholder="Any room" options={options.rooms} />
-            {(filters.level || filters.sectionId || filters.facultyId || filters.roomId || filters.termId !== ACTIVE_TERMS) && (
+            {(filters.level !== (options.levels[0]?.value ?? "") || filters.sectionId || filters.facultyId || filters.roomId || filters.termId !== ACTIVE_TERMS) && (
               <div className="flex items-end">
                 <Button
                   variant="ghost"
                   onClick={() =>
-                    update({ level: "", termId: ACTIVE_TERMS, sectionId: "", facultyId: "", roomId: "", programId: "", departmentId: "", yearLevel: "", gradeLevel: "" })
+                    update({ level: (options.levels[0]?.value ?? "") as Filters["level"], termId: ACTIVE_TERMS, sectionId: "", facultyId: "", roomId: "", programId: "", departmentId: "", yearLevel: "", gradeLevel: "" })
                   }
                 >
                   <X className="size-4" /> Clear filters
