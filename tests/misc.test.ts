@@ -117,7 +117,7 @@ describe("RBAC route guards", () => {
 
   it("shows tabs only where a role can open more than one page of a group", () => {
     expect(tabsForPath("/rooms/abc", "SUPER_ADMINISTRATOR")?.map((t) => t.href)).toContain("/academic-years");
-    expect(tabsForPath("/rooms/abc", "REGISTRAR")).toBeNull();
+    expect(tabsForPath("/rooms/abc", "REGISTRAR")?.map((t) => t.href)).toContain("/admin/departments");
     expect(tabsForPath("/rooms", "HEAD_OF_DEPARTMENT")?.map((t) => t.href)).not.toContain("/academic-years");
     expect(tabsForPath("/requests", "FACULTY")).toBeNull();
     expect(tabsForPath("/workload", "FACULTY")).toBeNull();

@@ -6,21 +6,26 @@ import { toast } from "sonner";
 import { ArrowSquareOut, Buildings, Plus, Trash } from "@phosphor-icons/react/ssr";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { assignDepartmentHeadAction, removeDepartmentHeadAssignmentAction, saveDepartmentAction } from "./actions";
+import { DepartmentLogo } from "@/components/departments/department-logo";
 
 type Department = {
   id: string;
   code: string;
   name: string;
+  logoUrl: string | null;
   counts: { programs: number; faculty: number; sections: number; rooms: number };
   heads: { id: string; name: string; email: string; acting: boolean; linkedThroughFaculty: boolean }[];
 };
 
 export function DepartmentManager({ departments, headOptions }: { departments: Department[]; headOptions: { id: string; label: string }[] }) {
   const [pending, startTransition] = useTransition();
+  const [managing, setManaging] = useState<string | null>(null);
   const [selectedHeads, setSelectedHeads] = useState<Record<string, string>>({});
 
   function save(id: string | null, formData: FormData) {
@@ -54,35 +59,14 @@ export function DepartmentManager({ departments, headOptions }: { departments: D
     });
   }
 
-  return (
-    <div className="space-y-5">
-      <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Plus className="size-5 text-primary" /> Add a department</CardTitle></CardHeader>
-        <CardContent>
-          <form action={(formData) => save(null, formData)}>
-            <FieldGroup className="grid gap-3 sm:grid-cols-[minmax(8rem,0.5fr)_minmax(14rem,1.5fr)_auto] sm:items-end">
-              <Field>
-                <FieldLabel htmlFor="new-department-code">Department code</FieldLabel>
-                <Input id="new-department-code" name="code" maxLength={20} required placeholder="SCI" />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="new-department-name">Department name</FieldLabel>
-                <Input id="new-department-name" name="name" maxLength={150} required placeholder="College of Science" />
-              </Field>
-              <Button type="submit" disabled={pending}><Plus className="size-4" /> Create department</Button>
-            </FieldGroup>
-          </form>
-        </CardContent>
-      </Card>
-
-      <section className="space-y-3" aria-label="Departments">
-        <h2 className="text-lg font-semibold">Departments <span className="text-sm font-normal text-muted-foreground">({departments.length})</span></h2>
-        {departments.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No departments yet. Create one to begin organizing academic records.</p>
-        ) : departments.map((department) => (
+  const renderDepartment = (department: Department) => (
           <Card key={department.id}>
             <CardContent className="grid gap-5 pt-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,1fr)]">
               <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <DepartmentLogo name={department.name} logoUrl={department.logoUrl} className="size-12 rounded-xl" />
+                  <Link href={`/department?department=${encodeURIComponent(department.id)}`} className="text-sm font-medium text-primary hover:underline">Open department profile <ArrowSquareOut className="inline size-3.5" /></Link>
+                </div>
                 <form action={(formData) => save(department.id, formData)}>
                   <FieldGroup className="grid gap-3 sm:grid-cols-[minmax(7rem,0.45fr)_minmax(14rem,1.55fr)_auto] sm:items-end">
                     <Field>
@@ -144,8 +128,36 @@ export function DepartmentManager({ departments, headOptions }: { departments: D
               </div>
             </CardContent>
           </Card>
-        ))}
+  );
+
+  return (
+    <div className="space-y-5">
+      <Card>
+        <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Plus className="size-5 text-primary" /> Add a department</CardTitle></CardHeader>
+        <CardContent>
+          <form action={(formData) => save(null, formData)}>
+            <FieldGroup className="grid gap-3 sm:grid-cols-[minmax(8rem,0.5fr)_minmax(14rem,1.5fr)_auto] sm:items-end">
+              <Field>
+                <FieldLabel htmlFor="new-department-code">Department code</FieldLabel>
+                <Input id="new-department-code" name="code" maxLength={20} required placeholder="SCI" />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="new-department-name">Department name</FieldLabel>
+                <Input id="new-department-name" name="name" maxLength={150} required placeholder="College of Science" />
+              </Field>
+              <Button type="submit" disabled={pending}><Plus className="size-4" /> Create department</Button>
+            </FieldGroup>
+          </form>
+        </CardContent>
+      </Card>
+
+      <section className="space-y-3" aria-label="Departments">
+        <h2 className="text-lg font-semibold">Departments <span className="text-sm font-normal text-muted-foreground">({departments.length})</span></h2>
+        {departments.length === 0 ? (
+          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No departments yet. Create one to begin organizing academic records.</p>
+        ) : <CollectionView storageKey="departments:view" label="Departments" table={<RecordsTable label="Departments" columns={["Department", "Head of Department", "Programs", "Faculty", "Sections", "Rooms", "Actions"]} rows={departments.map((d) => ({ id: d.id, cells: [<div key="department" className="flex items-center gap-2"><DepartmentLogo name={d.name} logoUrl={d.logoUrl} className="size-9 shrink-0" /><span><b>{d.code}</b><span className="block">{d.name}</span></span></div>, d.heads.map((h) => `${h.name}${h.acting ? " (Acting)" : ""}`).join(", ") || "Unassigned", d.counts.programs, d.counts.faculty, d.counts.sections, d.counts.rooms, <div key="actions" className="flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" onClick={() => setManaging(d.id)}>Manage department</Button><Link href={`/department?department=${encodeURIComponent(d.id)}`} className="text-primary hover:underline">Profile</Link><Link href={`/analytics?department=${encodeURIComponent(d.id)}`} className="text-primary hover:underline">Analytics</Link></div>] }))} />}>{departments.map(renderDepartment)}</CollectionView>}
       </section>
+      <Dialog open={!!managing} onOpenChange={(on) => !on && !pending && setManaging(null)}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle>Manage department</DialogTitle><DialogDescription>Update details and available settings.</DialogDescription></DialogHeader>{departments.filter((item) => item.id === managing).map(renderDepartment)}</DialogContent></Dialog>
       <p className="text-xs text-muted-foreground">Departments with linked academic records cannot be deleted here. Only existing active Head of Department accounts can be assigned; all assignment changes are audited.</p>
     </div>
   );

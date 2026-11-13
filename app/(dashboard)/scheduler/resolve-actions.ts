@@ -171,7 +171,7 @@ export async function applyRepairAction(input: z.infer<typeof applySchema>): Pro
 
   await notifyFaculty(
     facultyIds,
-    { title: "Your teaching schedule changed", message: "Resolve issues on the Scheduler placed or moved one or more of your classes. Check your timetable.", link: "/scheduler", type: "INFO" }
+    { title: "Your teaching schedule changed", message: "Your classes were updated. Check your timetable.", link: "/scheduler", type: "INFO" }
   );
   queueWorkloadCheck("Scheduler issues resolved", scope.userId);
   revalidateScheduler();
@@ -220,7 +220,7 @@ export async function undoRepairAction(id: string): Promise<Result<{ entries: Re
   }, TRANSACTION);
   await notifyFaculty(
     changes.flatMap((c) => [c.before?.facultyId, c.after?.facultyId]).filter((f): f is string => !!f),
-    { title: "A schedule change was undone", message: "Classes moved by Resolve issues on the Scheduler are back where they were. Check your timetable.", link: "/scheduler", type: "INFO" }
+    { title: "A schedule change was undone", message: "Your classes are back to their previous schedule.", link: "/scheduler", type: "INFO" }
   );
   queueWorkloadCheck("Scheduler repair undone", scope.userId);
   revalidateScheduler();

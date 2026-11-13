@@ -16,7 +16,9 @@ describe("department approval privacy", () => {
     expect(allowedHrefsForRole(role)).not.toContain("/requests");
     expect(canReviewOverride({ role, departmentIds: ["cs"] }, "cs")).toBe(false);
     expect(canManageBooking({ ...user, userId: "admin" }, { bookedById: "admin", priority: "REGULAR" })).toBe(false);
-    for (const action of POLICY_ACTIONS) expect(can(user, action, { type: "roomBooking" })).toBe(["view", "export"].includes(action));
+    for (const action of POLICY_ACTIONS) {
+      expect(can(user, action, { type: "roomBooking" })).toBe(role === "REGISTRAR" && ["view", "export"].includes(action));
+    }
     expect(notificationVisibility(role)).toMatchObject({ OR: expect.any(Array) });
   });
 

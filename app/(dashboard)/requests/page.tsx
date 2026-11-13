@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { requireScope } from "@/lib/permissions/scope";
-import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { departmentWhere } from "@/lib/permissions/department";
 import { RequestsManager } from "./manager";
 import { canCancelRequest, canEditRequest, canReviewRequest, type RequestDetails, type RequestRow } from "@/lib/requests/rules";
 import { formatRange } from "@/lib/scheduler/timetable";
@@ -14,8 +14,7 @@ export const metadata = { title: "Schedule Requests · GRANBY COLLEGES OF SCIENC
 
 export default async function RequestsPage() {
   const scope = await requireScope("HEAD_OF_DEPARTMENT", "FACULTY");
-  const isStaff = STAFF_ROLES.includes(scope.role);
-  const own = scope.manageDepartmentId;
+  const isStaff = scope.role === "HEAD_OF_DEPARTMENT";
 
   // Heads see their department's requests and cross-department requests requiring their approval;
   // faculty see only their own. Administrative roles are refused before any queries run.
@@ -34,7 +33,7 @@ export default async function RequestsPage() {
       orderBy: { createdAt: "desc" },
     }),
     prisma.schedule.findMany({
-      where: scope.isAdmin ? {} : { OR: [{ section: { departmentId: own } }, ...(scope.facultyId ? [{ facultyId: scope.facultyId }] : [])] },
+      where: { AND: [isStaff ? departmentWhere.schedule(scope) : { facultyId: scope.facultyId ?? "__none__" }, { status: { not: "ARCHIVED" } }] },
       include: { subject: true, section: true, room: true, faculty: { select: { fullName: true } } },
       orderBy: [{ subject: { code: "asc" } }, { section: { name: "asc" } }],
       take: 500,
@@ -64,9 +63,10 @@ export default async function RequestsPage() {
 
   return (
     <RequestsManager
+      title={isStaff ? "Department Requests" : "My Change Requests"}
       description={isStaff
-        ? scope.isAdmin ? "Track scheduling requests from every department. Heads of Department decide them." : "Submit scheduling requests, and edit, approve, reject or cancel those that belong to your department."
-        : "Submit scheduling requests and follow their status. Your Head of Department decides them."}
+        ? "Review department requests. Approve, reject, edit or cancel pending requests."
+        : "Request changes to your classes and track the status. The responsible department head reviews each request."}
       me={scope.name}
       requests={requests.map((r): RequestRow => {
         const details = (r.details ?? {}) as RequestDetails;

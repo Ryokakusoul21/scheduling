@@ -1,4 +1,5 @@
-"use client";
+import { ConfiguredTimeInput } from "./configured-time-input";
+import { effectiveTimetable, timetableTimeError, timetableDisplayDays } from "@/lib/timetable/config";
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -11,7 +12,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ux/native-select";
 import { detectConflicts, isOverlapConflict } from "@/lib/scheduler/conflictDetector";
-import { DAY_LONG, WEEK_DAYS, formatTime, subjectAppliesToSection, timeOptions } from "@/lib/scheduler/timetable";
+import { DAY_LONG, defaultDuration, formatTime, subjectAppliesToSection } from "@/lib/scheduler/timetable";
 import type { DetectedConflict } from "@/lib/scheduler/types";
 import { rankFaculty, rankRooms } from "@/lib/scheduler/suggest";
 import { assignedFor } from "@/lib/subjects/assignment-rules";
@@ -203,11 +204,22 @@ function ClassForm({
   const overlaps = preview.filter(isOverlapConflict);
   const warnings = preview.filter((c) => !isOverlapConflict(c));
 
-  const times = timeOptions();
+  const timeConfig = effectiveTimetable(data.timetable, section?.departmentId, form.semesterId);
+  const timeError = timetableTimeError(timeConfig, form);
+  const timeChanged = !draft.id || ["sectionId", "semesterId", "dayOfWeek", "startMin", "endMin"].some((key) => form[key as keyof ClassDraft] !== draft[key as keyof ClassDraft]);
+  const requiredMinutes = subject ? Math.round((form.component === "LECTURE" ? subject.lectureHours : subject.labHours) * 60) : null;
+  const otherMinutes = entries.filter((e) => e.id !== form.id && !e.busy && e.status !== "ARCHIVED" && e.semesterId === form.semesterId && e.sectionId === form.sectionId && e.subjectId === form.subjectId && e.component === form.component).reduce((sum, e) => sum + e.endMin - e.startMin, 0);
+  const remainingMinutes = requiredMinutes === null ? null : Math.max(0, requiredMinutes - otherMinutes);
+  const meetingMinutes = form.endMin - form.startMin;
+  const weeklyChanged = timeChanged || form.subjectId !== draft.subjectId || form.component !== draft.component;
+  const weeklyError = remainingMinutes !== null && meetingMinutes > remainingMinutes ? "This meeting would exceed the subject’s required weekly hours." : null;
+  const preferredMinutes = defaultDuration(form.component, section?.level ?? "COLLEGE", timeConfig);
   const statusOptions = STATUS_OPTIONS.filter((o) => canPublish || o.value !== "PUBLISHED" || draft.status === "PUBLISHED");
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (weeklyChanged && weeklyError) { toast.error(weeklyError); return; }
+    if (timeChanged && timeError) { toast.error(timeError); return; }
     if (form.endMin <= form.startMin) {
       toast.error("End time must be after start time.");
       return;
@@ -286,30 +298,24 @@ function ClassForm({
             id="cls-day"
             value={form.dayOfWeek}
             onChange={(e) => set("dayOfWeek", e.target.value as ClassDraft["dayOfWeek"])}
-            options={WEEK_DAYS.map((d) => ({ value: d, label: DAY_LONG[d] }))}
+            options={timetableDisplayDays(timeConfig, [form]).map((d) => ({ value: d, label: DAY_LONG[d] }))}
           />
+        </Field>
+        <Field className="sm:col-span-2">
+          <FieldLabel htmlFor="cls-length">Meeting length</FieldLabel>
+          <NativeSelect id="cls-length" value={String(meetingMinutes)} onChange={(e) => set("endMin", form.startMin + Number(e.target.value))}
+            options={[90, 180, ...(meetingMinutes !== 90 && meetingMinutes !== 180 ? [meetingMinutes] : [])].map((min) => ({ value: String(min), label: `${min / 60} hours${min !== 90 && min !== 180 ? " · custom" : min === 90 ? " · split meeting" : " · continuous block"}`, disabled: min !== meetingMinutes && ((remainingMinutes !== null && min > remainingMinutes) || form.startMin + min > 1440) }))} />
+          <p className="text-xs text-muted-foreground">Department default: {preferredMinutes / 60} hours. {requiredMinutes !== null && `Weekly target: ${requiredMinutes / 60} hours · Other meetings: ${otherMinutes / 60} hours · Remaining after this meeting: ${Math.max(0, (requiredMinutes - otherMinutes - meetingMinutes) / 60)} hours.`}</p>
+          {weeklyError && <p className="text-xs text-amber-700">{weeklyError}</p>}
         </Field>
         <Field>
           <FieldLabel htmlFor="cls-start">Start</FieldLabel>
-          <NativeSelect
-            id="cls-start"
-            value={String(form.startMin)}
-            onChange={(e) => {
-              const start = Number(e.target.value);
-              const duration = form.endMin - form.startMin;
-              setForm((f) => ({ ...f, startMin: start, endMin: Math.min(start + Math.max(duration, 30), 24 * 60) }));
-            }}
-            options={times.slice(0, -1).map((t) => ({ value: String(t.value), label: t.label }))}
-          />
+          <ConfiguredTimeInput id="cls-start" config={timeConfig} preserveExisting={!!draft.id && !timeChanged} day={form.dayOfWeek} value={form.startMin} onChange={(start) => setForm((f) => ({ ...f, startMin: start, endMin: Math.min(1440, start + f.endMin - f.startMin) }))} />
         </Field>
         <Field>
           <FieldLabel htmlFor="cls-end">End</FieldLabel>
-          <NativeSelect
-            id="cls-end"
-            value={String(form.endMin)}
-            onChange={(e) => set("endMin", Number(e.target.value))}
-            options={times.filter((t) => t.value > form.startMin).map((t) => ({ value: String(t.value), label: t.label }))}
-          />
+          <ConfiguredTimeInput id="cls-end" config={timeConfig} preserveExisting={!!draft.id && !timeChanged} day={form.dayOfWeek} value={form.endMin} onChange={(value) => set("endMin", value)} />
+          {timeError && <p className="text-xs text-amber-700">{timeError}{!timeChanged && " Existing times are preserved until you change them."}</p>}
         </Field>
         <Field>
           <FieldLabel htmlFor="cls-faculty">Faculty</FieldLabel>

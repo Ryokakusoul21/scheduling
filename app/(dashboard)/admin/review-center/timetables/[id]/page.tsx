@@ -1,3 +1,5 @@
+import { effectiveTimetable } from "@/lib/timetable/config";
+import { loadTimetableBundle } from "@/lib/timetable/service";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CheckCircle, WarningOctagon } from "@phosphor-icons/react/ssr";
@@ -52,13 +54,14 @@ async function classSheets(s: { id: string; departmentId: string; semesterId: st
     prisma.room.findMany({ where: { id: { in: ids("roomId") } }, select: { id: true, roomName: true } }),
     open ? detectConflictsForTerms(await concurrentTermIds(s.semesterId)) : Promise.resolve([]),
   ]);
+  const timetable = await loadTimetableBundle();
   const inScope = new Set(rows.map((r) => r.id));
   const flagged = [...new Set(conflicts.filter(isOverlapConflict).flatMap((c) => [c.entryA.id, c.entryB?.id]).filter((x): x is string => !!x && inScope.has(x)))];
   return {
     submitted,
     flagged,
     sections: sections.map((x) => ({
-      ...x, programName: x.program?.name ?? null,
+      ...x, programName: x.program?.name ?? null, timeConfig: effectiveTimetable(timetable, x.departmentId, s.semesterId),
       shortName: x.program ? `${x.program.code} ${x.name.split(" ").at(-1)}` : x.name,
     })) as unknown as ReviewSheetData["sections"],
     entries: rows.map((r) => ({ ...r, notes: r.notes ?? null })) as unknown as SchedulerEntry[],

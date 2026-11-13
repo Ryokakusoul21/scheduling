@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { requireScope, type Scope } from "@/lib/permissions/scope";
 import { formatRange } from "@/lib/scheduler/timetable";
 import { canCancelRequest, canEditRequest, canReviewRequest, requestFormSchema, TYPE_LABELS, type RequestDetails, type RequestFormData, type RequestFormInput, type RequestSummary } from "@/lib/requests/rules";
-import { logBlocked } from "@/lib/permissions/department";
+import { departmentWhere, logBlocked } from "@/lib/permissions/department";
 import { notifyManagers, notifyUsers } from "@/lib/notify";
 import { applyCrossDepartment, type CrossDepartmentDetails } from "@/lib/requests/cross-department";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
@@ -20,10 +21,10 @@ const minutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.sl
 async function prepare(scope: Scope, d: RequestFormData): Promise<{ error: string } | { departmentId: string | null; details: RequestDetails }> {
   let departmentId = scope.departmentId;
   let current: RequestSummary | undefined;
-  // A related class must be one the person can see: their own or their department.
+  // Faculty can request changes only to their own classes; heads use their assigned scope.
   if (d.scheduleId) {
     const row = await prisma.schedule.findFirst({
-      where: { id: d.scheduleId, ...(scope.isAdmin ? {} : { OR: [{ section: { departmentId: scope.manageDepartmentId } }, ...(scope.facultyId ? [{ facultyId: scope.facultyId }] : [])] }) },
+      where: { AND: [{ id: d.scheduleId, status: { not: "ARCHIVED" } }, scope.role === "FACULTY" ? { facultyId: scope.facultyId ?? "__none__" } : departmentWhere.schedule(scope)] },
       select: { dayOfWeek: true, startMin: true, endMin: true, section: { select: { departmentId: true } }, room: { select: { roomNumber: true, roomName: true } }, faculty: { select: { fullName: true } } },
     });
     if (!row) return { error: "Choose one of your own classes." };
@@ -67,8 +68,8 @@ export async function createRequestAction(input: RequestFormInput): Promise<{ ok
   const request = await prisma.scheduleRequest.create({
     data: { type: d.type, scheduleId: d.scheduleId, reason: d.reason, requestedById: scope.userId, departmentId: prepared.departmentId, details: prepared.details as never },
   });
-  // Routed to the requester's own Head of Department and the Registrar only.
-  await notifyManagers(scope.departmentId, {
+  // The responsible department's heads receive requests; administrators and registrars do not.
+  await notifyManagers(prepared.departmentId, {
     title: "New scheduling request submitted",
     message: `${scope.name} submitted a ${label(d.type).toLowerCase()} request.`,
     link: "/requests",
@@ -77,9 +78,9 @@ export async function createRequestAction(input: RequestFormInput): Promise<{ ok
   return { ok: true, id: request.id };
 }
 
-/** The person who filed a pending class request changes it; nobody else can. */
+/** A responsible department head can edit a pending class request. */
 export async function updateRequestAction(id: string, input: RequestFormInput): Promise<Result> {
-  const scope = await requireScope("HEAD_OF_DEPARTMENT", "FACULTY");
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const parsed = requestFormSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the request." };
   const stored = await prisma.scheduleRequest.findUnique({ where: { id }, include: { requestedBy: { select: { role: true } } } });
@@ -102,14 +103,14 @@ export async function updateRequestAction(id: string, input: RequestFormInput): 
 
 /** Withdraws a pending request; reviewers are told so they stop looking for it. */
 export async function cancelRequestAction(id: string): Promise<Result> {
-  const scope = await requireScope("HEAD_OF_DEPARTMENT", "FACULTY");
+  const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const request = await prisma.scheduleRequest.findUnique({ where: { id }, include: { requestedBy: { select: { role: true } } } });
   const who = { role: scope.role, userId: scope.userId, departmentIds: scope.departmentIds };
   if (!request || !canCancelRequest(who, { ...request, requesterRole: request.requestedBy.role })) {
     if (request) await logBlocked(scope, "cancel a request that is not theirs to change", "ScheduleRequest", id);
     return { ok: false, error: "Only the Head of Department who owns a pending request can cancel it." };
   }
-  const res = await prisma.scheduleRequest.updateMany({ where: { id, status: "PENDING" }, data: { status: "CANCELLED" } });
+  const res = await prisma.scheduleRequest.updateMany({ where: { id, status: "PENDING", updatedAt: request.updatedAt }, data: { status: "CANCELLED", reviewedById: scope.userId } });
   if (res.count === 0) return { ok: false, error: "This request was already reviewed." };
   await prisma.auditLog.create({ data: { userId: scope.userId, role: scope.role, departmentId: request.departmentId, action: `Cancelled ${label(request.type).toLowerCase()} request`, entity: "ScheduleRequest", entityId: id } });
   await notifyManagers(request.departmentId, { title: "Scheduling request cancelled", message: `${scope.name} cancelled a ${label(request.type).toLowerCase()} request.`, link: "/requests" });
@@ -118,7 +119,7 @@ export async function cancelRequestAction(id: string): Promise<Result> {
   return { ok: true };
 }
 
-/** A Head of Department asks the Registrar to change a faculty record of their department. */
+/** A Head of Department requests a faculty record change for another responsible head to review. */
 export async function requestFacultyChangeAction(facultyId: string, changes: unknown, reason: string): Promise<Result> {
   const scope = await requireScope("HEAD_OF_DEPARTMENT");
   const faculty = await prisma.faculty.findUnique({ where: { id: facultyId }, select: { fullName: true, departmentId: true } });
@@ -141,6 +142,11 @@ export async function requestFacultyChangeAction(facultyId: string, changes: unk
 
 export async function reviewRequestAction(id: string, status: "APPROVED" | "REJECTED", reviewNote?: string): Promise<Result> {
   const scope = await requireScope("HEAD_OF_DEPARTMENT");
+  const parsed = z.object({ id: z.string().min(1), status: z.enum(["APPROVED", "REJECTED"]), reviewNote: z.string().trim().max(500).optional() })
+    .superRefine((value, ctx) => { if (value.status === "REJECTED" && (value.reviewNote?.length ?? 0) < 5) ctx.addIssue({ code: "custom", path: ["reviewNote"], message: "Give a rejection reason of at least 5 characters." }); })
+    .safeParse({ id, status, reviewNote });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  reviewNote = parsed.data.reviewNote;
   const request = await prisma.scheduleRequest.findUnique({ where: { id }, include: { requestedBy: { select: { role: true } } } });
   if (!request || request.status !== "PENDING") return { ok: false, error: "This request was already reviewed." };
   if (!canReviewRequest({ role: scope.role, userId: scope.userId, departmentIds: scope.departmentIds }, { ...request, requesterRole: request.requestedBy.role })) {
@@ -171,7 +177,8 @@ export async function reviewRequestAction(id: string, status: "APPROVED" | "REJE
     if (problem) return { ok: false, error: problem };
     await prisma.scheduleRequest.update({ where: { id }, data: { reviewNote: reviewNote || null, reviewedById: scope.userId } });
   } else {
-    await prisma.scheduleRequest.update({ where: { id }, data: { status, reviewNote: reviewNote || null, reviewedById: scope.userId } });
+    const changed = await prisma.scheduleRequest.updateMany({ where: { id, status: "PENDING", updatedAt: request.updatedAt }, data: { status, reviewNote: reviewNote || null, reviewedById: scope.userId } });
+    if (changed.count !== 1) return { ok: false, error: "This request changed. Refresh before reviewing it." };
     await notifyUsers([request.requestedById], {
       title: `Request ${status.toLowerCase()}`,
       message: `Your ${request.type.replace(/_/g, " ").toLowerCase()} request was ${status.toLowerCase()}${reviewNote ? `: ${reviewNote}` : "."}`,

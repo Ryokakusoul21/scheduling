@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CONSTRAINT_INFO } from "@/lib/scheduler/constraints";
 import { EmptyState } from "@/components/ux/states";
+import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
 import { settingChips, summary, type ConstraintRow } from "./categories";
 import { Chips, RuleActions, StatusControl, StrengthBadge, type RowHandlers } from "./rule-row";
 
@@ -70,6 +71,7 @@ export function FacultyPreferences({
         <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No faculty member matches &quot;{query}&quot;.</p>
       ) : (
         <>
+          <CollectionView storageKey="faculty-preferences:view" label="Faculty preferences" table={<RecordsTable label="Faculty preferences" columns={["Faculty", "Preference", "Status", "Actions"]} rows={shown.slice(0, limit).flatMap((g) => g.items.map((r) => ({ id: r.id, cells: [g.name, <Chips key="settings" items={settingChips(r.kind, r.params, names)} />, <StatusControl key="status" row={r} onToggle={handlers.onToggle} />, <RuleActions key="actions" row={r} {...handlers} />] })))} />}>
           <ul className="grid gap-3 lg:grid-cols-2">
             {shown.slice(0, limit).map((g) => (
               <li key={g.facultyId} className="flex gap-3 rounded-xl border bg-card p-4">
@@ -93,6 +95,7 @@ export function FacultyPreferences({
               </li>
             ))}
           </ul>
+          </CollectionView>
           {shown.length > limit && (
             <Button variant="outline" className="h-9" onClick={() => setLimit((l) => l + PAGE * 2)}>
               Show more ({shown.length - limit} more)

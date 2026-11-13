@@ -32,7 +32,6 @@ export default async function BuildingPage({ params, searchParams }: { params: P
         allFloors={floors.map((f) => ({ value: f.id, label: `${f.building.name} — ${f.name}` }))}
         initialQuery={q ?? ""}
         isAdmin={scope.isAdmin}
-        ownDepartmentId={scope.departmentId}
         termLabel={termLabel}
         departments={departments}
         programs={programs}

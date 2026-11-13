@@ -11,6 +11,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { NativeSelect } from "@/components/ux/native-select";
 import { StatCard } from "@/components/ux/stat-card";
 import { PageHeader } from "@/components/ux/states";
+import { CollectionView } from "@/components/ux/collection-view";
 import { REQUEST_TYPES, STATUS_FILTERS, STATUS_LABELS, TYPE_LABELS, statusGroup, type RequestFormInput, type RequestRow, type StatusFilter } from "@/lib/requests/rules";
 import { cancelRequestAction, createRequestAction, reviewRequestAction, updateRequestAction } from "./actions";
 import { RequestDrawer } from "./request-drawer";
@@ -25,8 +26,8 @@ const PAGE_SIZES = [10, 25, 50];
 const sortValue = (r: RequestRow, key: SortKey) =>
   key === "type" ? TYPE_LABELS[r.type] ?? r.type : key === "schedule" ? r.scheduleLabel : key === "requestedBy" ? r.requestedByName : key === "status" ? STATUS_LABELS[r.status] ?? r.status : r.createdAt;
 
-export function RequestsManager({ description, requests, schedules, rooms, faculty, me }: {
-  description: string; requests: RequestRow[]; schedules: ScheduleOption[]; rooms: Option[]; faculty: Option[]; me: string;
+export function RequestsManager({ title = "Schedule Requests", description, requests, schedules, rooms, faculty, me }: {
+  title?: string; description: string; requests: RequestRow[]; schedules: ScheduleOption[]; rooms: Option[]; faculty: Option[]; me: string;
 }) {
   const [rows, addRow] = useOptimistic(requests, (current: RequestRow[], row: RequestRow) => [row, ...current]);
   const [query, setQuery] = useState("");
@@ -120,7 +121,7 @@ export function RequestsManager({ description, requests, schedules, rooms, facul
   return (
     <TooltipProvider>
       <div className="space-y-5">
-        <PageHeader title="Schedule Requests" description={description} actions={create} />
+        <PageHeader title={title} description={description} actions={create} />
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard label="Total requests" value={counts.total} icon={ListChecks} active={status === "ALL"} onClick={() => { setStatus("ALL"); setPage(0); }} />
@@ -148,8 +149,7 @@ export function RequestsManager({ description, requests, schedules, rooms, facul
             <RequestsEmpty title="No requests match these filters" description="Try a different search, status or type." action={<Button variant="outline" onClick={clear}>Clear filters</Button>} />
           ) : (
             <>
-              <div className="hidden md:block"><RequestsTable rows={pageRows} sort={sort} onSort={onSort} {...handlers} /></div>
-              <div className="md:hidden"><RequestCards rows={pageRows} {...handlers} /></div>
+              <CollectionView storageKey="requests:view" label="Requests" defaultView="table" table={<RequestsTable rows={pageRows} sort={sort} onSort={onSort} {...handlers} />}><RequestCards rows={pageRows} {...handlers} /></CollectionView>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t p-3 text-sm">
                 <p className="text-muted-foreground">Showing {pageIndex * pageSize + 1}–{Math.min(shown.length, (pageIndex + 1) * pageSize)} of {shown.length}</p>
                 <div className="flex items-center gap-2">

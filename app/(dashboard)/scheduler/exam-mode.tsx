@@ -1,3 +1,4 @@
+import { loadTimetableBundle } from "@/lib/timetable/service";
 import { PROGRAM_CATALOG_FILTER } from "@/lib/academics/levels";
 import type { AcademicLevel } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
@@ -61,9 +62,11 @@ export async function ExamMode({ scope, academicYearId, academicYearControl, mod
   }) : [];
 
   const data: ExamData = {
+    timetable: await loadTimetableBundle(),
+    departments: await prisma.department.findMany({ where: departmentWhere.department(scope), select: { id: true, name: true }, orderBy: { name: "asc" } }),
     terms: terms.map((t) => ({ id: t.id, level: t.level as AcademicLevel, programId: t.programId, isActive: t.isActive, label: `${levelLabel(t.level)} · ${termLabel(t.type)}${t.isActive ? " (active)" : ""}` })),
     programs: programs.map((p) => ({ id: p.id, code: p.code, name: p.name, level: p.level })),
-    sections: sections.map((s) => ({ id: s.id, name: s.name, level: s.level, yearLevel: s.yearLevel, gradeLevel: s.gradeLevel, programId: s.programId, semesterId: s.semesterId, studentCount: s.studentCount })),
+    sections: sections.map((s) => ({ id: s.id, name: s.name, departmentId: s.departmentId, level: s.level, yearLevel: s.yearLevel, gradeLevel: s.gradeLevel, programId: s.programId, semesterId: s.semesterId, studentCount: s.studentCount })),
     subjects,
     faculty: faculty.map((f) => ({ id: f.id, fullName: f.fullName, dayOff: f.employmentType === "PART_TIME" ? f.dayOff : null, availability: f.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })) })),
     rooms: rooms.map((r) => ({ id: r.id, roomName: r.roomName, capacity: r.capacity, foreign: isForeign(scope, r.departmentId), availability: isForeign(scope, r.departmentId) ? [] : r.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })) })),

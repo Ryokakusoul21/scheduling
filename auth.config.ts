@@ -55,6 +55,8 @@ export const authConfig = {
         return NextResponse.redirect(new URL(`/student/login?callbackUrl=${encodeURIComponent(pathname)}`, request.nextUrl));
       }
       if (!auth?.user) return false;
+      // This read-only endpoint applies the signed-in account's notification scope itself.
+      if (pathname === "/api/notifications" && request.method === "GET") return true;
       // The endpoint checks the real account itself, so it stays reachable while viewing as a student.
       if (pathname.startsWith("/api/view-as")) return true;
       // Viewing as another account is read-only. Server actions also read data, so they pass with a marker the

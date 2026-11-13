@@ -9,7 +9,7 @@ import { CorrectionForm } from "./correction-form";
 export const metadata = { title: "Emergency Schedule Access" };
 
 export default async function EmergencyAccessPage({ searchParams }: { searchParams: Promise<{ scheduleId?: string }> }) {
-  await requireRole("SUPER_ADMINISTRATOR");
+  await requireRole("REGISTRAR");
   const { scheduleId } = await searchParams;
   const recent = await prisma.schedule.findMany({
     where: { status: "PUBLISHED" }, take: 100, orderBy: { updatedAt: "desc" },
@@ -21,7 +21,7 @@ export default async function EmergencyAccessPage({ searchParams }: { searchPara
   }) : null;
   const rooms = schedule ? await prisma.room.findMany({ where: { OR: [{ archivedAt: null }, { id: schedule.roomId }] }, select: { id: true, roomName: true }, orderBy: { roomName: "asc" } }) : [];
   return <div className="max-w-2xl space-y-5">
-    <div><h1 className="text-2xl font-semibold">Emergency Schedule Access</h1><p className="text-sm text-muted-foreground">Administrator access is for system maintenance. Academic scheduling decisions belong to the department and Registrar.</p></div>
+    <div><h1 className="text-2xl font-semibold">Emergency Schedule Access</h1><p className="text-sm text-muted-foreground">Use this Registrar-only access for documented emergency corrections to published schedules.</p></div>
     <p className="rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm">Use this only for an emergency placement correction to a published class. A reason is required, scheduling checks still apply, and every saved correction is recorded with its previous and new values.</p>
     <form className="flex items-end gap-2">
       <label className="grid min-w-0 flex-1 gap-1 text-sm">Recently updated published classes (up to 100)<NativeSelect name="scheduleId" required defaultValue={recent.some((row) => row.id === scheduleId) ? scheduleId : ""} placeholder="Choose a class" options={recent.map((row) => ({ value: row.id, label: `${row.subject.code} · ${row.section.name} · ${row.semester.academicYear.name} ${row.semester.name} · ${row.dayOfWeek} ${formatRange(row.startMin, row.endMin)}` }))} /></label>

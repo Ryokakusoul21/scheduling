@@ -1,10 +1,8 @@
 import { prisma } from "@/lib/db/prisma";
 import { getScope } from "@/lib/permissions/scope";
-import { loadPlan } from "@/lib/occupancy/load";
 import { isoDate } from "@/lib/occupancy/engine";
 import { calendarRange, type CalendarView } from "@/lib/calendar";
-import { formatRange } from "@/lib/scheduler/timetable";
-import { levelLabel, stageLabel } from "@/lib/academics/levels";
+import { levelLabel } from "@/lib/academics/levels";
 import { listActivities, visibleActivities } from "@/lib/activities/activities";
 import { departmentWhere } from "@/lib/permissions/department";
 import { ACTIVITY_STATUS_LABELS } from "@/lib/activities/status";
@@ -26,7 +24,7 @@ function longDate(iso: string) {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-PH", { dateStyle: "long", timeZone: "UTC" });
 }
 
-export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ view?: string; date?: string; scope?: string; tab?: string }> }) {
+export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ view?: string; date?: string; tab?: string }> }) {
   const scope = await getScope();
   const params = await searchParams;
   const tabs: Tab[] = scope.isAdmin ? ["calendar", "table", "approvals"] : ["calendar", "table"];
@@ -70,22 +68,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const date = /^\d{4}-\d{2}-\d{2}$/.test(params.date ?? "") ? params.date! : today;
   const { from, to } = calendarRange(view, date);
 
-  // Which classes to show: own, own department, or everything (Registrar).
-  const options = scope.isAdmin ? ["all", "mine"] : scope.role === "HEAD_OF_DEPARTMENT" ? ["department", "mine"] : ["mine"];
-  const classScope = options.includes(params.scope ?? "") ? params.scope! : options[0];
-
+  // Classes and examinations live in the Scheduler; the calendar shows bookings, events, holidays, and suspensions.
   const fromDate = new Date(`${from}T00:00:00Z`);
   const toDate = new Date(`${to}T00:00:00Z`);
-  const [plan, exams, bookings, activities] = await Promise.all([
-    loadPlan(from, to),
-    prisma.examination.findMany({
-      // Only approved examinations are visible, except to the Registrar and the owning Head of Department.
-      where: {
-        date: { gte: fromDate, lte: toDate },
-        ...(scope.isAdmin ? {} : scope.role === "HEAD_OF_DEPARTMENT" ? { OR: [{ status: "PUBLISHED" as const }, departmentWhere.examination(scope)] } : { status: "PUBLISHED" as const }),
-      },
-      include: { subject: { select: { code: true, name: true } }, section: { select: { name: true, departmentId: true, level: true, yearLevel: true, gradeLevel: true, department: { select: { name: true } } } }, room: { select: { roomName: true } }, proctor: { select: { fullName: true } } },
-    }),
+  const [bookings, activities] = await Promise.all([
     prisma.roomBooking.findMany({
       // Bookings of other departments' rooms stay hidden.
       where: { status: "CONFIRMED", date: { gte: fromDate, lte: toDate }, room: departmentWhere.room(scope) },
@@ -95,42 +81,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     listActivities({ AND: [visibleActivities(scope), { status: { not: "REJECTED" } }, { startDate: { lte: toDate } }, { endDate: { gte: fromDate } }] }),
   ]);
 
-  const mine = (facultyIds: string[]) => !!scope.facultyId && facultyIds.includes(scope.facultyId);
-  const inScope = (facultyIds: string[], departmentId: string | null) =>
-    classScope === "all" || mine(facultyIds) || (classScope === "department" && departmentId === scope.departmentId);
-
   const events: CalendarEvent[] = [];
-  for (const s of plan.sessions) {
-    const info = plan.classInfo.get(s.scheduleId);
-    if (!inScope([s.facultyId], info?.departmentId ?? null)) continue;
-    const moved = s.status !== "REGULAR";
-    events.push({
-      id: `class-${s.scheduleId}-${s.date}`,
-      type: "CLASS",
-      title: `${info?.subjectCode} ${info?.sectionName}`,
-      date: s.date,
-      endDate: s.date,
-      startMin: s.startMin,
-      endMin: s.endMin,
-      detail: [
-        s.component === "LABORATORY" ? "Laboratory" : "Lecture",
-        moved && s.original ? `${s.status === "MAKE_UP" ? "Make-up for" : "Moved from"} ${s.original.date}, ${formatRange(s.original.startMin, s.original.endMin)}` : null,
-        s.reason,
-      ].filter(Boolean).join("\n"),
-      badge: s.status === "MOVED" ? "Moved" : s.status === "MAKE_UP" ? "Make-up" : undefined,
-      info: { code: info?.subjectCode, subject: info?.subjectName, room: plan.roomName.get(s.roomId), section: info?.sectionName, faculty: plan.facultyName.get(s.facultyId), department: info?.departmentName, stage: info?.stage },
-      resources: { roomId: s.roomId, facultyId: s.facultyId, sectionId: s.sectionId },
-    });
-  }
-  for (const e of exams) {
-    if (!inScope([e.proctorId], e.section.departmentId ?? null)) continue;
-    events.push({
-      id: `exam-${e.id}`, type: "EXAMINATION", title: `Examination: ${e.subject.code} ${e.section.name}`, date: isoDate(e.date), endDate: isoDate(e.date),
-      startMin: e.startMin, endMin: e.endMin, detail: "", href: "/scheduler?mode=examinations",
-      info: { code: e.subject.code, subject: e.subject.name, room: e.room.roomName, section: e.section.name, faculty: e.proctor.fullName, department: e.section.department?.name, stage: stageLabel(e.section) },
-      resources: { roomId: e.roomId, facultyId: e.proctorId, sectionId: e.sectionId },
-    });
-  }
   for (const b of bookings) {
     events.push({
       id: `booking-${b.id}`, type: "BOOKING", title: `${b.priority === "URGENT" || b.priority === "CRITICAL" ? "Urgent: " : ""}${b.room.roomName}: ${b.purpose}`, date: isoDate(b.date), endDate: isoDate(b.date),
@@ -158,7 +109,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     <div className="space-y-4 pt-1">
       <PageHeader
         title="Calendar of Activities"
-        description="Classes, examinations, room bookings, school events, holidays, and class suspensions in one place."
+        description="Room bookings, school events, holidays, and class suspensions in one place."
         actions={
           <ActivitiesReportButtons
             title={`School Activities: ${longDate(from)} to ${longDate(to)}`}
@@ -166,7 +117,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             filename={`school-activities-${from}`}
             rows={official.map((a) => ({ ...a, level: a.level ? levelLabel(a.level) : "", status: ACTIVITY_STATUS_LABELS[a.status] }))}
             official
-            department={classScope === "department" ? departments[0]?.name ?? "All Departments" : "All Departments"}
+            department="All Departments"
           />
         }
       />
@@ -178,8 +129,6 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         from={from}
         to={to}
         events={events}
-        classScope={classScope}
-        scopeOptions={options}
         canEditEvents={canSubmit}
         isAdmin={scope.isAdmin}
         ownDepartmentId={scope.departmentId}

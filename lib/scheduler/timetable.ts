@@ -21,6 +21,8 @@ export interface GridConfig {
   dayEnd: number;
   slot: number; // minutes per row
   rowHeight: number; // px per row
+  snapStep?: number;
+  hour12?: boolean;
 }
 
 export const DEFAULT_GRID: GridConfig = { dayStart: 7 * 60, dayEnd: 19 * 60, slot: 30, rowHeight: 28 };
@@ -36,7 +38,7 @@ export function minutesToY(min: number, g: GridConfig) {
 /** Converts a pixel offset within a day column to a start time snapped to the slot size. */
 export function yToMinutes(y: number, g: GridConfig) {
   const raw = g.dayStart + (y / g.rowHeight) * g.slot;
-  return snap(raw, g.slot);
+  return snap(raw, g.snapStep ?? g.slot);
 }
 
 export function snap(min: number, step: number) {
@@ -48,7 +50,8 @@ export function clampStart(start: number, duration: number, g: GridConfig) {
   return Math.min(Math.max(start, g.dayStart), g.dayEnd - duration);
 }
 
-export function formatTime(min: number) {
+export function formatTime(min: number, hour12 = true) {
+  if (!hour12) return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
   const h = Math.floor(min / 60);
   const m = min % 60;
   const period = h >= 12 ? "PM" : "AM";
@@ -56,8 +59,8 @@ export function formatTime(min: number) {
   return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
-export function formatRange(start: number, end: number) {
-  return `${formatTime(start)} – ${formatTime(end)}`;
+export function formatRange(start: number, end: number, hour12 = true) {
+  return `${formatTime(start, hour12)} – ${formatTime(end, hour12)}`;
 }
 
 /** Time options for selects, every `step` minutes within the grid. */
@@ -129,7 +132,9 @@ export function indexConflicts(conflicts: DetectedConflict[], isOverlap: (c: Det
 }
 
 /** Default meeting length when a subject is dropped onto the grid. */
-export function defaultDuration(component: "LECTURE" | "LABORATORY", level: string) {
+export function defaultDuration(component: "LECTURE" | "LABORATORY", level: string, config?: { classSession?: "DEFAULT" | "SPLIT_90" | "BLOCK_180" }) {
+  if (config?.classSession === "SPLIT_90") return 90;
+  if (config?.classSession === "BLOCK_180") return 180;
   if (level === "COLLEGE") return component === "LABORATORY" ? 180 : 90;
   return component === "LABORATORY" ? 120 : 60;
 }

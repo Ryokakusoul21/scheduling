@@ -12,12 +12,10 @@ import {
   Door,
   DotsThree,
   ImageSquare,
-  ListBullets,
   MagnifyingGlass,
   MapPin,
   PencilSimple,
   Plus,
-  SquaresFour,
   Stack,
   Trash,
   UploadSimple,
@@ -27,6 +25,7 @@ import {
 } from "@phosphor-icons/react/ssr";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useCollectionView, ViewSwitch } from "@/components/ux/collection-view";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -69,7 +68,6 @@ export interface RoomReportRow {
   utilization: number;
 }
 
-type View = "grid" | "list";
 type Sort = "custom" | "code" | "name" | "rooms" | "seats";
 const SORTS: { value: Sort; label: string }[] = [
   { value: "custom", label: "Custom order" },
@@ -126,7 +124,7 @@ export function BuildingsOverview({
   const [purpose, setPurpose] = useState("");
   const [status, setStatus] = useState("");
   const [sort, setSort] = useState<Sort>("custom");
-  const [view, setView] = useState<View>("grid");
+  const [view, setView] = useCollectionView("buildings:view");
   const [editing, setEditing] = useState<{ building?: BuildingDetails } | null>(null);
   const [photoFor, setPhotoFor] = useState<BuildingSummary | null>(null);
   const [deleting, setDeleting] = useState<BuildingSummary | null>(null);
@@ -263,13 +261,7 @@ export function BuildingsOverview({
         </div>
         <NativeSelect aria-label="Purpose" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="All purposes" options={BUILDING_PURPOSES.map((p) => ({ value: p, label: PURPOSE_LABELS[p] }))} className="w-full sm:w-52" />
         <NativeSelect aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} placeholder="All statuses" options={[{ value: "OPERATIONAL", label: "Operational" }, { value: "MAINTENANCE", label: "Maintenance" }]} className="w-full sm:w-40" />
-        <div className="flex rounded-md border p-0.5" role="radiogroup" aria-label="Layout">
-          {([["grid", SquaresFour, "Card grid"], ["list", ListBullets, "List"]] as const).map(([v, Icon, label]) => (
-            <button key={v} role="radio" aria-checked={view === v} aria-label={label} title={label} onClick={() => setView(v)} className={cn("rounded p-1.5", view === v ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted")}>
-              <Icon className="size-4" />
-            </button>
-          ))}
-        </div>
+        <ViewSwitch value={view} onChange={setView} label="Buildings view" />
         <div className="sm:ml-auto">
           <ReportButtons doc={report} />
         </div>
@@ -292,7 +284,7 @@ export function BuildingsOverview({
           description={buildings.length ? undefined : "Add a building, then its floors and rooms."}
           action={buildings.length || !isAdmin ? undefined : <Button onClick={() => setEditing({})}>Add building</Button>}
         />
-      ) : view === "grid" ? (
+      ) : view === "cards" ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {shown.map((b) => (
             <Card key={b.id} className="group gap-0 overflow-hidden py-0 transition-shadow hover:shadow-md">

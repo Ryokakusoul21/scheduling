@@ -1,3 +1,4 @@
+import { timetableTimeError, type TimetableConfig } from "@/lib/timetable/config";
 /**
  * One validator for proposed schedule changes, composed from the existing checks: detectConflicts
  * (double booking, capacity, room type, availability, daily hours), checkSlot (allowed hours and room
@@ -9,6 +10,7 @@ import { checkSlot } from "./slot-check";
 import type { SchedEntry, TimeRange } from "./types";
 
 export interface ValidationWorld {
+  timetables?: Record<string, TimetableConfig>;
   conflicts: ConflictContext;
   rules: ConstraintRule[];
   ruleCtx: ConstraintContext;
@@ -24,6 +26,12 @@ export interface Finding {
   source: string;
   message: string;
   entryIds: string[];
+}
+
+function configured(entry: Entry, world: ValidationWorld): Finding[] {
+  const config = world.timetables?.[entry.sectionId];
+  const error = config && timetableTimeError(config, entry);
+  return error ? [{ hard: true, overlap: false, source: "TIMETABLE_CONFIGURATION", message: error, entryIds: [entry.id] }] : [];
 }
 
 type Entry = SchedEntry & { id: string };
@@ -45,7 +53,7 @@ export function validateSchedule(entries: Entry[], world: ValidationWorld): Find
     entryIds: [c.entryA.id, c.entryB?.id].filter((id): id is string => !!id),
   }));
   const ruled = checkAll(entries, world.rules, world.ruleCtx).map((v) => ({ hard: v.hard, overlap: false, source: v.kind, message: v.message, entryIds: v.entryIds }));
-  return [...detected, ...ruled];
+  return [...detected, ...ruled, ...entries.flatMap((e) => configured(e, world))];
 }
 
 /**
@@ -68,7 +76,7 @@ export function validatePlacement(entry: Entry, others: Entry[], world: Validati
   const ruleOthers = rest.filter((o) => o.dayOfWeek === entry.dayOfWeek || o.facultyId === entry.facultyId);
   const ruled = checkEntry(entry, ruleOthers, world.rules, world.ruleCtx).map((v) => ({ hard: v.hard, overlap: false, source: v.kind, message: v.message, entryIds: [entry.id] }));
 
-  return [...detected, ...bounded, ...ruled];
+  return [...detected, ...bounded, ...ruled, ...configured(entry, world)];
 }
 
 /** True when a placement adds no hard finding. */

@@ -1125,7 +1125,7 @@ export function SchedulerWorkspace({
                   heatmap={dragHeatmap}
                   slots={dragSlots}
                   onOpen={openEntry}
-                  onEmptySlot={!permissions.canEdit || permissions.queueOnly ? undefined : (day, start) => openNew({ dayOfWeek: day, startMin: start, endMin: start + 60 })}
+                  onEmptySlot={!permissions.canEdit || permissions.queueOnly ? undefined : (day, start) => openNew({ dayOfWeek: day, startMin: start })}
                   grid={GRID}
                 />
               )
@@ -1270,6 +1270,7 @@ function SectionPicker({
     programName: section.programId ? (lookups.programs.get(section.programId)?.name ?? null) : null,
     departmentName: section.departmentId ? (lookups.departments.get(section.departmentId)?.name ?? null) : null,
     termLabel: lookups.terms.get(termOf(section.id))?.label ?? "",
+    timeConfig: effectiveTimetable(data.timetable, section.departmentId, termOf(section.id)),
   });
   const YEARS = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH"];
   const yearRank = (x: SchedulerData["sections"][number]) => { const i = YEARS.findIndex((y) => (x.yearLevel ?? "").startsWith(y)); return i < 0 ? 9 : i; };

@@ -4,7 +4,7 @@
  */
 import { rangesOverlap, type DayOfWeek, type RoomType, type SchedEntry, type SchedFaculty, type SchedRoom, type TimeRange } from "./types";
 
-export type SlotReason = "Faculty busy" | "Room busy" | "Section busy" | "Room type mismatch" | "Faculty unavailable" | "Outside allowed hours";
+export type SlotReason = "Timetable configuration" | "Faculty busy" | "Room busy" | "Section busy" | "Room type mismatch" | "Faculty unavailable" | "Outside allowed hours";
 
 export interface SlotStatus extends TimeRange {
   reasons: SlotReason[];

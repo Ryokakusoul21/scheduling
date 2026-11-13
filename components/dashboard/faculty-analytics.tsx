@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { ChangeBadge, DashboardToolbar, type ReportBlock } from "./kit";
 import { HoursBars, UpcomingList } from "./charts";
 import { WeekGrid } from "./week-grid";
+import { NotificationMessage } from "@/components/notifications/notification-message";
 
 type Option = { value: string; label: string };
 
@@ -234,8 +235,8 @@ export function FacultyAnalyticsView({ data, terms, title = "My teaching analyti
               <ul className="grid max-h-96 gap-2 overflow-y-auto md:grid-cols-2">
                 {d.notifications.map((n) => (
                   <li key={n.id} className="rounded-lg border p-2.5 text-sm">
-                    <p className="flex flex-wrap items-center gap-2"><Badge variant="secondary">{n.kind}</Badge><span className="font-medium">{n.title}</span>{!n.isRead && <Badge>New</Badge>}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{n.message}</p>
+                    <p className="flex flex-wrap items-center gap-2"><Badge variant="secondary">{n.kind}</Badge><span className="font-bold">{n.title}</span>{!n.isRead && <Badge>New</Badge>}</p>
+                    <NotificationMessage message={n.message} className="text-xs text-muted-foreground" />
                     <p className="mt-1 text-[11px] text-muted-foreground">{new Date(n.at).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })}</p>
                   </li>
                 ))}

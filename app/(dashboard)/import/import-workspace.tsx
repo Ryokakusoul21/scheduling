@@ -16,8 +16,8 @@ import { commitImportAction, validateImportAction } from "./actions";
 
 const KIND_LABELS: Record<ImportKind, string> = { subjects: "Subjects", rooms: "Rooms" };
 
-export function ImportWorkspace({ initialKind }: { initialKind: ImportKind }) {
-  const [kind, setKind] = useState<ImportKind>(initialKind);
+export function ImportWorkspace({ initialKind, allowRooms = false }: { initialKind: ImportKind; allowRooms?: boolean }) {
+  const [kind, setKind] = useState<ImportKind>(initialKind === "rooms" && !allowRooms ? "subjects" : initialKind);
   const [paste, setPaste] = useState("");
   const [records, setRecords] = useState<Record<string, string>[] | null>(null);
   const [results, setResults] = useState<RowResult<unknown>[] | null>(null);
@@ -72,7 +72,7 @@ export function ImportWorkspace({ initialKind }: { initialKind: ImportKind }) {
   return (
     <div className="space-y-4">
       <div className="flex rounded-md border p-0.5 w-fit" role="tablist" aria-label="What to import">
-        {(["subjects", "rooms"] as const).map((k) => (
+        {(allowRooms ? ["subjects", "rooms"] as const : ["subjects"] as const).map((k) => (
           <button key={k} role="tab" aria-selected={kind === k} onClick={() => reset(k)} className={cn("rounded px-4 py-1.5 text-sm font-medium", kind === k ? "bg-primary text-primary-foreground" : "hover:bg-muted")}>
             {KIND_LABELS[k]}
           </button>

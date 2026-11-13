@@ -79,7 +79,6 @@ export function activityForm(a: ActivityListItem): ActivityForm {
 }
 
 const TIMES = timeOptions({ ...DEFAULT_GRID, dayEnd: DAY_END }).map((t) => ({ value: String(t.value), label: t.label }));
-const SCOPE_LABELS: Record<string, string> = { all: "All classes", department: "My department's classes", mine: "My classes only" };
 const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 type GroupBy = "none" | "room" | "section" | "faculty";
@@ -94,14 +93,12 @@ export function CalendarBoard(props: {
   from: string;
   to: string;
   events: CalendarEvent[];
-  classScope: string;
-  scopeOptions: string[];
   canEditEvents: boolean;
   isAdmin: boolean;
   ownDepartmentId: string | null;
   formOptions: ActivityFormOptions;
 }) {
-  const { view, date, today, from, to, events, classScope, scopeOptions } = props;
+  const { view, date, today, from, to, events } = props;
   const router = useRouter();
   const [hidden, setHidden] = useState<Set<EventType>>(new Set());
   const [selected, setSelected] = useState<CalendarEvent | null>(null);
@@ -121,8 +118,8 @@ export function CalendarBoard(props: {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState<{ id?: string; form: ActivityForm } | null>(null);
 
-  const go = (next: Partial<{ view: CalendarView; date: string; scope: string }>) => {
-    const p = new URLSearchParams({ view, date, scope: classScope, ...next });
+  const go = (next: Partial<{ view: CalendarView; date: string }>) => {
+    const p = new URLSearchParams({ view, date, ...next });
     router.push(`/calendar?${p}`);
   };
   // Values for the chosen grouping; events without one (holidays, school events) stay visible in every slice.
@@ -165,9 +162,6 @@ export function CalendarBoard(props: {
             <h2 className="ml-2 text-base font-semibold">{title}</h2>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {scopeOptions.length > 1 && (
-              <NativeSelect aria-label="Classes shown" value={classScope} onChange={(e) => go({ scope: e.target.value })} options={scopeOptions.map((o) => ({ value: o, label: SCOPE_LABELS[o] }))} className="w-52" />
-            )}
             {view !== "month" && (
               <>
                 <NativeSelect aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} options={GROUP_OPTIONS} className="w-44" />
@@ -194,7 +188,7 @@ export function CalendarBoard(props: {
 
         <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Show or hide activity types">
           <span className="text-xs text-muted-foreground">Show:</span>
-          {EVENT_TYPES.map((t) => {
+          {EVENT_TYPES.filter((t) => t !== "CLASS" && t !== "EXAMINATION").map((t) => {
             const on = !hidden.has(t);
             return (
               <button key={t} onClick={() => toggle(t)} aria-pressed={on} title={`${on ? "Hide" : "Show"} ${EVENT_LABELS[t].toLowerCase()}`} className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors", on ? "bg-card" : "border-dashed text-muted-foreground line-through opacity-60")}>

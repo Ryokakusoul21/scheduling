@@ -85,7 +85,7 @@ async function check(trigger: string, actorId: string | null): Promise<WorkloadS
     const own = fresh.filter((f) => (f.facultyId ? deptOf.get(f.facultyId) ?? null : null) === dept);
     await notifyManagers(dept, {
       title: "Workload needs manual attention",
-      message: `${own.length} teaching load issue(s) have no automatic fix. ${own[0].explanation}`,
+      message: `${own.length} workload ${own.length === 1 ? "issue needs" : "issues need"} manual review.`,
       link: "/workload",
       type: "WARNING",
     });
@@ -124,7 +124,7 @@ async function syncProposals(data: WorkloadData, moves: Move[], explanation: str
         rows: { create: items.map((m) => ({ key: m.key, move: m as never, fromFacultyId: m.fromFacultyId, toFacultyId: m.toFacultyId, fromDepartmentId: m.fromDepartmentId, toDepartmentId: m.toDepartmentId })) },
       },
     });
-    const message = `${items.length} teaching load reassignment(s) were proposed after: ${trigger}. Review them in Faculty Workload.`;
+    const message = `${items.length} workload ${items.length === 1 ? "change awaits" : "changes await"} approval.`;
     await notifyManagers(departmentId, { title: "Workload fixes awaiting approval", message, link: "/workload" });
     // Receiving departments of cross-department rows must approve their side too.
     for (const other of new Set(items.map((m) => m.toDepartmentId).filter((d): d is string => !!d && d !== departmentId))) {

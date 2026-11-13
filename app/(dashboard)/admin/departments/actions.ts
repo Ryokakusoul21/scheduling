@@ -21,7 +21,7 @@ function refreshDepartments() {
 }
 
 export async function saveDepartmentAction(id: string | null, formData: FormData): Promise<Result> {
-  const scope = await requireScope("REGISTRAR", "SUPER_ADMINISTRATOR");
+  const scope = await requireScope("REGISTRAR");
   const parsed = departmentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the department details." };
   const data = { code: parsed.data.code.toUpperCase(), name: parsed.data.name };
@@ -57,7 +57,7 @@ export async function saveDepartmentAction(id: string | null, formData: FormData
 }
 
 export async function assignDepartmentHeadAction(departmentId: string, userId: string): Promise<Result> {
-  const scope = await requireScope("REGISTRAR", "SUPER_ADMINISTRATOR");
+  const scope = await requireScope("REGISTRAR");
   const [department, user] = await Promise.all([
     prisma.department.findUnique({ where: { id: departmentId }, select: { id: true, name: true } }),
     prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, role: true, status: true, archivedAt: true } }),
@@ -95,7 +95,7 @@ export async function assignDepartmentHeadAction(departmentId: string, userId: s
 }
 
 export async function removeDepartmentHeadAssignmentAction(departmentId: string, userId: string): Promise<Result> {
-  const scope = await requireScope("REGISTRAR", "SUPER_ADMINISTRATOR");
+  const scope = await requireScope("REGISTRAR");
   const [department, user, assignment] = await Promise.all([
     prisma.department.findUnique({ where: { id: departmentId }, select: { id: true } }),
     prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, role: true, status: true, archivedAt: true, faculty: { select: { departmentId: true } } } }),

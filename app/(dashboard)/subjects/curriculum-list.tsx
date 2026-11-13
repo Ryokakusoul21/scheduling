@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Columns, Plus, Rows, SquaresFour } from "@phosphor-icons/react/ssr";
+import { Columns, Plus } from "@phosphor-icons/react/ssr";
+import { useCollectionView, ViewSwitch } from "@/components/ux/collection-view";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -42,7 +43,7 @@ export function CurriculumList({ heading, context, subjects, category, owner, al
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [view, setView] = usePersisted<"table" | "cards">("subjects:view", "table");
+  const [view, setView] = useCollectionView("subjects:view", "table");
   const [hidden, setHidden] = usePersisted<ColumnKey[]>("subjects:hidden-columns", []);
   const [assigning, setAssigning] = useState<string[] | null>(null);
   const [viewing, setViewing] = useState<CurriculumRow | null>(null);
@@ -169,10 +170,7 @@ export function CurriculumList({ heading, context, subjects, category, owner, al
                       ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  <div role="group" aria-label="View" className="flex rounded-lg border p-0.5">
-                    <Button variant={view === "table" ? "secondary" : "ghost"} size="icon" className="size-9" aria-pressed={view === "table"} aria-label="Table view" onClick={() => setView("table")}><Rows className="size-4" /></Button>
-                    <Button variant={view === "cards" ? "secondary" : "ghost"} size="icon" className="size-9" aria-pressed={view === "cards"} aria-label="Card view" onClick={() => setView("cards")}><SquaresFour className="size-4" /></Button>
-                  </div>
+                  <ViewSwitch value={view} onChange={setView} label="Subjects view" />
                 </>
               }
             />
@@ -182,8 +180,7 @@ export function CurriculumList({ heading, context, subjects, category, owner, al
             <EmptyState title={emptyTitle} description="Try another term, category, status, or search." className="m-4" />
           ) : (
             <>
-              {view === "table" && <div className="hidden md:block"><SubjectsTable {...sharedProps} onSelectAll={selectPage} visible={visible} /></div>}
-              <div className={view === "table" ? "md:hidden" : undefined}><SubjectCards {...sharedProps} /></div>
+              {view === "table" ? <SubjectsTable {...sharedProps} onSelectAll={selectPage} visible={visible} /> : <SubjectCards {...sharedProps} />}
               <div className="flex flex-wrap items-center justify-between gap-3 border-t p-3 text-sm">
                 <p className="text-muted-foreground">Showing {pageIndex * pageSize + 1}–{Math.min(shown.length, (pageIndex + 1) * pageSize)} of {shown.length}</p>
                 <div className="flex items-center gap-2">

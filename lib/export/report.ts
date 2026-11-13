@@ -1,3 +1,6 @@
+import { DEFAULT_TIMETABLE, timetableGrid, timetableDisplayDays, type TimetableConfig } from "@/lib/timetable/config";
+import { formatTime } from "@/lib/scheduler/timetable";
+import type { DayOfWeek } from "@/lib/scheduler/types";
 /** Printable and spreadsheet reports with the institution header, built from the same column list. */
 import { cell, downloadText, toCsv, type Column } from "./csv";
 
@@ -57,6 +60,7 @@ export interface TimetableRow {
 }
 
 export interface TimetablePrintDetails {
+  timeConfig?: TimetableConfig;
   course?: string | null;
   year?: string | null;
   section?: string | null;
@@ -85,7 +89,7 @@ export function timetableDoc(title: string, term: string, rows: TimetableRow[], 
     rows: [...rows].sort((a, b) => DAY_ORDER.indexOf(a.dayOfWeek) - DAY_ORDER.indexOf(b.dayOfWeek) || a.startMin - b.startMin),
     columns: [
       { header: "Day", value: (r) => r.dayOfWeek.charAt(0) + r.dayOfWeek.slice(1).toLowerCase() },
-      { header: "Time", value: (r) => `${clock(r.startMin)} to ${clock(r.endMin)}` },
+      { header: "Time", value: (r) => `${formatTime(r.startMin, details?.timeConfig?.hour12)} to ${formatTime(r.endMin, details?.timeConfig?.hour12)}` },
       { header: "Subject", value: (r) => r.subject },
       { header: "Component", value: (r) => (r.component === "LABORATORY" ? "Laboratory" : "Lecture") },
       { header: "Section", value: (r) => r.section },
@@ -104,25 +108,23 @@ function tableHtml<T>(columns: Column<T>[], rows: T[]) {
   return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
-const PRINT_DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
-const PRINT_STEP = 30;
-
-function printClock(min: number) {
-  const hour = Math.floor(min / 60) % 12 || 12;
-  return `${hour}:${String(min % 60).padStart(2, "0")}`;
-}
-
 function timetablePrintHtml(doc: ReportDoc<TimetableRow>) {
   const rows = doc.rows;
-  const start = Math.min(7 * 60, ...rows.map((row) => Math.floor(row.startMin / PRINT_STEP) * PRINT_STEP));
-  const end = Math.max(16 * 60, ...rows.map((row) => Math.ceil(row.endMin / PRINT_STEP) * PRINT_STEP));
-  const slotCount = Math.max(1, Math.ceil((end - start) / PRINT_STEP));
+  const config = doc.timetableDetails?.timeConfig ?? DEFAULT_TIMETABLE;
+  const bounds = timetableGrid(config, rows);
+  const PRINT_DAYS = timetableDisplayDays(config, rows.map((r) => ({ dayOfWeek: r.dayOfWeek as DayOfWeek })));
+  // Exact meeting boundaries join display ticks, so a 07:05 class is never rounded.
+  const boundaries = new Set([bounds.dayStart, bounds.dayEnd, ...rows.flatMap((r) => [r.startMin, r.endMin])]);
+  for (let min = bounds.dayStart; min < bounds.dayEnd; min += config.gridInterval) boundaries.add(min);
+  const ticks = [...boundaries].sort((a, b) => a - b);
+  const slotCount = ticks.length - 1;
+  const printClock = (min: number) => formatTime(min, config.hour12);
   const grid: (TimetableRow | "covered" | null)[][] = Array.from({ length: slotCount }, () => PRINT_DAYS.map(() => null));
-  const spanOf = (row: TimetableRow) => Math.max(1, Math.ceil((row.endMin - row.startMin) / PRINT_STEP));
+  const spanOf = (row: TimetableRow) => Math.max(1, ticks.indexOf(row.endMin) - ticks.indexOf(row.startMin));
 
   for (const row of rows) {
-    const day = PRINT_DAYS.indexOf(row.dayOfWeek.toUpperCase());
-    const slot = Math.floor((row.startMin - start) / PRINT_STEP);
+    const day = PRINT_DAYS.indexOf(row.dayOfWeek.toUpperCase() as DayOfWeek);
+    const slot = ticks.indexOf(row.startMin);
     if (day < 0 || slot < 0 || slot >= slotCount) continue;
     if (grid[slot][day]) continue;
     grid[slot][day] = row;
@@ -130,7 +132,7 @@ function timetablePrintHtml(doc: ReportDoc<TimetableRow>) {
   }
 
   const bodyRows = grid.map((dayCells, index) => {
-    const time = start + index * PRINT_STEP;
+    const time = ticks[index];
     const meetings = dayCells.map((row) => {
       if (row === "covered") return "";
       if (!row) return "<td></td>";
@@ -141,9 +143,9 @@ function timetablePrintHtml(doc: ReportDoc<TimetableRow>) {
         : doc.timetableDetails?.focus === "room"
           ? `${row.section} · ${row.faculty}`
           : row.room;
-      return `<td rowspan="${spanOf(row)}" class="meeting"><b>${escape(title)}${row.component === "LABORATORY" ? " (Laboratory)" : ""}</b><br>(${escape(context)})</td>`;
+      return `<td rowspan="${spanOf(row)}" class="meeting"><b>${escape(title)}${row.component === "LABORATORY" ? " (Laboratory)" : ""}</b><br>(${escape(context)})<br>${escape(printClock(row.startMin))}–${escape(printClock(row.endMin))}</td>`;
     }).join("");
-    return `<tr><td class="time">${printClock(time)}</td><td class="time">${printClock(time + PRINT_STEP)}</td>${meetings}</tr>`;
+    return `<tr><td class="time">${printClock(time)}</td><td class="time">${printClock(ticks[index + 1])}</td>${meetings}</tr>`;
   }).join("");
 
   const details = [
@@ -158,7 +160,7 @@ function timetablePrintHtml(doc: ReportDoc<TimetableRow>) {
 
   const subjects = new Map<string, TimetableRow[]>();
   for (const row of rows) {
-    const [code, ...name] = row.subject.split(" - ");
+    const [code] = row.subject.split(" - ");
     const key = code.trim();
     subjects.set(key, [...(subjects.get(key) ?? []), row]);
   }
@@ -170,15 +172,15 @@ function timetablePrintHtml(doc: ReportDoc<TimetableRow>) {
   }).join("") || '<tr><td colspan="4">No classes scheduled yet.</td></tr>';
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escape(doc.title)}</title><style>
-@page{size:A4 portrait;margin:0}*{box-sizing:border-box}body{margin:0;padding:8mm;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:11px}
+@page{size:A4 landscape;margin:0}*{box-sizing:border-box}body{margin:0;padding:8mm;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:11px}
 .sheet{padding:4px}.head{display:flex;align-items:center;justify-content:center;gap:14px;text-align:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:10px;line-height:1.3}.head img{object-fit:contain}.head b{font-size:13px}.dept{font-size:17px;font-weight:700}
 .title{text-align:center;margin-bottom:8px}.title .term{margin-top:2px}.info{margin:0 auto 10px;border-collapse:collapse}.info td{padding:1px 6px}.info .label{width:110px}
 table.grid,table.subjects{width:100%;border-collapse:collapse;table-layout:fixed}.grid th,.grid td,.subjects th,.subjects td{border:1px solid #000;text-align:center;padding:0 2px}
 .grid th{height:22px;font-size:10px}.grid td{height:24px;font-size:9px}.grid td.time{width:38px;font-size:9px}.grid td.meeting{vertical-align:middle;line-height:1.25;overflow-wrap:anywhere}
 .subjects{margin:14px auto 0;width:90%}.subjects th{background:#f3f4f6;font-size:10px}.subjects td{font-size:10px;padding:2px 4px}
-@media print{thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}}
+@media print{thead{display:table-header-group}tr{break-inside: avoid;page-break-inside:avoid}}
 </style></head><body><section class="sheet"><div class="head"><img src="${escape(`${globalThis.location?.origin ?? ""}/branding/logo.jpg`)}" alt="" width="64" height="64"><div><b>${escape(SCHOOL_NAME)}</b>${doc.timetableDetails?.department ? `<div class="dept">${escape(doc.timetableDetails.department)}</div>` : ""}<div>Naic, Cavite, Philippines</div></div></div>
-<div class="title"><b>SCHEDULE OF CLASSES</b><div class="term">${escape(doc.term)}</div></div><table class="info">${details}</table>
+<div class="title"><b>SCHEDULE OF CLASSES</b><div class="term">${escape(doc.term)}</div></div><div>Date Generated: ${escape(generatedOn())}</div><table class="info">${details}</table>
 <table class="grid"><thead><tr><th colspan="2">TIME</th>${PRINT_DAYS.map((day) => `<th>${day}</th>`).join("")}</tr></thead><tbody>${bodyRows}</tbody></table>
 <table class="subjects"><thead><tr><th>SUBJ CODE</th><th>SUBJECT TITLE</th><th>UNITS</th><th>INSTRUCTOR/S</th></tr></thead><tbody>${subjectRows}</tbody></table></section></body></html>`;
 }

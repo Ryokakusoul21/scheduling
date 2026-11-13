@@ -16,14 +16,21 @@ import { statusOf } from "@/lib/workload/optimizer";
 import type { PreviewLoads, ProposalRowView, ProposalView } from "@/lib/workload/view";
 import { approveProposalAction, editProposalRowAction, rejectProposalAction } from "@/app/(dashboard)/workload/actions";
 import { cn } from "@/lib/utils";
+import { ShortExplanation } from "./short-explanation";
+import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
 
 const PROPOSAL_STATUS: Record<string, string> = { PENDING: "Pending", APPLIED: "Approved", REJECTED: "Rejected", SUPERSEDED: "Superseded" };
 const ROW_STATUS: Record<ProposalRowView["status"], string> = { PENDING: "Pending", APPROVED: "Approved, waiting", REJECTED: "Rejected", APPLIED: "Applied" };
 const isOpen = (r: ProposalRowView) => r.status === "PENDING" || r.status === "APPROVED";
 
 /** Open workload proposals with per-row review, receiver changes, and a before-and-after preview; or read-only history. */
-export function ProposalCards({ proposals, unit, preview, history = false }: { proposals: ProposalView[]; unit: string; preview?: PreviewLoads; history?: boolean }) {
-  return <div className="space-y-3">{proposals.map((p) => <ProposalCard key={`${p.id}-${p.version}`} p={p} unit={unit} preview={preview ?? {}} history={history} />)}</div>;
+export function ProposalCards({ proposals, unit, preview, history = false, readOnly = false }: { proposals: ProposalView[]; unit: string; preview?: PreviewLoads; history?: boolean; readOnly?: boolean }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const safeProposals = proposals.map((p) => readOnly ? { ...p, canReview: false, rows: p.rows.map((r) => ({ ...r, canApprove: false, canReject: false, candidates: null })) } : p);
+  const open = safeProposals.find((p) => p.id === openId);
+  return <><CollectionView storageKey={history ? "workload-proposal-history:view" : "workload-proposals:view"} label="Workload proposals" table={<RecordsTable label="Workload proposals" columns={["Department", "Status", "Reassignments", `Load (${unit})`, "Date", "Actions"]} rows={safeProposals.map((p) => ({ id: p.id, cells: [p.department, PROPOSAL_STATUS[p.status] ?? p.status, p.rows.length, p.rows.reduce((sum, r) => sum + r.amount, 0), new Date(history && p.reviewedAt ? p.reviewedAt : p.createdAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" }), <Button key="review" size="sm" variant="outline" onClick={() => setOpenId(p.id)}>{!history && p.canReview ? "Review proposal" : "View details"}</Button>] }))} />}>
+    <div className="space-y-3">{safeProposals.map((p) => <ProposalCard key={`${p.id}-${p.version}`} p={p} unit={unit} preview={preview ?? {}} history={history} />)}</div>
+  </CollectionView><Dialog open={!!open} onOpenChange={(on) => !on && setOpenId(null)}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle>Workload proposal</DialogTitle><DialogDescription>Details and available actions for this proposal.</DialogDescription></DialogHeader>{open && <ProposalCard key={`${open.id}-${open.version}`} p={open} unit={unit} preview={preview ?? {}} history={history} />}</DialogContent></Dialog></>;
 }
 
 function ProposalCard({ p, unit, preview, history }: { p: ProposalView; unit: string; preview: PreviewLoads; history: boolean }) {
@@ -73,7 +80,7 @@ function ProposalCard({ p, unit, preview, history }: { p: ProposalView; unit: st
     <Card className={cn(p.status === "PENDING" && "border-primary/40")}>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
-          {p.automatic ? "Automatic fix proposal" : "Reassignment proposal"}
+          {p.automatic ? "Suggested changes" : "Reassignment proposal"}
           <Badge variant={p.status === "PENDING" ? "default" : "outline"}>{PROPOSAL_STATUS[p.status] ?? p.status}</Badge>
           <span className="text-xs font-normal text-muted-foreground">{p.department} · {new Date(history && p.reviewedAt ? p.reviewedAt : p.createdAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })}</span>
         </CardTitle>
@@ -86,8 +93,8 @@ function ProposalCard({ p, unit, preview, history }: { p: ProposalView; unit: st
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm">{p.explanation}</p>
-        {p.reviewNote && <p className="rounded-lg bg-muted/60 p-3 text-sm">Reason given: {p.reviewNote}</p>}
+        <p className="text-sm font-medium">{p.rows.length} reassignment{p.rows.length === 1 ? "" : "s"} · {p.rows.reduce((sum, r) => sum + r.amount, 0).toLocaleString("en-PH", { maximumFractionDigits: 2 })} {unit}</p>
+        <details className="text-xs text-muted-foreground"><summary className="w-fit cursor-pointer rounded-sm font-medium text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring">Proposal details</summary><div className="mt-2 space-y-2 border-l-2 pl-3"><p className="whitespace-pre-wrap break-words">{p.explanation}</p>{p.reviewNote && <p className="whitespace-pre-wrap break-words"><b>Review note: </b>{p.reviewNote}</p>}</div></details>
         {!history && p.canReview && actionable.length > 1 && (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <label className="flex items-center gap-2"><Checkbox checked={chosen.length === actionable.length} onCheckedChange={(on) => setSelected(on ? new Set(actionable.map((r) => r.id)) : new Set())} /> Select all</label>
@@ -109,7 +116,7 @@ function ProposalCard({ p, unit, preview, history }: { p: ProposalView; unit: st
                 <p className="flex flex-wrap items-center gap-1.5 text-xs">
                   {r.from} ({r.fromBefore} to {r.fromAfter}) <ArrowRight className="size-3" aria-label="to" /> {r.to} ({r.toBefore} to {r.toAfter})
                 </p>
-                <p className="text-xs text-muted-foreground">{r.reason}</p>
+                <ShortExplanation text={r.reason} />
                 {r.problem && <p className="flex gap-1.5 text-xs text-destructive"><Warning className="mt-0.5 size-3.5 shrink-0" />{r.problem}</p>}
                 {!history && r.candidates && (
                   <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">Give to someone else

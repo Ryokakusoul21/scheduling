@@ -5,6 +5,7 @@ import { CheckCircle, DoorOpen, Info, ProhibitInset, Siren, Warning } from "@pho
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ux/states";
+import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
 import { ROOM_TYPES } from "@/lib/rooms/rooms";
 import { formatRange } from "@/lib/scheduler/timetable";
 import { isOverride } from "@/lib/bookings/plan";
@@ -107,6 +108,7 @@ export function RoomResults({ options, caps, request, pending, canOverride, onBo
           className="py-8"
         />
       ) : (
+        <CollectionView storageKey="booking-results:view" label="Room results" table={<RecordsTable label="Room results" columns={["Room", "Location", "Type", "Capacity", "Availability", "Equipment", "Actions"]} rows={shown.map((o) => ({ id: o.roomId, cells: [<span key="room" className="font-semibold">{o.name}{o.roomId === best && <BadgeLabel />}</span>, `${o.location}${o.ownership === "OWN" ? " · Your department" : o.ownership === "SHARED" ? " · Shared" : ""}`, typeLabel(o.roomType), `${o.capacity} seats · ${o.capacity >= request.attendees ? `${o.capacity - request.attendees} spare` : `${request.attendees - o.capacity} short`}`, <div key="availability" className="space-y-1"><Availability option={o} />{o.needsApproval && o.status !== "BLOCKED" && <p className="text-xs text-warning">Needs approval from {o.needsApproval}; nothing moves until they approve.</p>}{o.status === "BLOCKED" && <p className="text-xs text-danger">{o.blockers[0]}</p>}</div>, o.equipment.join(", ") || "—", o.status !== "BLOCKED" ? <Button key="book" size="sm" variant={o.status === "FREE" ? "default" : "outline"} disabled={pending || !!capWarning?.reached && urgent} onClick={() => onBook(o)} aria-label={`Book ${o.name}`}>{o.needsApproval ? "Request" : "Book"}</Button> : "Unavailable"] }))} />}>
         <div className="space-y-4">
           {groups.map(([building, list]) => (
             <div key={building || "all"} className="space-y-2">
@@ -139,6 +141,7 @@ export function RoomResults({ options, caps, request, pending, canOverride, onBo
             </div>
           ))}
         </div>
+        </CollectionView>
       )}
     </section>
   );
@@ -153,6 +156,8 @@ function Availability({ option: o }: { option: RoomOption }) {
   }
   return <span className={cn(base, "bg-muted text-muted-foreground")}><ProhibitInset className="size-3.5" /> Unavailable</span>;
 }
+
+function BadgeLabel() { return <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">Best match</span>; }
 
 function ResultsSkeleton() {
   return (

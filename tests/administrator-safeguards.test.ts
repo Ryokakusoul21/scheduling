@@ -36,9 +36,9 @@ describe("Administrator role boundaries", () => {
     for (const type of ["user", "settings", "room"] as const) expect(can(admin, "edit", { type })).toBe(true);
     expect(can(admin, "view", { type: "auditLog" })).toBe(true);
   });
-  it("reserves emergency access for the Administrator", () => {
-    expect(canAccessPath("/admin/emergency-access", "SUPER_ADMINISTRATOR")).toBe(true);
-    for (const role of ["REGISTRAR", "HEAD_OF_DEPARTMENT", "FACULTY", "STUDENT"] as const) expect(canAccessPath("/admin/emergency-access", role)).toBe(false);
+  it("reserves emergency access for the Registrar", () => {
+    expect(canAccessPath("/admin/emergency-access", "REGISTRAR")).toBe(true);
+    for (const role of ["SUPER_ADMINISTRATOR", "HEAD_OF_DEPARTMENT", "FACULTY", "STUDENT"] as const) expect(canAccessPath("/admin/emergency-access", role)).toBe(false);
   });
   it("prevents Administrator bookings from displacing classes", () => {
     expect(maxPriority("SUPER_ADMINISTRATOR")).toBe("REGULAR");
@@ -58,7 +58,7 @@ describe("Administrator role boundaries", () => {
 describe("emergency correction action", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mocks.requireRole.mockResolvedValue({ id: "admin", role: "SUPER_ADMINISTRATOR" });
+    mocks.requireRole.mockResolvedValue({ id: "registrar", role: "REGISTRAR" });
     mocks.findUnique.mockResolvedValue(before);
     mocks.checkClass.mockResolvedValue(null);
     mocks.updateMany.mockResolvedValue({ count: 1 });
@@ -68,7 +68,7 @@ describe("emergency correction action", () => {
   it("authenticates before reading or writing schedule data", async () => {
     mocks.requireRole.mockRejectedValue(new Error("Forbidden"));
     await expect(emergencyCorrectionAction(input)).rejects.toThrow("Forbidden");
-    expect(mocks.requireRole).toHaveBeenCalledWith("SUPER_ADMINISTRATOR");
+    expect(mocks.requireRole).toHaveBeenCalledWith("REGISTRAR");
     expect(mocks.findUnique).not.toHaveBeenCalled();
   });
   it.each([
@@ -90,13 +90,13 @@ describe("emergency correction action", () => {
   it("keeps scheduling checks active without soft overrides", async () => {
     mocks.checkClass.mockResolvedValue({ ok: false, error: "Room is occupied" });
     expect(await emergencyCorrectionAction(input)).toEqual({ ok: false, error: "Room is occupied" });
-    expect(mocks.checkClass).toHaveBeenCalledWith(expect.objectContaining({ id: "class", roomId: "new-room" }), { userId: "admin" }, { overrideSoft: false });
+    expect(mocks.checkClass).toHaveBeenCalledWith(expect.objectContaining({ id: "class", roomId: "new-room" }), { userId: "registrar" }, { overrideSoft: false });
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
   it("records actor, reason and before/after placement with the correction in one transaction", async () => {
     expect(await emergencyCorrectionAction(input)).toEqual({ ok: true });
     expect(mocks.updateMany).toHaveBeenCalledWith({ where: { id: "class", updatedAt: before.updatedAt, status: "PUBLISHED" }, data: { roomId: "new-room", dayOfWeek: "MONDAY", startMin: 480, endMin: 540, version: { increment: 1 } } });
-    expect(mocks.audit).toHaveBeenCalledWith({ data: expect.objectContaining({ userId: "admin", role: "SUPER_ADMINISTRATOR", reason: input.reason, oldValue: expect.objectContaining({ roomId: "old-room", version: 2 }), newValue: expect.objectContaining({ roomId: "new-room", version: 3 }) }) });
+    expect(mocks.audit).toHaveBeenCalledWith({ data: expect.objectContaining({ userId: "registrar", role: "REGISTRAR", reason: input.reason, oldValue: expect.objectContaining({ roomId: "old-room", version: 2 }), newValue: expect.objectContaining({ roomId: "new-room", version: 3 }) }) });
     expect(mocks.notify).toHaveBeenCalledTimes(3);
   });
   it("refuses a schedule changed during validation", async () => {

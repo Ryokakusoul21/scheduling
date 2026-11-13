@@ -19,6 +19,8 @@ describe("requestFormSchema", () => {
     const time = (end: string) => requestFormSchema.safeParse({ ...base, type: "CHANGE_TIME", scheduleId: "s", requestedDay: "MONDAY", requestedStart: "09:00", requestedEnd: end });
     expect(time("08:00").success).toBe(false);
     expect(time("10:30").success).toBe(true);
+    expect(requestFormSchema.safeParse({ ...base, type: "CHANGE_TIME", scheduleId: "s", requestedDay: "SUNDAY", requestedStart: "07:05", requestedEnd: "08:35" }).success).toBe(true);
+    expect(time("29:99").success).toBe(false);
   });
 });
 

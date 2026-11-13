@@ -1,3 +1,4 @@
+import { DEFAULT_TIMETABLE } from "@/lib/timetable/config";
 import { describe, expect, it } from "vitest";
 import { validatePlacement, placementAllowed } from "@/lib/scheduler/validate";
 import { solve } from "@/lib/scheduler/resolver/solver";
@@ -79,6 +80,49 @@ describe("validatePlacement", () => {
 });
 
 describe("solve", () => {
+  it.each(["SPLIT_90", "BLOCK_180"] as const)("fills 3 weekly lecture hours using the department's %s setting", (classSession) => {
+    const input = fixture();
+    input.timetables = { s1: { ...DEFAULT_TIMETABLE, classSession } };
+    input.sections[0].curriculum = [{ subjectId: "ge101", component: "LECTURE", requiredMin: 180 }];
+    const result = solve(input, options());
+    const meetings = result.changes.flatMap((c) => c.after ? [c.after] : []);
+    expect(meetings.map((e) => e.endMin - e.startMin)).toEqual(classSession === "SPLIT_90" ? [90, 90] : [180]);
+    if (classSession === "SPLIT_90") expect(new Set(meetings.map((e) => e.dayOfWeek)).size).toBe(2);
+    expect(result.after.unscheduled).toBe(0);
+    expectNoHardIntroduced(input, result.changes);
+  });
+
+  it("completes partial hours with a shorter final meeting without moving the existing one", () => {
+    const existing = entry("existing", { startMin: 480, endMin: 570 });
+    const input = fixture({ entries: [existing], timetables: { s1: { ...DEFAULT_TIMETABLE, classSession: "BLOCK_180" } } });
+    input.sections[0].curriculum = [{ subjectId: "ge101", component: "LECTURE", requiredMin: 180 }];
+    const result = solve(input, options());
+    expect(result.changes).toHaveLength(1);
+    expect(result.changes[0].after!.endMin - result.changes[0].after!.startMin).toBe(90);
+    expect(result.changes[0].before).toBeNull();
+    expect(result.after.unscheduled).toBe(0);
+  });
+  it("uses configured Sunday hours and dynamic boundaries when generating classes", () => {
+    const input = fixture();
+    input.timetables = { s1: { ...DEFAULT_TIMETABLE, mode: "DYNAMIC", days: ["SUNDAY"], dayStart: 425, dayEnd: 470 } };
+    input.bounds = { startMin: 0, endMin: 1440 };
+    input.subjects.find((s) => s.id === "ge101")!.lectureHours = 0.75;
+    input.sections[0].curriculum = [{ subjectId: "ge101", component: "LECTURE", requiredMin: 45 }];
+    const result = solve(input, options());
+    expect(result.changes[0]?.after).toMatchObject({ dayOfWeek: "SUNDAY", startMin: 425, endMin: 470 });
+    expectNoHardIntroduced(input, result.changes);
+  });
+
+  it("rejects retiming an already out-of-hours class to another invalid time but permits time-preserving edits", () => {
+    const input = fixture();
+    input.timetables = { s1: { ...DEFAULT_TIMETABLE, dayStart: 600 } };
+    const before = entry("a"), after = { ...before, startMin: 510, endMin: 600 };
+    const change: Parameters<typeof introducedHard>[0] = { id: "c", type: "MOVED", issueId: "i", group: "g", sectionId: "s1", before, after, reason: "" };
+    expect(introducedHard(change, [before], [after], worldOf(input))).toContainEqual(expect.objectContaining({ source: "TIMETABLE_CONFIGURATION" }));
+    const sameTime = { ...before, facultyId: "f2" };
+    expect(introducedHard({ ...change, after: sameTime }, [before], [sameTime], worldOf(input))).toEqual([]);
+  });
+
   it("places an unscheduled laboratory in a laboratory room", () => {
     const input = fixture();
     input.sections[0].curriculum = [{ subjectId: "it102", component: "LABORATORY", requiredMin: 180 }];

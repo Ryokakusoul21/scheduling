@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { SCHEDULING_ROLES } from "@/lib/permissions/roles";
 import { canManageDepartment, OUTSIDE_DEPARTMENT, requireScope, type Scope } from "@/lib/permissions/scope";
 import { CONSTRAINT_KINDS, LOCKED_KINDS, PARAM_SCHEMAS, type ConstraintKind } from "@/lib/scheduler/constraints";
 
@@ -32,7 +32,7 @@ function revalidate() {
 }
 
 export async function saveConstraintAction(id: string | null, input: ConstraintInput): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope(...SCHEDULING_ROLES);
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const params = PARAM_SCHEMAS[parsed.data.kind].safeParse(parsed.data.params);
@@ -66,7 +66,7 @@ export async function saveConstraintAction(id: string | null, input: ConstraintI
 }
 
 export async function toggleConstraintAction(id: string, enabled: boolean): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope(...SCHEDULING_ROLES);
   const existing = await allowed(scope, id);
   if (!existing) return { ok: false, error: OUTSIDE_DEPARTMENT };
   if (LOCKED_KINDS.includes(existing.kind)) return { ok: false, error: "Double-booking prevention cannot be turned off." };
@@ -79,7 +79,7 @@ export async function toggleConstraintAction(id: string, enabled: boolean): Prom
 }
 
 export async function deleteConstraintAction(id: string): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope(...SCHEDULING_ROLES);
   const existing = await allowed(scope, id);
   if (!existing) return { ok: false, error: OUTSIDE_DEPARTMENT };
   if (LOCKED_KINDS.includes(existing.kind)) return { ok: false, error: "Double-booking prevention cannot be deleted." };

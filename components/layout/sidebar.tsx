@@ -10,13 +10,12 @@ import { CaretDoubleLeft as ChevronsLeft, CaretDown, SidebarSimple, SignOut } fr
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { activeHrefFor, filterNavForRole } from "./nav-config";
-import { useShortcuts } from "@/components/ux/shortcuts";
 import type { AppRole } from "@/lib/permissions/roles";
 
-const GROUPS_KEY = "sidebar-closed-groups";
+const GROUPS_KEY = "sidebar-open-groups";
 
-// Closed nav groups live in localStorage; the server render treats every group as open.
-function readClosed(): string {
+// Open nav groups live in localStorage; every group starts closed except the one holding the current page.
+function readOpen(): string {
   try {
     const raw = localStorage.getItem(GROUPS_KEY) ?? "[]";
     return Array.isArray(JSON.parse(raw)) ? raw : "[]";
@@ -24,7 +23,7 @@ function readClosed(): string {
     return "[]";
   }
 }
-function subscribeClosed(onChange: () => void) {
+function subscribeOpen(onChange: () => void) {
   window.addEventListener("storage", onChange);
   window.addEventListener(GROUPS_KEY, onChange);
   return () => {
@@ -37,14 +36,14 @@ function useActiveHref(role: AppRole) {
   return activeHrefFor(usePathname(), role);
 }
 
-/** Navigation groups that collapse and remember which ones are closed; shared by the sidebar and the mobile drawer. */
+/** Navigation groups that stay closed until opened and remember which ones are open; shared by the sidebar and the mobile drawer. */
 export function NavGroups({ role, collapsed = false, onNavigate }: { role: AppRole; collapsed?: boolean; onNavigate?: () => void }) {
   const groups = filterNavForRole(role);
   const activeHref = useActiveHref(role);
-  const closed: string[] = JSON.parse(useSyncExternalStore(subscribeClosed, readClosed, () => "[]"));
+  const opened: string[] = JSON.parse(useSyncExternalStore(subscribeOpen, readOpen, () => "[]"));
 
   function toggle(label: string) {
-    const next = closed.includes(label) ? closed.filter((l) => l !== label) : [...closed, label];
+    const next = opened.includes(label) ? opened.filter((l) => l !== label) : [...opened, label];
     try {
       localStorage.setItem(GROUPS_KEY, JSON.stringify(next));
     } catch {}
@@ -57,11 +56,11 @@ export function NavGroups({ role, collapsed = false, onNavigate }: { role: AppRo
       <nav aria-label="Main navigation" className="space-y-3">
         {groups.map((group, i) => {
           // The group holding the current page always stays open.
-          const open = collapsed || !closed.includes(group.label) || group.items.some((item) => item.href === activeHref);
+          const open = group.direct || collapsed || opened.includes(group.label) || group.items.some((item) => item.href === activeHref);
           const listId = `nav-group-${i}`;
           return (
             <div key={group.label} className={cn(i > 0 && (collapsed ? "mx-2 border-t border-white/15 pt-3" : "border-t border-white/[0.06] pt-3"))}>
-              {!collapsed && (
+              {!collapsed && !group.direct && (
                 <button
                   type="button"
                   aria-expanded={open}
@@ -132,7 +131,6 @@ export function NavGroups({ role, collapsed = false, onNavigate }: { role: AppRo
 
 export function Sidebar({ role, name, image }: { role: AppRole; name: string; image?: string | null }) {
   const [collapsed, setCollapsed] = useState(false);
-  const { openHelp } = useShortcuts();
   const router = useRouter();
   const student = role === "STUDENT";
   const toggle = (
@@ -202,7 +200,6 @@ export function Sidebar({ role, name, image }: { role: AppRole; name: string; im
         <div className="min-w-0 leading-tight">
           <p className="truncate text-[13px] font-bold tracking-tight">GRANBY COLLEGES</p>
           <p className="truncate text-xs font-medium text-muted-foreground">OF SCIENCE AND TECHNOLOGY</p>
-          <p className="truncate text-xs italic text-primary">Education Today, A Brighter Tomorrow</p>
         </div>
       </div>
 
@@ -210,13 +207,6 @@ export function Sidebar({ role, name, image }: { role: AppRole; name: string; im
         <NavGroups role={role} />
       </div>
 
-      <button
-        type="button"
-        onClick={openHelp}
-        className="flex items-center justify-center gap-1.5 border-t border-black/10 px-4 py-2.5 text-xs text-sidebar-foreground/70 outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-brand-gold"
-      >
-        Press <kbd className="rounded border border-white/25 px-1 font-sans">?</kbd> for keyboard shortcuts
-      </button>
       {toggle}
     </aside>
   );

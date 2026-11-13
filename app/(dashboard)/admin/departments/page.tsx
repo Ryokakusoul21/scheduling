@@ -6,7 +6,7 @@ import { DepartmentManager } from "./manager";
 export const metadata = { title: "Department Management · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function DepartmentManagementPage() {
-  await requireScope("REGISTRAR", "SUPER_ADMINISTRATOR");
+  await requireScope("REGISTRAR");
   const now = new Date();
   const [departments, leaders] = await Promise.all([
     prisma.department.findMany({
@@ -33,6 +33,7 @@ export default async function DepartmentManagementPage() {
     id: department.id,
     code: department.code,
     name: department.name,
+    logoUrl: department.logoUrl,
     counts: {
       programs: department._count.programs,
       faculty: department._count.faculty,

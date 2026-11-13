@@ -8,6 +8,8 @@ import { prisma } from "@/lib/db/prisma";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { canManageSubject } from "@/lib/subjects/permissions";
 import { canManageSection } from "@/lib/sections/permissions";
+import { can } from "@/lib/permissions/policy";
+import { policyUserFromScope } from "@/lib/permissions/scope";
 
 const schema = z.object({
   entity: z.enum(["program", "subject", "section", "room", "building"]),
@@ -45,6 +47,10 @@ export async function reorderAction(entity: z.infer<typeof schema>["entity"], id
   const scope = await requireScope(...STAFF_ROLES);
   const parsed = schema.safeParse({ entity, ids });
   if (!parsed.success) return { ok: false, error: "Invalid reorder request." };
+  if (parsed.data.entity === "room" && !can(policyUserFromScope(scope), "reorder", { type: "room" })) {
+    await logBlocked(scope, "reorder room records", "Room");
+    return { ok: false, error: "Rooms are read-only for department heads. Contact the Registrar for updates." };
+  }
   // Program and strand order belongs to the Registrar; a Head of Department only reads it.
   if (parsed.data.entity === "program" && !scope.isAdmin) {
     await logBlocked(scope, "reorder programs", "program");

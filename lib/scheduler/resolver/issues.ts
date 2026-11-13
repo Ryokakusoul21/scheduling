@@ -19,6 +19,7 @@ export function worldOf(input: ResolverInput): ValidationWorld {
     rules: input.rules,
     ruleCtx: input.ruleCtx,
     bounds: input.bounds,
+    timetables: input.timetables,
   };
 }
 

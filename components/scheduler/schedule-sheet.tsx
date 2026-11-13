@@ -1,18 +1,14 @@
 "use client";
 
+import { DEFAULT_TIMETABLE, timetableGrid, timetableDisplayDays, timetableTicks, type TimetableConfig } from "@/lib/timetable/config";
+import { formatTime } from "@/lib/scheduler/timetable";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DAY_LONG, formatRange } from "@/lib/scheduler/timetable";
 import { stageLabel } from "@/lib/academics/levels";
-import type { DayOfWeek } from "@/lib/scheduler/types";
 import { cn } from "@/lib/utils";
 import type { SchedulerData, SchedulerEntry } from "./types";
 
-const DAYS: [DayOfWeek, string][] = [["MONDAY", "MONDAY"], ["TUESDAY", "TUESDAY"], ["WEDNESDAY", "WEDNESDAY"], ["THURSDAY", "THURSDAY"], ["FRIDAY", "FRIDAY"], ["SATURDAY", "SATURDAY"]];
-const STEP = 30;
-const ROW_PX = 40;
-const MIN_START = 7 * 60;
-const MIN_END = 16 * 60;
 
 const esc = (t: string | number | null | undefined) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const PRINT_FILLS = ["#eff6ff", "#ecfdf5", "#fffbeb", "#f5f3ff", "#fff1f2", "#ecfeff", "#f7fee7", "#fff7ed"];
@@ -21,30 +17,31 @@ const PRINT_FILLS = ["#eff6ff", "#ecfdf5", "#fffbeb", "#f5f3ff", "#fff1f2", "#ec
 function sheetHtml(source: SheetSource) {
   const { section, subjects, faculty, rooms } = source;
   const classes = source.entries.filter((e) => e.sectionId === section.id && e.status !== "ARCHIVED");
-  const start = Math.min(MIN_START, ...classes.map((e) => Math.floor(e.startMin / STEP) * STEP));
-  const end = Math.max(MIN_END, ...classes.map((e) => Math.ceil(e.endMin / STEP) * STEP));
-  const count = Math.max(1, Math.round((end - start) / STEP));
+  const config = source.timeConfig ?? DEFAULT_TIMETABLE;
+  const ticks = timetableTicks(config, classes), count = ticks.length - 1;
+  const DAYS = timetableDisplayDays(config, classes).map((d) => [d, d] as const);
+  const clock = (m: number) => formatTime(m, config.hour12);
   const subjectIds = [...new Set(classes.map((e) => e.subjectId))];
 
   // cell[row][day] holds the class that starts there, or "covered" when a taller class above spans into it.
   const cell: (SchedulerEntry | "covered" | null)[][] = Array.from({ length: count }, () => DAYS.map(() => null));
-  const span = (e: SchedulerEntry) => Math.max(1, Math.ceil((e.endMin - e.startMin) / STEP));
+  const span = (e: SchedulerEntry) => Math.max(1, ticks.indexOf(e.endMin) - ticks.indexOf(e.startMin));
   for (const e of classes) {
     const day = DAYS.findIndex(([d]) => d === e.dayOfWeek);
-    const row = Math.floor((e.startMin - start) / STEP);
+    const row = ticks.indexOf(e.startMin);
     if (day < 0 || row < 0 || row >= count) continue;
     for (let i = 0; i < span(e) && row + i < count; i++) cell[row + i][day] = i === 0 ? e : "covered";
   }
 
   const body = cell.map((cols, r) => {
-    const m = start + r * STEP;
+    const m = ticks[r];
     const tds = cols.map((c) => {
       if (c === "covered") return "";
       if (!c) return "<td></td>";
       const subj = subjects.get(c.subjectId);
-      return `<td rowspan="${span(c)}" class="cls" style="background:${PRINT_FILLS[subjectIds.indexOf(c.subjectId) % PRINT_FILLS.length]}"><b>${esc(subj?.name ?? "Class")}${c.component === "LABORATORY" ? " (Laboratory)" : ""}</b><br>(${esc(rooms.get(c.roomId)?.roomName ?? "Room to be announced")})</td>`;
+      return `<td rowspan="${span(c)}" class="cls" style="background:${PRINT_FILLS[subjectIds.indexOf(c.subjectId) % PRINT_FILLS.length]}"><b>${esc(subj?.name ?? "Class")}${c.component === "LABORATORY" ? " (Laboratory)" : ""}</b><br>(${esc(rooms.get(c.roomId)?.roomName ?? "Room to be announced")})<br>${esc(formatRange(c.startMin, c.endMin, config.hour12))}</td>`;
     }).join("");
-    return `<tr><td class="t">${clock(m)}</td><td class="t">${clock(m + STEP)}</td>${tds}</tr>`;
+    return `<tr><td class="t">${clock(m)}</td><td class="t">${clock(ticks[r + 1])}</td>${tds}</tr>`;
   }).join("");
 
   const subjectRows = subjectIds.map((id) => {
@@ -68,7 +65,7 @@ function sheetHtml(source: SheetSource) {
   </section>`;
 }
 
-const PRINT_CSS = `@page{size:A4 portrait;margin:0}*{box-sizing:border-box}body{margin:0;padding:8mm;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:11px}
+const PRINT_CSS = `@page{size:A4 landscape;margin:0}*{box-sizing:border-box}body{margin:0;padding:8mm;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:11px}
 .sheet{page-break-after:always;padding:4px}.sheet:last-child{page-break-after:auto}
 .head{display:flex;align-items:center;justify-content:center;gap:14px;text-align:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:10px;line-height:1.3}.head b{font-size:13px}.dept{font-size:17px;font-weight:700}
 .title{text-align:center;margin-bottom:8px}.info{margin:0 auto 10px;border-collapse:collapse}.info td{padding:1px 6px}.k{width:110px}
@@ -94,8 +91,6 @@ export function printSheets(sources: SheetSource[], title: string) {
   setTimeout(() => { win.focus(); win.print(); }, 700);
 }
 
-/** Clock time without AM or PM, as on the paper schedule (1:00 for 1 PM). */
-const clock = (m: number) => `${Math.floor(m / 60) % 12 || 12}:${String(m % 60).padStart(2, "0")}`;
 
 /** Soft fills cycled by subject so neighbouring classes stay easy to tell apart. */
 const FILLS = [
@@ -110,6 +105,7 @@ const FILLS = [
 ];
 
 export interface SheetSource {
+  timeConfig?: TimetableConfig;
   section: SchedulerData["sections"][number];
   entries: SchedulerEntry[];
   subjects: Map<string, SchedulerData["subjects"][number]>;
@@ -125,12 +121,15 @@ export interface SheetSource {
 export function SectionSheet({ source, className, highlight, flagged }: { source: SheetSource; className?: string; highlight?: ReadonlySet<string>; flagged?: ReadonlySet<string> }) {
   const [mobileView, setMobileView] = useState<"agenda" | "week">("week");
   const { section, entries, subjects, faculty, rooms } = source;
+  const config = source.timeConfig ?? DEFAULT_TIMETABLE;
   const rows = useMemo(() => {
     const classes = entries.filter((e) => e.sectionId === section.id && e.status !== "ARCHIVED");
-    const start = Math.min(MIN_START, ...classes.map((e) => Math.floor(e.startMin / STEP) * STEP));
-    const end = Math.max(MIN_END, ...classes.map((e) => Math.ceil(e.endMin / STEP) * STEP));
-    return { classes, start, count: Math.max(1, Math.round((end - start) / STEP)) };
-  }, [entries, section.id]);
+    const grid = timetableGrid(config, classes);
+    const ticks = timetableTicks(config, classes);
+    return { classes, grid, ticks, count: ticks.length - 1 };
+  }, [entries, section.id, config]);
+  const DAYS = timetableDisplayDays(config, rows.classes).map((d) => [d, d] as const);
+  const clock = (m: number) => formatTime(m, config.hour12);
 
   const subjectIds = [...new Set(rows.classes.map((e) => e.subjectId))];
   const fillOf = (id: string) => FILLS[subjectIds.indexOf(id) % FILLS.length];
@@ -139,7 +138,7 @@ export function SectionSheet({ source, className, highlight, flagged }: { source
     const teacher = faculty.get(e.facultyId);
     return teacher ? `${teacher.fullName}${teacher.department ? ` (${teacher.department})` : ""}` : undefined;
   }).filter(Boolean))].join(", ");
-  const slots = Array.from({ length: rows.count }, (_, i) => rows.start + i * STEP);
+  const slots = rows.ticks.slice(0, -1);
 
   return (
     <article className={cn("min-w-0 break-after-page space-y-4 rounded-xl border bg-card p-3 text-card-foreground shadow-xs sm:p-5 print:rounded-none print:border-0 print:bg-white print:text-black print:shadow-none", className)} aria-label={`Schedule of classes, ${section.name}`}>
@@ -189,7 +188,7 @@ export function SectionSheet({ source, className, highlight, flagged }: { source
                   const subject = subjects.get(e.subjectId);
                   return (
                     <li key={e.id} className={cn("space-y-1 break-words rounded-lg border p-3 text-sm", fillOf(e.subjectId), highlight?.has(e.id) && "ring-2 ring-inset ring-blue-600", flagged?.has(e.id) && "ring-[3px] ring-inset ring-red-600")}>
-                      <p className="font-semibold">{formatRange(e.startMin, e.endMin)}</p>
+                      <p className="font-semibold">{formatRange(e.startMin, e.endMin, config.hour12)}</p>
                       <p className="font-semibold">{subject?.code ?? "Class"} · {subject?.name ?? "Subject to be announced"}</p>
                       <p>{e.component === "LABORATORY" ? "Laboratory" : "Lecture"} · {roomName(e.roomId)}</p>
                       <p className="text-muted-foreground">{faculty.get(e.facultyId)?.fullName ?? "Instructor to be announced"}</p>
@@ -205,20 +204,20 @@ export function SectionSheet({ source, className, highlight, flagged }: { source
 
       <FitWidth className={cn("space-y-4 sm:block print:block", mobileView !== "week" && "hidden")}>
         <div role="region" aria-label={`Weekly grid for ${section.name}`} className="rounded-sm">
-          <div className="grid w-full border-l border-t border-foreground/60 text-[11px] print:border-black" style={{ gridTemplateColumns: "44px 44px repeat(6, minmax(0, 1fr))", gridTemplateRows: `28px repeat(${rows.count}, ${ROW_PX}px)` }}>
+          <div className="grid w-full border-l border-t border-foreground/60 text-[11px] print:border-black" style={{ gridTemplateColumns: `64px 64px repeat(${DAYS.length}, minmax(0, 1fr))`, gridTemplateRows: `28px ${slots.map((m, i) => `${Math.max(14, (rows.ticks[i + 1] - m) / rows.grid.slot * rows.grid.rowHeight)}px`).join(" ")}` }}>
             <div className="col-span-2 flex items-center justify-center border-b border-r border-foreground/60 font-bold print:border-black">TIME</div>
             {DAYS.map(([d, label]) => <div key={d} className="flex items-center justify-center border-b border-r border-foreground/60 font-bold print:border-black">{label}</div>)}
             {slots.map((m, i) => (
               <div key={m} className="contents">
                 <div className="flex items-center justify-center border-b border-r border-foreground/60 print:border-black" style={{ gridRow: i + 2, gridColumn: 1 }}>{clock(m)}</div>
-                <div className="flex items-center justify-center border-b border-r border-foreground/60 print:border-black" style={{ gridRow: i + 2, gridColumn: 2 }}>{clock(m + STEP)}</div>
+                <div className="flex items-center justify-center border-b border-r border-foreground/60 print:border-black" style={{ gridRow: i + 2, gridColumn: 2 }}>{clock(rows.ticks[i + 1])}</div>
                 {DAYS.map((_, c) => <div key={c} className="border-b border-r border-foreground/40 print:border-black/60" style={{ gridRow: i + 2, gridColumn: c + 3 }} />)}
               </div>
             ))}
             {rows.classes.map((e) => {
               const subject = subjects.get(e.subjectId);
-              const first = Math.floor((e.startMin - rows.start) / STEP) + 2;
-              const span = Math.max(1, Math.ceil((e.endMin - e.startMin) / STEP));
+              const first = rows.ticks.indexOf(e.startMin) + 2;
+              const span = Math.max(1, rows.ticks.indexOf(e.endMin) - rows.ticks.indexOf(e.startMin));
               return (
                 <div
                   key={e.id}
@@ -228,6 +227,7 @@ export function SectionSheet({ source, className, highlight, flagged }: { source
                 >
                   <span className="font-semibold">{subject?.name ?? "Class"}{e.component === "LABORATORY" ? " (Laboratory)" : ""}</span>
                   <span>({roomName(e.roomId)})</span>
+                  <span>{formatRange(e.startMin, e.endMin, config.hour12)}</span>
                 </div>
               );
             })}

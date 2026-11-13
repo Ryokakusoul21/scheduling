@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Buildings } from "@phosphor-icons/react/ssr";
+import { Buildings } from "@phosphor-icons/react/ssr";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DepartmentStaffingRow } from "@/lib/analytics/department-staffing-summary";
@@ -21,9 +21,6 @@ export async function DepartmentStaffingSection({ departments: supplied }: { dep
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant={needsAttention ? "destructive" : "secondary"}>{needsAttention} departments with staffing indicators</Badge>
-          <Link href="/admin/departments" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
-            Department Management <ArrowRight className="size-3.5" />
-          </Link>
         </div>
       </CardHeader>
       <CardContent>

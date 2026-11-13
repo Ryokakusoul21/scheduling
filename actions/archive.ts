@@ -4,7 +4,8 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
-import { canManageDepartment, OUTSIDE_DEPARTMENT, requireScope, type Scope } from "@/lib/permissions/scope";
+import { canManageDepartment, OUTSIDE_DEPARTMENT, policyUserFromScope, requireScope, type Scope } from "@/lib/permissions/scope";
+import { can } from "@/lib/permissions/policy";
 import { canManageSubject } from "@/lib/subjects/permissions";
 import { canManageSection } from "@/lib/sections/permissions";
 import { logBlocked } from "@/lib/permissions/department";
@@ -45,6 +46,7 @@ async function allowed(scope: Scope, kind: ArchiveKind, id: string) {
   // Accounts are the Super Administrator's, faculty records the Registrar's; other records follow their pages' department rules.
   if (kind === "USER") return scope.role === "SUPER_ADMINISTRATOR";
   if (kind === "FACULTY") return scope.isAdmin;
+  if (kind === "ROOM") return can(policyUserFromScope(scope), "archive", { type: "room" });
   const departmentId = await departmentOf(kind, id);
   if (kind === "SUBJECT") return canManageSubject(scope, { departmentId });
   if (kind === "SECTION") return canManageSection(scope, { departmentId });
@@ -54,6 +56,7 @@ async function allowed(scope: Scope, kind: ArchiveKind, id: string) {
 const REFUSED: Partial<Record<ArchiveKind, string>> = {
   USER: "Only the Super Administrator can archive user accounts.",
   FACULTY: "Only the Registrar can edit faculty records.",
+  ROOM: "Rooms are read-only for department heads. Contact the Registrar for updates.",
 };
 
 /** Archives a record instead of deleting it; warns first when classes this term still use it. */

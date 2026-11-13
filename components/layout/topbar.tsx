@@ -4,9 +4,10 @@ import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { flushSync } from "react-dom";
 import { useTheme } from "@/lib/theme/theme-provider";
-import { Moon, Sun, SignOut as LogOut, User as UserIcon, Bell, Keyboard } from "@phosphor-icons/react/ssr";
+import { Moon, Sun, SignOut as LogOut, User as UserIcon, Keyboard } from "@phosphor-icons/react/ssr";
 import { useShortcuts } from "@/components/ux/shortcuts";
 import { GlobalSearch } from "./global-search";
+import { NotificationsMenu } from "./notifications-menu";
 
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/ui/user-avatar";
@@ -24,6 +25,7 @@ import Link from "next/link";
 import { roleLabel } from "@/lib/permissions/roles";
 
 export function Topbar({
+  userId,
   name,
   email,
   image,
@@ -31,6 +33,7 @@ export function Topbar({
   unreadNotifications = 0,
   subtitle,
 }: {
+  userId: string;
   name: string;
   email: string;
   image?: string | null;
@@ -81,28 +84,7 @@ export function Topbar({
           </TooltipTrigger>
           <TooltipContent>Keyboard shortcuts (?)</TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon"
-                className="relative size-9"
-                nativeButton={false}
-                aria-label={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : "Notifications"}
-                render={<Link href={`${home}/notifications`} />}
-              />
-            }
-          >
-            <Bell className="size-5" />
-            {unreadNotifications > 0 && (
-              <span aria-hidden className="absolute -top-0.5 -right-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-danger px-1 text-[11px] leading-none font-semibold text-white ring-2 ring-card">
-                {unreadNotifications > 99 ? "99+" : unreadNotifications}
-              </span>
-            )}
-          </TooltipTrigger>
-          <TooltipContent>Notifications</TooltipContent>
-        </Tooltip>
+        <NotificationsMenu unread={unreadNotifications} allHref={`${home}/notifications`} userId={userId} />
 
         <Tooltip>
           <TooltipTrigger render={<Button variant="ghost" size="icon" className="size-9" aria-label={themeLabel} onClick={toggleTheme} />}>

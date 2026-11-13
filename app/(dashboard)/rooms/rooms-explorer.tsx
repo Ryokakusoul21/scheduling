@@ -47,7 +47,6 @@ export function RoomsExplorer({
   allFloors,
   initialQuery,
   isAdmin,
-  ownDepartmentId = null,
   termLabel,
   departments,
   programs,
@@ -57,8 +56,6 @@ export function RoomsExplorer({
   allFloors: Option[];
   initialQuery: string;
   isAdmin: boolean;
-  /** A Head of Department edits only rooms their department owns; shared rooms are the Registrar's. */
-  ownDepartmentId?: string | null;
   termLabel: string;
   departments: Option[];
   programs: Option[];
@@ -119,7 +116,7 @@ export function RoomsExplorer({
 
   // ---- dialogs -------------------------------------------------------------
   let dialog: { title: string; fields: FormField[]; values: object; submit: (fd: FormData) => Promise<ActionResult> } | null = null;
-  if (editor?.kind === "floor") {
+  if (isAdmin && editor?.kind === "floor") {
     dialog = {
       title: editor.item ? `Edit ${editor.item.name}` : `Add floor to ${building.name}`,
       fields: [
@@ -130,7 +127,7 @@ export function RoomsExplorer({
       values: editor.item ?? { buildingId: building.id, number: (building.floors.at(-1)?.number ?? 0) + 1 },
       submit: (fd) => saveFloorAction(editor.item?.id ?? null, fd),
     };
-  } else if (editor?.kind === "room") {
+  } else if (isAdmin && editor?.kind === "room") {
     dialog = {
       title: editor.item ? `Edit ${editor.item.roomName}` : "Add room",
       fields: [
@@ -155,7 +152,7 @@ export function RoomsExplorer({
           type: "select",
           options: isAdmin ? [{ value: "", label: "Shared room (Registrar)" }, ...departments] : departments,
           wide: true,
-          help: "The Head of Department of the owning department can manage and close this room.",
+          help: "Room records are managed by the Registrar and Administrator.",
         },
       ],
       values: editor.item
@@ -167,6 +164,7 @@ export function RoomsExplorer({
 
   return (
     <div className="space-y-4">
+      {!isAdmin && <p className="text-sm text-muted-foreground">Rooms are view-only. Contact the Registrar for room updates.</p>}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative w-full max-w-md">
           <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -225,7 +223,6 @@ export function RoomsExplorer({
               onDeleteFloor={() => setDeleting({ id: f.id, label: `${building.name} ${f.name}` })}
               onEditRoom={(r) => setEditor({ kind: "room", floorId: f.id, item: r })}
               isAdmin={isAdmin}
-              canEditRoom={(r) => isAdmin || (!!ownDepartmentId && r.departmentId === ownDepartmentId)}
             />
           ))}
         </div>
@@ -265,7 +262,6 @@ function FloorPanel({
   onDeleteFloor,
   onEditRoom,
   isAdmin,
-  canEditRoom,
   programs,
 }: {
   floor: Floor;
@@ -278,8 +274,6 @@ function FloorPanel({
   onDeleteFloor: () => void;
   onEditRoom: (r: Room) => void;
   isAdmin: boolean;
-  /** Shared rooms and other departments' rooms are read-only for a Head of Department. */
-  canEditRoom: (r: Room) => boolean;
 }) {
   const { ref, onKeyDown, onFocus } = useRovingFocus<HTMLTableSectionElement>();
   return (
@@ -297,7 +291,7 @@ function FloorPanel({
           <span className="font-medium">{floor.name}</span>
           <Badge variant="secondary">{floor.rooms.length} rooms</Badge>
         </button>
-        <ActionButton kind="add" onClick={onAddRoom}>Add room</ActionButton>
+        {isAdmin && <ActionButton kind="add" onClick={onAddRoom}>Add room</ActionButton>}
         {isAdmin && (
           <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
             <ActionButton kind="edit" onClick={onEditFloor}>
@@ -343,9 +337,9 @@ function FloorPanel({
                     style={style}
                     data-roving=""
                     tabIndex={-1}
-                    onClick={(e) => canEditRoom(r) && !(e.target as HTMLElement).closest("button,a") && onEditRoom(r)}
-                    aria-label={`${r.roomName}, ${r.capacity} seats, ${r.status.replace(/_/g, " ").toLowerCase()}.${canEditRoom(r) ? " Press Enter to edit." : ""}`}
-                    className={cn(canEditRoom(r) && "cursor-pointer", isDragging && "bg-card shadow-lg")}
+                    onClick={(e) => isAdmin && !(e.target as HTMLElement).closest("button,a") && onEditRoom(r)}
+                    aria-label={`${r.roomName}, ${r.capacity} seats, ${r.status.replace(/_/g, " ").toLowerCase()}.${isAdmin ? " Press Enter to edit." : ""}`}
+                    className={cn(isAdmin && "cursor-pointer", isDragging && "bg-card shadow-lg")}
                   >
                     <TableCell>{!searching && isAdmin && <DragHandle {...handleProps} />}</TableCell>
                     <TableCell>
@@ -380,7 +374,7 @@ function FloorPanel({
                     </TableCell>
                     <TableCell>
                       <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
-                        {canEditRoom(r) && (
+                        {isAdmin && (
                           <ActionButton kind="edit" onClick={() => onEditRoom(r)}>
                             Edit
                           </ActionButton>
@@ -388,7 +382,7 @@ function FloorPanel({
                         <ActionButton kind="view" nativeButton={false} render={<Link href={`/scheduler?roomId=${r.id}`} />}>
                           Timetable
                         </ActionButton>
-                        {canEditRoom(r) && <ArchiveButton kind="ROOM" id={r.id} name={r.roomName} />}
+                        {isAdmin && <ArchiveButton kind="ROOM" id={r.id} name={r.roomName} />}
                       </div>
                     </TableCell>
                   </TableRow>

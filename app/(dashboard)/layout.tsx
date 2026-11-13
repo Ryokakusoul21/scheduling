@@ -9,7 +9,8 @@ import { ShortcutProvider } from "@/components/ux/shortcuts";
 import { prisma } from "@/lib/db/prisma";
 import { ViewAsBanner } from "@/components/layout/view-as";
 import { publishDueSubmissions } from "@/lib/scheduler/submissions";
-import type { AppRole } from "@/lib/permissions/roles";
+import { isStaff, type AppRole } from "@/lib/permissions/roles";
+import { AssistantWidget } from "@/components/assistant/assistant-widget";
 import { AppBreadcrumbs } from "@/components/ux/breadcrumbs";
 import { SectionTabs } from "@/components/layout/section-tabs";
 import { notificationVisibility } from "@/lib/permissions/notifications";
@@ -38,6 +39,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <Sidebar role={role} name={account?.name ?? user.name ?? user.email ?? "User"} image={account?.image} />
         <div className="flex min-w-0 flex-1 flex-col overflow-clip print:block print:overflow-visible">
           <Topbar
+            userId={user.id}
             name={account?.name ?? user.name ?? user.email ?? "User"}
             email={user.email ?? ""}
             image={account?.image}
@@ -53,6 +55,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </main>
         </div>
       </div>
+      {isStaff(role) && <AssistantWidget userName={account?.name ?? user.name} userId={user.id} role={role} />}
       <MobileNav role={role} name={account?.name ?? user.name ?? user.email ?? "User"} image={account?.image} roleLabel={ROLE_LABELS[role]} />
     </ShortcutProvider>
   );

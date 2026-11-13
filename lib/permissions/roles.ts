@@ -8,6 +8,9 @@ export const STAFF_ROLES: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR", "HEAD
 /** Roles that can work on timetable construction or resolution. */
 export const SCHEDULING_ROLES: AppRole[] = ["REGISTRAR", "HEAD_OF_DEPARTMENT"];
 
+/** Roles that can use the shared room-booking workspace. */
+export const ROOM_BOOKING_ROLES: AppRole[] = ["REGISTRAR", "HEAD_OF_DEPARTMENT", "FACULTY"];
+
 /** Routine timetable changes always go through department submission and Registrar review. */
 export const DIRECT_EDIT_ROLES: AppRole[] = [];
 

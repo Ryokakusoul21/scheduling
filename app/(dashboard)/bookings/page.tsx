@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { departmentWhere } from "@/lib/permissions/department";
-import { getScope } from "@/lib/permissions/scope";
+import { requireScope } from "@/lib/permissions/scope";
+import { ROOM_BOOKING_ROLES } from "@/lib/permissions/roles";
 import { PageHeader } from "@/components/ux/states";
 import { allowedPriorities, canManageBooking, canReviewOverride, isOverride, statusLabel, URGENT_REASONS, type Priority } from "@/lib/bookings/plan";
 import { overrideCaps } from "@/lib/bookings/service";
@@ -15,7 +16,7 @@ export const metadata = { title: "Room Booking · GRANBY COLLEGES OF SCIENCE AND
 const reasonLabel = (r: string | null) => URGENT_REASONS.find((x) => x.value === r)?.label ?? null;
 
 export default async function BookingsPage({ searchParams }: { searchParams: Promise<{ booking?: string }> }) {
-  const scope = await getScope();
+  const scope = await requireScope(...ROOM_BOOKING_ROLES);
   const { booking: openId } = await searchParams;
   const since = new Date();
   since.setDate(since.getDate() - 30);

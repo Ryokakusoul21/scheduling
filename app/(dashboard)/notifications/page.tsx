@@ -1,36 +1,19 @@
-import { prisma } from "@/lib/db/prisma";
 import { requireUser } from "@/lib/auth/session";
-import { notificationVisibility } from "@/lib/permissions/notifications";
-import { NotificationsList } from "./notifications-list";
+import { loadNotifications } from "@/lib/notifications/service";
+import { NotificationsList } from "@/app/(dashboard)/notifications/notifications-list";
 
 export const metadata = { title: "Notifications · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function NotificationsPage() {
   const user = await requireUser();
-  const notifications = await prisma.notification.findMany({
-    where: { userId: user.id, ...notificationVisibility(user.role) },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
-
+  const initialPage = await loadNotifications(user);
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Notifications</h1>
-        <p className="text-sm text-muted-foreground">System and scheduling notifications for your account.</p>
+        <p className="text-sm text-muted-foreground">Schedule updates and account alerts.</p>
       </div>
-
-      <NotificationsList
-        notifications={notifications.map((n) => ({
-          id: n.id,
-          type: n.type,
-          title: n.title,
-          message: n.message,
-          isRead: n.isRead,
-          link: n.link ?? "",
-          createdAt: n.createdAt.toLocaleString(),
-        }))}
-      />
+      <NotificationsList initialPage={initialPage} userId={user.id} />
     </div>
   );
 }

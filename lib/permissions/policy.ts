@@ -7,7 +7,7 @@
 export const POLICY_ACTIONS = [
   "view", "create", "edit", "archive", "restore", "reorder", "bulkImport",
   "autoGenerate", "autoSchedule", "submit", "approve", "reject",
-  "requestChange", "export", "rename",
+  "requestChange", "export", "rename", "updateBranding",
 ] as const;
 
 export type PolicyAction = (typeof POLICY_ACTIONS)[number];
@@ -113,6 +113,7 @@ function ownsDepartment(user: PolicyUser, resource: PolicyResource) {
 /** The only authorization decision function. Anything not listed is denied. */
 export function can(user: PolicyUser | null | undefined, action: PolicyAction, resource: PolicyResource): boolean {
   if (!isActivePolicyUser(user)) return false;
+  if (user.role === "SUPER_ADMINISTRATOR" && resource.type === "roomBooking") return false;
   if (["SUPER_ADMINISTRATOR", "REGISTRAR"].includes(user.role)) {
     if (["scheduleRequest", "workloadFix"].includes(resource.type)) return false;
     if (resource.type === "roomBooking" || resource.type === "activityProposal") return action === "view" || action === "export";
@@ -128,14 +129,16 @@ export function can(user: PolicyUser | null | undefined, action: PolicyAction, r
   if (user.role === "REGISTRAR") return !["user", "settings", "auditLog"].includes(resource.type);
 
   if (user.role === "HEAD_OF_DEPARTMENT") {
+    // Room records stay administrative; heads can inspect and export visible rooms.
+    if (resource.type === "room") return ["view", "export"].includes(action) && (ownsDepartment(user, resource) || resource.shared === true || resource.departmentId === null);
     // Shared resources expose basic availability/details only, never mutations.
     if (action === "view" && resource.shared && ["subject", "room", "faculty"].includes(resource.type)) return true;
     if (action === "requestChange" && ["subject", "room", "faculty", "schedule"].includes(resource.type)) return ownsDepartment(user, resource) || !!resource.shared;
     if (["create", "submit"].includes(action) && resource.type === "roomBooking" && resource.ownerUserId === user.id) return true;
     if (action === "view") return DEPARTMENT_READABLE.has(resource.type) && ownsDepartment(user, resource) && inProgramScope(user, resource);
     if (action === "export") return ["report", "analytics", "schedule", "examination"].includes(resource.type) && ownsDepartment(user, resource) && inProgramScope(user, resource);
-    // A Head of Department renames their own department and nothing else about it.
-    if (action === "rename") return resource.type === "department" && ownsDepartment(user, resource);
+    // Branding is limited to the name and logo; department codes and assignments stay administrative.
+    if (action === "rename" || action === "updateBranding") return resource.type === "department" && ownsDepartment(user, resource);
     if (action === "approve" || action === "reject") return ["roomBooking", "scheduleRequest", "workloadFix"].includes(resource.type) && ownsDepartment(user, resource) && inProgramScope(user, resource) && resource.ownerUserId !== user.id;
     if (resource.type === "faculty" || resource.type === "user" || resource.type === "settings" || resource.type === "roomBooking") return false;
     return HOD_MUTATIONS.has(action) && DEPARTMENT_MANAGED.has(resource.type) && ownsDepartment(user, resource) && inProgramScope(user, resource);
@@ -161,6 +164,7 @@ export type PolicyWhere = Record<string, unknown>;
  */
 export function scopeQuery(user: PolicyUser | null | undefined, type: PolicyResourceType): PolicyWhere {
   if (!isActivePolicyUser(user)) return { id: { equals: "__denied__" } };
+  if (user.role === "SUPER_ADMINISTRATOR" && type === "roomBooking") return { id: { equals: "__denied__" } };
   if (["SUPER_ADMINISTRATOR", "REGISTRAR"].includes(user.role) && ["scheduleRequest", "workloadFix"].includes(type)) return { id: { equals: "__denied__" } };
   if (user.role === "SUPER_ADMINISTRATOR" || user.role === "REGISTRAR") return {};
   const departments = policyDepartmentIds(user);

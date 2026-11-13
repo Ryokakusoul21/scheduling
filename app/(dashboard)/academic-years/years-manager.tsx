@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
 import { CardGrid } from "@/components/ux/card-grid";
+import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
 import { EmptyState, PageHeader } from "@/components/ux/states";
 import { ConfirmDialog, FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
 import { useShortcut } from "@/components/ux/shortcuts";
@@ -66,6 +67,7 @@ export function YearsManager({ years }: { years: Year[] }) {
           action={<Button onClick={dialog.openCreate}>Create academic year</Button>}
         />
       ) : (
+        <CollectionView storageKey="academic-years:view" label="Academic years" table={<RecordsTable label="Academic years" columns={["Academic year", "Dates", "Status", "Terms", "Levels set up", "Actions"]} rows={years.map((y) => ({ id: y.id, cells: [<Link key="year" href={`/academic-years/${y.id}`} className="font-semibold text-primary hover:underline">{y.name}</Link>, `${fmt(y.startDate)} – ${fmt(y.endDate)}`, y.isActive ? <Badge key="status">Active</Badge> : "Inactive", y.termCount, `${y.levelsConfigured}/4`, <div key="actions" className="flex gap-1.5"><ActionButton kind="edit" onClick={() => dialog.openEdit(y)}>Edit</ActionButton>{!y.isActive && <ActionButton kind="activate" onClick={() => startTransition(async () => { await setActiveAcademicYearAction(y.id); toast.success(`${y.name} is now the active academic year`); })}>Set as active</ActionButton>}<ActionButton kind="delete" onClick={() => del.openEdit(y)}>Delete</ActionButton></div>] }))} />}>
         <CardGrid label="Academic years">
           {years.map((y) => (
             <div
@@ -124,6 +126,7 @@ export function YearsManager({ years }: { years: Year[] }) {
             </div>
           ))}
         </CardGrid>
+        </CollectionView>
       )}
 
       <FormDialog

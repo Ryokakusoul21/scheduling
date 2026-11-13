@@ -3,19 +3,21 @@
  * Pages still call requireRole() as a second line of defense; this map lets the
  * proxy answer with a real 403 before any HTML streams.
  */
-import { ADMIN_ROLES, SCHEDULING_ROLES, STAFF_ROLES, SUPER_ROLES, TEACHING_ROLES, type AppRole } from "./roles";
+import { ADMIN_ROLES, ROOM_BOOKING_ROLES, SCHEDULING_ROLES, STAFF_ROLES, SUPER_ROLES, TEACHING_ROLES, type AppRole } from "./roles";
 
 export const ROUTE_ROLES: { prefix: string; roles: AppRole[] }[] = [
+  { prefix: "/department", roles: STAFF_ROLES },
   { prefix: "/requests", roles: TEACHING_ROLES },
   { prefix: "/calendar/proposals", roles: STAFF_ROLES },
   { prefix: "/admin/users", roles: SUPER_ROLES },
   { prefix: "/admin/audit-logs", roles: SUPER_ROLES },
   { prefix: "/admin/settings", roles: SUPER_ROLES },
   { prefix: "/admin/view-as", roles: SUPER_ROLES },
-  { prefix: "/admin/emergency-access", roles: SUPER_ROLES },
+  { prefix: "/admin/emergency-access", roles: ["REGISTRAR"] },
   { prefix: "/admin/scheduling-periods", roles: ["REGISTRAR"] },
-  { prefix: "/admin/departments", roles: ADMIN_ROLES },
+  { prefix: "/admin/departments", roles: ["REGISTRAR"] },
   { prefix: "/admin", roles: ADMIN_ROLES },
+  { prefix: "/bookings", roles: ROOM_BOOKING_ROLES },
   { prefix: "/academic-years", roles: ADMIN_ROLES },
   { prefix: "/programs", roles: STAFF_ROLES },
   { prefix: "/subjects", roles: STAFF_ROLES },
@@ -26,7 +28,7 @@ export const ROUTE_ROLES: { prefix: string; roles: AppRole[] }[] = [
   { prefix: "/reports", roles: STAFF_ROLES },
   { prefix: "/analytics", roles: STAFF_ROLES },
   { prefix: "/adjustments", roles: SCHEDULING_ROLES },
-  { prefix: "/constraints", roles: STAFF_ROLES },
+  { prefix: "/constraints", roles: SCHEDULING_ROLES },
   { prefix: "/availability", roles: TEACHING_ROLES },
   { prefix: "/my-subjects", roles: TEACHING_ROLES },
 ];

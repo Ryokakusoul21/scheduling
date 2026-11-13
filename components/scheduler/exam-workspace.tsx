@@ -6,6 +6,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { DndContext, DragOverlay, KeyboardSensor, useDraggable, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragMoveEvent } from "@dnd-kit/core";
 import { CalendarBlank, CaretLeft, CaretRight, CheckCircle, DotsSixVertical, Lightning, Plus, UploadSimple, UsersThree, Warning, WarningOctagon } from "@phosphor-icons/react/ssr";
+import { TimetableConfiguration } from "./timetable-configuration";
+import { ConfiguredTimeInput } from "./configured-time-input";
+import { TIMETABLE_DAYS, effectiveTimetable, timetableGrid, timetableDisplayDays, timetableTimeError, snapTimetableTime, timetableHours } from "@/lib/timetable/config";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -22,12 +25,12 @@ import { DEFAULT_EXAM_RULES, checkExaminations, hasHardConflict, type ExamIssue,
 import { generateExaminationSchedule, stageIndex, yearGroup, type AutoScheduleResult } from "@/lib/examinations/auto-schedule";
 import { ACADEMIC_LEVELS } from "@/lib/academics/levels";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DEFAULT_GRID, clampStart, formatRange, formatTime, timeOptions, yToMinutes, type Severity } from "@/lib/scheduler/timetable";
+import { formatRange, formatTime, yToMinutes, type Severity } from "@/lib/scheduler/timetable";
 import type { DayOfWeek } from "@/lib/scheduler/types";
 import { moveExamAction, removeExamAction, saveExamAction, saveGeneratedExamsAction, submitExamsAction, type ExamInput } from "@/app/(dashboard)/scheduler/exam-actions";
 import { Timetable, type BlockInfo, type DropPreview } from "./timetable";
 import { ChecksHeading, ChecksRail, FilterCard, FilterSelect, PanelSection, ScheduleHeader, type Perspective } from "./schedule-chrome";
-import { collision, gridKeyboardCoordinates } from "./dnd-grid";
+import { collision, gridKeyboardCoordinatesFor } from "./dnd-grid";
 import type { SchedulerEntry } from "./types";
 
 export interface ExamRecord extends ExamSlot {
@@ -40,9 +43,11 @@ export interface ExamRecord extends ExamSlot {
 }
 
 export interface ExamData {
+  timetable?: import("@/lib/timetable/config").TimetableBundle;
+  departments?: { id: string; name: string }[];
   terms: { id: string; level: string; programId: string | null; isActive: boolean; label: string }[];
   programs: { id: string; code: string; name: string; level: string }[];
-  sections: { id: string; name: string; level: string; yearLevel: string | null; gradeLevel: string | null; programId: string | null; semesterId: string | null; studentCount: number }[];
+  sections: { id: string; name: string; departmentId?: string | null; level: string; yearLevel: string | null; gradeLevel: string | null; programId: string | null; semesterId: string | null; studentCount: number }[];
   subjects: { id: string; code: string; name: string }[];
   faculty: { id: string; fullName: string; dayOff: DayOfWeek | null; availability: { dayOfWeek: DayOfWeek; startMin: number; endMin: number }[] }[];
   rooms: { id: string; roomName: string; capacity: number; foreign: boolean; availability: { dayOfWeek: DayOfWeek; startMin: number; endMin: number }[] }[];
@@ -57,10 +62,8 @@ export interface ExamData {
   isAdmin: boolean;
 }
 
-const GRID = DEFAULT_GRID;
-const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
-const DATE_DAYS: DayOfWeek[] = ["SUNDAY", ...DAYS, "SUNDAY"];
-const TIMES = timeOptions({ ...GRID, dayEnd: 21 * 60 }).map((t) => ({ value: String(t.value), label: t.label }));
+const DAYS = TIMETABLE_DAYS;
+const DATE_DAYS: DayOfWeek[] = ["SUNDAY", ...DAYS.slice(0, 6)];
 const STATUS_LABEL = { DRAFT: "Draft", REVIEW: "Awaiting approval", PUBLISHED: "Approved", ARCHIVED: "Archived" } as const;
 const STATUS_STYLE = { DRAFT: "secondary", REVIEW: "outline", PUBLISHED: "default", ARCHIVED: "secondary" } as const;
 
@@ -85,10 +88,10 @@ function uniqueClasses(classes: ClassRef[]) {
 
 /** An examination starts as its class: same room, proctor, weekday, and time, on the first matching date of the window or week. */
 function defaultsFor(c: ClassRef, win: { start: string; end: string } | null, weekDates: string[]): Partial<Draft> {
-  let date = weekDates[DAYS.indexOf(c.dayOfWeek)];
+  let date = weekDates.find((d) => DATE_DAYS[new Date(d + "T00:00:00Z").getUTCDay()] === c.dayOfWeek) ?? weekDates[0];
   if (win) {
     date = win.start;
-    for (let d = win.start; d <= win.end; d = addDays(d, 1)) if (DAYS[(new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7] === c.dayOfWeek) { date = d; break; }
+    for (let d = win.start; d <= win.end; d = addDays(d, 1)) if (DATE_DAYS[new Date(`${d}T00:00:00Z`).getUTCDay()] === c.dayOfWeek) { date = d; break; }
   }
   return { sectionId: c.sectionId, subjectId: c.subjectId, roomId: c.roomId, proctorId: c.facultyId, date, startMin: c.startMin, endMin: c.endMin };
 }
@@ -194,17 +197,20 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
     return termClasses.filter((c) => sectionIds.has(c.sectionId) && (!sectionId || c.sectionId === sectionId) && !placed.has(classKey(c)));
   }, [termClasses, allPeriod, sectionIds, sectionId]);
 
-  const dates = DAYS.map((_, i) => addDays(week, i));
-  const dayOfDate = (date: string) => DAYS[dates.indexOf(date)];
+  const timeConfig = useMemo(() => effectiveTimetable(data.timetable, maps.section.get(sectionId)?.departmentId || (data.departments?.length === 1 ? data.departments[0].id : null), termId), [data.timetable, data.departments, maps.section, sectionId, termId]);
+  const weekExams = useMemo(() => periodExams.filter((e) => e.date >= week && e.date <= addDays(week, 6)), [periodExams, week]);
+  const DAYS = useMemo(() => timetableDisplayDays(timeConfig, weekExams.map((e) => ({ dayOfWeek: DATE_DAYS[new Date(e.date + "T00:00:00Z").getUTCDay()] }))), [timeConfig, weekExams]);
+  const GRID = useMemo(() => timetableGrid(timeConfig, weekExams), [timeConfig, weekExams]);
+  const dates = useMemo(() => DAYS.map((day) => addDays(week, TIMETABLE_DAYS.indexOf(day))), [DAYS, week]);
+  const dayOfDate = (date: string) => DATE_DAYS[new Date(date + "T00:00:00Z").getUTCDay()];
   const entries: SchedulerEntry[] = useMemo(
     () => periodExams.filter((e) => dates.includes(e.date)).map((e) => ({
       id: e.id, semesterId: e.semesterId, sectionId: e.sectionId, subjectId: e.subjectId, facultyId: e.proctorId, roomId: e.roomId,
       component: "LECTURE", dayOfWeek: dayOfDate(e.date), startMin: e.startMin, endMin: e.endMin, status: e.status, notes: e.notes,
     })),
-    // dates and dayOfDate derive from week only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [periodExams, week]
+    [periodExams, dates]
   );
+  const configurationIssues = periodExams.filter((e) => timetableTimeError(effectiveTimetable(data.timetable, maps.section.get(e.sectionId)?.departmentId, e.semesterId), { ...e, dayOfWeek: DATE_DAYS[new Date(e.date + "T00:00:00Z").getUTCDay()] }));
   const examById = useMemo(() => new Map(data.exams.map((e) => [e.id, e])), [data.exams]);
   const colorIndex = useMemo(() => new Map(data.subjects.map((s, i) => [s.id, i])), [data.subjects]);
 
@@ -308,6 +314,7 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
       context,
       scheduledClasses,
       data.unavailable,
+      Object.fromEntries(data.sections.map((s) => [s.id, effectiveTimetable(data.timetable, s.departmentId, termId)])),
     );
     startTransition(async () => {
       if (plan.proposals.length) {
@@ -346,7 +353,7 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
   // ---- Drag and drop ----
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: gridKeyboardCoordinates, keyboardCodes: { start: ["Space"], cancel: ["Escape"], end: ["Space", "Enter"] } })
+    useSensor(KeyboardSensor, { coordinateGetter: gridKeyboardCoordinatesFor(GRID), keyboardCodes: { start: ["Space"], cancel: ["Escape"], end: ["Space", "Enter"] } })
   );
   function target(event: DragMoveEvent | DragEndEvent): { date: string; startMin: number; duration: number } | null {
     const day = event.over?.data.current?.day as DayOfWeek | undefined;
@@ -362,7 +369,10 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
       y = activator.clientY + event.delta.y - event.over.rect.top - GRID.rowHeight / 2;
     } else if (translated) y = translated.top - event.over.rect.top;
     else return null;
-    return { date: dates[DAYS.indexOf(day)], startMin: clampStart(yToMinutes(y, GRID), duration, GRID), duration };
+    const section = maps.section.get(needDrag?.sectionId ?? x?.sectionId ?? sectionId);
+    const config = effectiveTimetable(data.timetable, section?.departmentId, termId);
+    const hours = timetableHours(config, day);
+    return { date: dates[DAYS.indexOf(day)], startMin: Math.max(hours.startMin, snapTimetableTime(Math.min(yToMinutes(y, { ...GRID, snapStep: 1 }), hours.endMin - duration), config, day)), duration };
   }
   const dragExam = activeId ? examById.get(activeId) : null;
   const heatmap = useMemo(() => {
@@ -398,7 +408,7 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
         else move(id, t.date, t.startMin);
       }}
       onDragCancel={() => { setActiveId(null); setNeedDrag(null); setPreview(null); }}
-      accessibility={{ container: typeof document === "undefined" ? undefined : document.body, screenReaderInstructions: { draggable: "Press Space to pick up this examination. Use the arrow keys to move it by 30 minutes or one day, Space to drop, or Escape to cancel. Press Enter to edit." } }}
+      accessibility={{ container: typeof document === "undefined" ? undefined : document.body, screenReaderInstructions: { draggable: "Press Space to pick up this examination. Use the arrow keys to move it by the configured adjustment step or one day, Space to drop, or Escape to cancel. Press Enter to edit." } }}
     >
       <div className="flex flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
         <ScheduleHeader
@@ -413,6 +423,7 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
           help="Each examination starts from its class schedule. Drag to change the date or time; hard conflicts block a save."
           leading={<>
             {academicYearControl}
+            <TimetableConfiguration terms={data.terms} departments={data.departments ?? []} canManageSchool={data.isAdmin} termId={termId} departmentId={maps.section.get(sectionId)?.departmentId ?? undefined} />
             <div className="min-w-0 space-y-1 xl:w-64">
               <label htmlFor="exam-term" className="block text-sm text-muted-foreground">Term</label>
               <NativeSelect id="exam-term" value={termId} onChange={(e) => { setTermId(e.target.value); setSectionId(""); }} options={data.terms.map((t) => ({ value: t.id, label: t.label }))} />
@@ -423,6 +434,7 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
           {data.canSubmit && <Button variant="outline" disabled={!drafts.length} onClick={() => setSubmitOpen(true)}><UploadSimple className="size-4" /> Submit for Approval{drafts.length ? ` (${drafts.length})` : ""}</Button>}
           {data.isAdmin && <Button variant="outline" nativeButton={false} render={<Link href="/admin/review-center?queue=examinations" />}>Registrar Review Center</Button>}
         </ScheduleHeader>
+        {configurationIssues.length > 0 && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{configurationIssues.length} existing examination(s) fall outside the current timetable configuration. Their original times are preserved; open an examination to review its time.</p>}
 
         {/* Period, week, and the official window */}
         <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -660,6 +672,10 @@ function ExamDialog({ draft, data, type, termId, classes, win, dates, context, o
   }, [f, others, context]);
   const subjectOf = new Map(data.subjects.map((s) => [s.id, s]));
   const sectionOf = new Map(data.sections.map((s) => [s.id, s]));
+  const timeConfig = effectiveTimetable(data.timetable, sectionOf.get(f.sectionId)?.departmentId, termId);
+  const selectedDay = DATE_DAYS[new Date(f.date + "T00:00:00Z").getUTCDay()] ?? "MONDAY";
+  const timeError = timetableTimeError(timeConfig, { ...f, dayOfWeek: selectedDay });
+  const timeChanged = !draft.id || ["sectionId", "date", "startMin", "endMin"].some((key) => f[key as keyof Draft] !== draft[key as keyof Draft]);
   const submittedExam = data.exams.find((exam) => exam.id === f.id);
   const needsChangeReason = !!f.id && (submittedExam?.status === "PUBLISHED" || submittedExam?.status === "REVIEW");
   const locked = !data.canEdit || submittedExam?.status === "REVIEW" || (data.isAdmin ? submittedExam?.status !== "PUBLISHED" : submittedExam?.status === "PUBLISHED");
@@ -672,6 +688,7 @@ function ExamDialog({ draft, data, type, termId, classes, win, dates, context, o
 
   function save() {
     setError(null);
+    if (timeChanged && timeError) { setError(timeError); return; }
     if (needsChangeReason && !changeReason.trim()) {
       setError("Document a reason before changing this submitted examination.");
       return;
@@ -701,8 +718,8 @@ function ExamDialog({ draft, data, type, termId, classes, win, dates, context, o
           <Field><FieldLabel htmlFor="x-proctor">Proctor</FieldLabel><NativeSelect id="x-proctor" value={f.proctorId} onChange={(e) => set("proctorId", e.target.value)} placeholder="Choose a proctor" options={data.faculty.map((p) => ({ value: p.id, label: p.fullName }))} /></Field>
           <Field><FieldLabel htmlFor="x-date">Date</FieldLabel><Input id="x-date" type="date" value={f.date} onChange={(e) => set("date", e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-2">
-            <Field><FieldLabel htmlFor="x-start">Start</FieldLabel><NativeSelect id="x-start" value={String(f.startMin)} onChange={(e) => set("startMin", Number(e.target.value))} options={TIMES} /></Field>
-            <Field><FieldLabel htmlFor="x-end">End</FieldLabel><NativeSelect id="x-end" value={String(f.endMin)} onChange={(e) => set("endMin", Number(e.target.value))} options={TIMES} /></Field>
+            <Field><FieldLabel htmlFor="x-start">Start</FieldLabel><ConfiguredTimeInput id="x-start" config={timeConfig} preserveExisting={!!draft.id && !timeChanged} day={selectedDay} value={f.startMin} onChange={(start) => setF((v) => ({ ...v, startMin: start, endMin: Math.min(1440, start + v.endMin - v.startMin) }))} /></Field>
+            <Field><FieldLabel htmlFor="x-end">End</FieldLabel><ConfiguredTimeInput id="x-end" config={timeConfig} day={selectedDay} value={f.endMin} onChange={(value) => set("endMin", value)} />{timeError && <p className="text-xs text-amber-700">{timeError}</p>}</Field>
           </div>
           </fieldset>
           {submittedExam?.status === "PUBLISHED" && data.isAdmin && <Field><FieldLabel htmlFor="x-change-reason">Reason for published examination change</FieldLabel><Textarea id="x-change-reason" value={changeReason} onChange={(e) => setChangeReason(e.target.value)} maxLength={500} required /></Field>}

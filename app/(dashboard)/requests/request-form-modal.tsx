@@ -11,10 +11,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ux/native-select";
 import { DETAILS_MAX, REQUEST_TYPES, requestFormSchema, type RequestFormData, type RequestFormInput, type RequestRow, type RequestSummary } from "@/lib/requests/rules";
 import { cn } from "@/lib/utils";
+import { WEEK_DAYS } from "@/lib/scheduler/timetable";
 import { ScheduleCombobox, type ScheduleOption } from "./schedule-combobox";
 
 export type Option = { id: string; label: string };
-const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+const DAYS = WEEK_DAYS;
 const dayName = (d: string) => `${d[0]}${d.slice(1).toLowerCase()}`;
 const clock = (hhmm: string) => {
   const h = Number(hhmm.slice(0, 2));

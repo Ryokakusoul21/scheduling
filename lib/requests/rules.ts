@@ -28,7 +28,7 @@ export const statusGroup = (status: string): StatusFilter => (status === "COMPLE
 export const DETAILS_MIN = 10;
 export const DETAILS_MAX = 500;
 
-const time = z.string().regex(/^\d{2}:\d{2}$/, "Choose a time");
+const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Choose a valid time");
 const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
 
 /** Shared by the form and the server actions so both validate the same way. */
@@ -38,7 +38,7 @@ export const requestFormSchema = z
     scheduleId: z.string().optional().transform((v) => v || null),
     reason: z.string().trim().min(DETAILS_MIN, `Describe the request in at least ${DETAILS_MIN} characters`).max(DETAILS_MAX, `Use ${DETAILS_MAX} characters or fewer`),
     requestedRoomId: z.string().optional().transform((v) => v || null),
-    requestedDay: z.enum(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"]).optional().or(z.literal("")).transform((v) => v || null),
+    requestedDay: z.enum(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]).optional().or(z.literal("")).transform((v) => v || null),
     requestedStart: time.optional().or(z.literal("")).transform((v) => v || null),
     requestedEnd: time.optional().or(z.literal("")).transform((v) => v || null),
     requestedFacultyId: z.string().optional().transform((v) => v || null),

@@ -16,7 +16,7 @@ export interface ReviewSheetData {
   submissionId: string;
   departmentName: string;
   termLabel: string;
-  sections: (SchedulerData["sections"][number] & { programName: string | null })[];
+  sections: (SchedulerData["sections"][number] & { programName: string | null; timeConfig?: import("@/lib/timetable/config").TimetableConfig })[];
   entries: SchedulerEntry[];
   subjects: SchedulerData["subjects"];
   faculty: SchedulerData["faculty"];
@@ -69,7 +69,7 @@ export function ReviewSheets({ data }: { data: ReviewSheetData }) {
   );
   if (!section) return <div className="space-y-4">{filters}<p className="text-sm text-muted-foreground">No sections match these filters.</p></div>;
 
-  const source: SheetSource = { section, entries: data.entries, subjects, faculty, rooms, programName: section.programName, departmentName: data.departmentName, termLabel: data.termLabel };
+  const source: SheetSource = { timeConfig: section.timeConfig, section, entries: data.entries, subjects, faculty, rooms, programName: section.programName, departmentName: data.departmentName, termLabel: data.termLabel };
   const mine = data.entries.filter((e) => e.sectionId === section.id && submitted.has(e.id)).sort((a, b) => a.dayOfWeek.localeCompare(b.dayOfWeek) || a.startMin - b.startMin);
   const notes = (id: string) => data.comments.filter((c) => c.rowId === id);
 

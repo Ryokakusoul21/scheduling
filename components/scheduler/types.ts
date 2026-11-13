@@ -119,6 +119,7 @@ export interface RoomOption {
 }
 
 export interface SchedulerData {
+  timetable?: import("@/lib/timetable/config").TimetableBundle;
   academicYears: { id: string; name: string; isActive: boolean }[];
   academicYearId: string | null;
   terms: TermOption[];
@@ -142,6 +143,8 @@ export interface SchedulerData {
 }
 
 export interface SchedulerPermissions {
+  canConfigureTimetable?: boolean;
+  canManageSchoolTimetable?: boolean;
   canEdit: boolean;
   canPublish: boolean;
   canSubmit: boolean;

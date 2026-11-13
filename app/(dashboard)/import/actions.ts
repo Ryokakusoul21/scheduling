@@ -7,7 +7,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
-import { requireScope, type Scope } from "@/lib/permissions/scope";
+import { policyUserFromScope, requireScope, type Scope } from "@/lib/permissions/scope";
+import { can } from "@/lib/permissions/policy";
 import { canManageSubject } from "@/lib/subjects/permissions";
 import { logBlocked } from "@/lib/permissions/department";
 import { notifyFacultyEach } from "@/lib/notify";
@@ -48,18 +49,13 @@ async function validate(kind: ImportKind, records: Record<string, string>[], sco
     existingNumbers: rooms.map((r) => r.roomNumber),
     departments,
     floors: floors.map((f) => ({ building: f.building.name, floor: f.name })),
-  }).map((r) => {
-    if (!r.data || scope.isAdmin) return r;
-    // Rooms imported by a Head of Department always belong to their department and go into existing buildings and floors.
-    if (!scope.departmentId || (r.data.departmentId && r.data.departmentId !== scope.departmentId)) return { ...r, data: null, errors: ["You can only import rooms for your department."] };
-    const known = floors.some((x) => x.building.name.toLowerCase() === r.data!.building.toLowerCase() && x.name.toLowerCase() === r.data!.floor.toLowerCase());
-    if (!known) return { ...r, data: null, errors: ["That building and floor do not exist yet. Ask the Registrar to add them first."] };
-    return { ...r, data: { ...r.data, departmentId: scope.departmentId } };
   });
 }
 
 export async function validateImportAction(kind: ImportKind, records: Record<string, string>[]): Promise<Result<RowResult<unknown>[]>> {
   const scope = await requireScope(...STAFF_ROLES);
+  if (kind !== "subjects" && kind !== "rooms") return { ok: false, error: "Invalid import type." };
+  if (kind === "rooms" && !can(policyUserFromScope(scope), "bulkImport", { type: "room" })) return { ok: false, error: "Room imports are restricted to the Registrar and Administrator." };
   const parsed = recordsSchema.safeParse(records);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid data." };
   return { ok: true, data: await validate(kind, parsed.data, scope) };
@@ -68,6 +64,8 @@ export async function validateImportAction(kind: ImportKind, records: Record<str
 /** Saves every valid row in one transaction; invalid rows are skipped and reported back. */
 export async function commitImportAction(kind: ImportKind, records: Record<string, string>[]): Promise<Result<{ saved: number; skipped: number }>> {
   const scope = await requireScope(...STAFF_ROLES);
+  if (kind !== "subjects" && kind !== "rooms") return { ok: false, error: "Invalid import type." };
+  if (kind === "rooms" && !can(policyUserFromScope(scope), "bulkImport", { type: "room" })) return { ok: false, error: "Room imports are restricted to the Registrar and Administrator." };
   const parsed = recordsSchema.safeParse(records);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid data." };
   const results = await validate(kind, parsed.data, scope);

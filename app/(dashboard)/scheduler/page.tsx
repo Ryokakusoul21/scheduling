@@ -1,3 +1,4 @@
+import { loadTimetableBundle } from "@/lib/timetable/service";
 import { getScope, policyUserFromScope } from "@/lib/permissions/scope";
 import { can } from "@/lib/permissions/policy";
 import { activeRules } from "@/lib/scheduler/constraints-server";
@@ -121,6 +122,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
   });
 
   const data: SchedulerData = {
+    timetable: await loadTimetableBundle(),
     academicYears: academicYears.map((y) => ({ id: y.id, name: y.name, isActive: y.isActive })),
     academicYearId: academicYear.id,
     terms: terms.map((t) => ({
@@ -223,6 +225,8 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
         modes={STAFF_ROLES.includes(role) ? <ModeSwitch mode={mode} academicYearId={academicYear.id} /> : undefined}
         data={data}
         permissions={{
+          canConfigureTimetable: STAFF_ROLES.includes(role),
+          canManageSchoolTimetable: scope.isAdmin,
           // Administrator is view-only; the Registrar approves and Heads of Department build schedules.
           canEdit: role === "HEAD_OF_DEPARTMENT" || role === "REGISTRAR",
           canPublish: PUBLISH_ROLES.includes(role),

@@ -1,5 +1,7 @@
 "use server";
 
+import { getTimetableConfig } from "@/lib/timetable/service";
+import { timetableTimeError } from "@/lib/timetable/config";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
@@ -59,15 +61,19 @@ const refresh = () => {
 async function examProblems(scope: Scope, d: ExamInput, excludeId?: string) {
   const [plan, section, room, context] = await Promise.all([
     loadPlan(d.date, d.date),
-    prisma.section.findUnique({ where: { id: d.sectionId }, select: { studentCount: true, name: true, level: true, archivedAt: true } }),
+    prisma.section.findUnique({ where: { id: d.sectionId }, select: { studentCount: true, name: true, level: true, archivedAt: true, departmentId: true } }),
     prisma.room.findUnique({ where: { id: d.roomId }, select: { capacity: true, roomName: true, status: true, archivedAt: true } }),
     loadExamContext(d.type, null, scope.isAdmin ? null : scope.departmentIds),
   ]);
+  const previous = excludeId ? await prisma.examination.findUnique({ where: { id: excludeId } }) : null;
+  const timeChanged = !previous || previous.sectionId !== d.sectionId || previous.semesterId !== d.semesterId || previous.date.toISOString().slice(0, 10) !== d.date || previous.startMin !== d.startMin || previous.endMin !== d.endMin;
+  const timeError = section && timeChanged ? timetableTimeError(await getTimetableConfig(d.semesterId, section.departmentId), { ...d, dayOfWeek: dayOfWeek(d.date) }) : null;
   const conflicts = findClashes(
     plan.ctx.occupants,
     { date: d.date, startMin: d.startMin, endMin: d.endMin, roomId: d.roomId, facultyIds: [d.proctorId], sectionIds: [d.sectionId] },
     (o) => o.kind === "EXAMINATION" && o.refId === excludeId
   ).map(describeClash);
+  if (timeError) conflicts.push(timeError);
   if (room?.status !== "AVAILABLE" || room?.archivedAt) conflicts.push(`${room?.roomName ?? "The room"} is not open for use.`);
   if (section?.archivedAt) conflicts.push(`${section.name} is archived.`);
   if (!plan.ctx.faculty.has(d.proctorId)) conflicts.push("The proctor is archived or inactive.");
@@ -204,6 +210,8 @@ export async function saveGeneratedExamsAction(input: z.infer<typeof generatedBa
     const proctor = proctorById.get(exam.proctorId);
     if (!proctor) return { ok: false, error: "A proposed proctor is inactive. Refresh the schedule and generate again." };
     const day = dayOfWeek(exam.date);
+    const timeError = timetableTimeError(await getTimetableConfig(batch.semesterId, sectionById.get(exam.sectionId)!.departmentId), { ...exam, dayOfWeek: day });
+    if (timeError) return { ok: false, error: timeError };
     if ((proctor.employmentType === "PART_TIME" && proctor.dayOff === day) || (proctor.availability.length && !proctor.availability.some((window) => window.dayOfWeek === day && window.startMin <= exam.startMin && window.endMin >= exam.endMin))) {
       return { ok: false, error: "A proposed proctor is unavailable at the generated time. Refresh the schedule and generate again." };
     }

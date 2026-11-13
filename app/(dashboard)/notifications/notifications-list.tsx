@@ -1,95 +1,51 @@
 "use client";
 
-import { useTransition } from "react";
-import Link from "next/link";
-import { Bell, Checks as CheckCheck, Info, CheckCircle as CheckCircle2, Warning as AlertTriangle, XCircle } from "@phosphor-icons/react/ssr";
-import { Card, CardContent } from "@/components/ui/card";
+import { useState } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { Bell, Checks } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
-import { ActionButton } from "@/components/ux/action-button";
-import { markNotificationReadAction, markAllNotificationsReadAction } from "./actions";
+import { Card } from "@/components/ui/card";
+import Link from "next/link";
+import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
+import { NotificationMessage } from "@/components/notifications/notification-message";
+import { notificationTime } from "@/lib/notifications/format";
+import { NotificationItem } from "@/components/notifications/notification-item";
+import { fetchNotifications, useNotificationActions } from "@/components/notifications/use-notifications";
+import type { NotificationPage } from "@/lib/notifications/format";
 
-interface Notification {
-  id: string;
-  type: string;
-  title: string;
-  message: string;
-  isRead: boolean;
-  link: string;
-  createdAt: string;
-}
-
-const ICONS: Record<string, typeof Info> = {
-  INFO: Info,
-  SUCCESS: CheckCircle2,
-  WARNING: AlertTriangle,
-  ERROR: XCircle,
-};
-
-const TINTS: Record<string, string> = {
-  INFO: "text-blue-600 bg-blue-500/10",
-  SUCCESS: "text-emerald-600 bg-emerald-500/10",
-  WARNING: "text-amber-600 bg-amber-500/10",
-  ERROR: "text-destructive bg-destructive/10",
-};
-
-export function NotificationsList({ notifications }: { notifications: Notification[] }) {
-  const [pending, startTransition] = useTransition();
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
-
+export function NotificationsList({ initialPage, userId }: { initialPage: NotificationPage; userId: string }) {
+  const [filter, setFilter] = useState<"all" | "unread">("all");
+  const query = useInfiniteQuery({
+    queryKey: ["notifications", userId, "list", filter],
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) => {
+      const params = new URLSearchParams({ filter });
+      if (pageParam) params.set("cursor", pageParam);
+      return fetchNotifications(params, signal);
+    },
+    getNextPageParam: (page) => page.nextCursor,
+    initialData: filter === "all" ? { pages: [initialPage], pageParams: [null] } : undefined,
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+    retry: 1,
+  });
+  const actions = useNotificationActions(userId);
+  const count = query.data?.pages[0]?.unread ?? initialPage.unread;
+  const items = [...new Map(query.data?.pages.flatMap((p) => p.items).map((item) => [item.id, item])).values()];
   return (
-    <div className="space-y-3">
-      {unreadCount > 0 && (
-        <div className="flex justify-end">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={pending}
-            onClick={() => startTransition(async () => { await markAllNotificationsReadAction(); })}
-          >
-            <CheckCheck className="size-4" /> Mark all as read
-          </Button>
+    <div className="space-y-3" aria-busy={query.isPending}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-2" role="group" aria-label="Filter notifications">
+          {(["all", "unread"] as const).map((value) => <Button key={value} size="sm" variant={filter === value ? "secondary" : "ghost"} aria-pressed={filter === value} onClick={() => setFilter(value)}>{value === "all" ? "All" : `Unread (${count})`}</Button>)}
         </div>
-      )}
-
-      {notifications.length === 0 && (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-2 p-10 text-center text-muted-foreground">
-            <Bell className="size-8" />
-            <p className="text-sm">You have no notifications yet.</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {notifications.map((n) => {
-        const Icon = ICONS[n.type] ?? Info;
-        const content = (
-          <div className={`flex items-start gap-3 p-4 ${!n.isRead ? "bg-accent/40" : ""}`}>
-            <div className={`flex size-9 shrink-0 items-center justify-center rounded-full ${TINTS[n.type] ?? TINTS.INFO}`}>
-              <Icon className="size-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">{n.title}</p>
-              <p className="text-sm text-muted-foreground">{n.message}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{n.createdAt}</p>
-            </div>
-            {!n.isRead && (
-              <ActionButton
-                kind="read"
-                disabled={pending}
-                onClick={(e) => {
-                  e.preventDefault();
-                  startTransition(async () => { await markNotificationReadAction(n.id); });
-                }}
-              />
-            )}
-          </div>
-        );
-        return (
-          <Card key={n.id} className="overflow-hidden p-0">
-            {n.link ? <Link href={n.link}>{content}</Link> : content}
-          </Card>
-        );
-      })}
+        <Button size="sm" variant="outline" disabled={!count || actions.isPending} onClick={() => actions.mutate(null)}><Checks className="size-4" /> Mark all as read</Button>
+      </div>
+      {query.isError && <div role="alert" className="rounded-md border p-3 text-sm">Could not refresh notifications. <Button variant="link" size="sm" disabled={query.isFetching} onClick={() => void query.refetch()}>Retry</Button></div>}
+      {query.isPending && <p role="status" className="p-8 text-center text-muted-foreground">Loading notifications…</p>}
+      {!query.isPending && !query.isError && !items.length && <Card className="items-center gap-2 p-10 text-center text-muted-foreground"><Bell className="size-8" /><p className="text-sm">{filter === "unread" ? "You’re all caught up." : "No notifications yet."}</p></Card>}
+      {!!items.length && <CollectionView storageKey="notifications:view" label="Notifications" table={<RecordsTable label="Notifications" columns={["Notification", "Summary", "Status", "Date", "Actions"]} rows={items.map((item) => ({ id: item.id, cells: [<span key="title" className="font-bold">{item.title}</span>, <NotificationMessage key="message" message={item.fullMessage ?? item.message} />, item.isRead ? "Read" : "Unread", notificationTime(item.createdAt), <div key="actions" className="flex flex-wrap items-center gap-2">{item.link && <Link href={item.link} onClick={() => { if (!item.isRead && !actions.isPending) actions.mutate(item.id); }} className="text-xs font-medium text-primary hover:underline">View details</Link>}{!item.isRead && <Button size="sm" variant="ghost" disabled={actions.isPending} onClick={() => actions.mutate(item.id)}>Mark as read</Button>}</div>] }))} />}><div className="space-y-3">{items.map((item) => <Card key={item.id} className="overflow-hidden p-0"><NotificationItem item={item} pending={actions.isPending} onRead={(id) => actions.mutate(id)} /></Card>)}</div></CollectionView>}
+      {query.hasNextPage && <div className="text-center"><Button variant="outline" disabled={query.isFetching} onClick={() => void query.fetchNextPage()}>{query.isFetchingNextPage ? "Loading…" : "Load more"}</Button></div>}
+      <p role="status" className="sr-only">{count} unread notifications</p>
     </div>
   );
 }

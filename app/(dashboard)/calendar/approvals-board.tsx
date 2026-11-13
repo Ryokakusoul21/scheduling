@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ux/native-select";
 import { EmptyState } from "@/components/ux/states";
+import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
 import { levelLabel } from "@/lib/academics/levels";
 import { formatLongDate } from "@/lib/calendar";
 import { ACTIVITY_STATUSES, ACTIVITY_STATUS_COLORS, ACTIVITY_STATUS_LABELS, type ActivityListItem } from "@/lib/activities/status";
@@ -109,6 +110,7 @@ export function ApprovalsBoard({ items, departments }: { items: ActivityListItem
       {shown.length === 0 ? (
         <EmptyState title="Nothing to review" description="Activities submitted by Heads of Department appear here until they are reviewed." />
       ) : (
+        <CollectionView storageKey="activity-approvals:view" label="Activity approvals" table={<RecordsTable label="Activity approvals" columns={["Select", "Activity", "Department / level", "Submitted by", "When / location", "Status", "Conflicts", "Actions"]} rows={shown.map((a) => ({ id: a.id, cells: [a.status !== "APPROVED" ? <Checkbox key="select" checked={selected.has(a.id)} onCheckedChange={() => toggle(a.id)} aria-label={`Select ${a.title}`} /> : null, <div key="activity"><p className="font-semibold">{a.title}</p><details className="text-xs"><summary className="cursor-pointer text-primary">Details</summary><p>{a.description || "No description"}</p><p>Participants: {a.participants || "Not set"}</p>{a.reviewNote && <p>Review note: {a.reviewNote}</p>}</details></div>, `${a.department} · ${a.level ? levelLabel(a.level) : "All levels"}`, `${a.submittedBy}, ${new Date(a.submittedAt).toLocaleDateString("en-PH", { dateStyle: "medium" })}`, `${when(a)} · ${a.location || "Not set"}`, <Badge key="status" variant="outline" className={ACTIVITY_STATUS_COLORS[a.status]}>{ACTIVITY_STATUS_LABELS[a.status]}</Badge>, a.conflicts.length ? <details key="conflicts"><summary className="cursor-pointer text-warning">{a.conflicts.length} conflicts</summary><ul>{a.conflicts.map((c, i) => <li key={i}>{c}</li>)}</ul></details> : "No conflicts", a.status !== "APPROVED" ? <div key="actions" className="flex flex-wrap gap-1.5"><Button size="sm" variant="destructive" disabled={pending} onClick={() => start("REJECTED", [a.id])}>Reject</Button>{a.status !== "CHANGES_REQUESTED" && <Button size="sm" variant="outline" disabled={pending} onClick={() => start("CHANGES_REQUESTED", [a.id])}>Request changes</Button>}<Button size="sm" disabled={pending} onClick={() => start("APPROVED", [a.id])}>Approve</Button></div> : null] }))} />}>
         <div className="grid gap-3 lg:grid-cols-2">
           {shown.map((a) => (
             <Card key={a.id} className={cn(selected.has(a.id) && "ring-2 ring-primary")}>
@@ -145,6 +147,7 @@ export function ApprovalsBoard({ items, departments }: { items: ActivityListItem
             </Card>
           ))}
         </div>
+        </CollectionView>
       )}
 
       <Dialog open={!!asking} onOpenChange={(o) => !o && setAsking(null)}>

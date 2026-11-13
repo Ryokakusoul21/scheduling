@@ -6,6 +6,7 @@ import { CalendarPlus, Plus, Sparkle } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
+import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ConfirmDialog, FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
 import { useShortcut } from "@/components/ux/shortcuts";
@@ -97,6 +98,13 @@ export function TermsManager({
 
   return (
     <section aria-label="Terms" className="space-y-3">
+      <CollectionView storageKey="terms:view" label="Terms" table={<div className="space-y-5">{groups.map((g) => {
+        const list = terms.filter((t) => t.programId === g.programId).sort((a, b) => types.indexOf(a.type as never) - types.indexOf(b.type as never));
+        return <section key={g.programId ?? "shared"} className="space-y-2" aria-label={`${g.title} terms`}>
+          <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-semibold">{g.title}</h3><p className="text-xs text-muted-foreground">{g.subtitle}</p></div><div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => dialog.openEdit({ programId: g.programId })}>Add term to {g.title}</Button>{list.length < types.length && <Button size="sm" variant="outline" disabled={pending} onClick={() => createDefaults(g.programId)}>Create missing {isCollege ? "semesters" : "quarters"}</Button>}</div></div>
+          {list.length ? <RecordsTable label={`${g.title} terms`} columns={["Term", "Dates", "Status", "Scheduled classes", "Actions"]} rows={list.map((t) => ({ id: t.id, cells: [termLabel(t.type), `${fmt(t.startDate)} – ${fmt(t.endDate)}`, t.isActive ? <Badge key="status">Active</Badge> : "Inactive", t.classes, <div key="actions" className="flex gap-1.5"><ActionButton kind="edit" onClick={() => dialog.openEdit({ term: t, programId: t.programId })}>Edit dates</ActionButton>{!t.isActive && <ActionButton kind="activate" onClick={() => setActive(t)}>Set as active</ActionButton>}<ActionButton kind="delete" onClick={() => del.openEdit(t)}>Delete</ActionButton></div>] }))} /> : <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">{g.programId && isCollege ? "Uses the shared semesters." : "No terms yet."}</p>}
+        </section>;
+      })}</div>}>
       <div className={cn("grid gap-3", isCollege ? "md:grid-cols-2 xl:grid-cols-3" : "")}>
         {groups.map((g) => {
           const list = terms.filter((t) => t.programId === g.programId).sort((a, b) => types.indexOf(a.type as never) - types.indexOf(b.type as never));
@@ -160,6 +168,7 @@ export function TermsManager({
           );
         })}
       </div>
+      </CollectionView>
 
       <FormDialog
         open={!!dialog.state}

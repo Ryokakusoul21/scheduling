@@ -2,7 +2,8 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { getScope } from "@/lib/permissions/scope";
+import { requireScope } from "@/lib/permissions/scope";
+import { ROOM_BOOKING_ROLES } from "@/lib/permissions/roles";
 import { MAX_REPEATS, PRIORITIES, URGENT_REASONS, weeklyDates } from "@/lib/bookings/plan";
 import {
   bookingTimeline, cancelBooking, createBooking, editBookingDetails, respondAcknowledgement, reviewOverride, searchRooms, shortenBooking,
@@ -53,7 +54,7 @@ type Caps = Awaited<ReturnType<typeof searchRooms>>["caps"];
 
 /** Rates every room the person may use for the slot (overrides also see other departments' rooms). */
 export async function findRoomsAction(input: z.input<typeof searchSchema>): Promise<Result<{ options: RoomOption[]; caps: Caps }>> {
-  const scope = await getScope();
+  const scope = await requireScope(...ROOM_BOOKING_ROLES);
   const parsed = searchSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the booking details." };
   if (parsed.data.date < today()) return { ok: false, error: "Bookings must be for today or a later date." };
@@ -62,7 +63,7 @@ export async function findRoomsAction(input: z.input<typeof searchSchema>): Prom
 
 /** Books the room; overrides displace classes and lower bookings, or wait for the owning department's approval. */
 export async function bookRoomAction(input: z.input<typeof bookSchema>): Promise<Result<{ bookingId: string; status: string; items: PlanItem[]; displaced: DisplacedBooking[]; repeat?: { booked: number; skipped: { date: string; reason: string }[] } }>> {
-  const scope = await getScope();
+  const scope = await requireScope(...ROOM_BOOKING_ROLES);
   const parsed = bookSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the booking details." };
   if (parsed.data.date < today()) return { ok: false, error: "Bookings must be for today or a later date." };
@@ -88,7 +89,7 @@ export async function bookRoomAction(input: z.input<typeof bookSchema>): Promise
 
 /** Cancels a booking; `restore` puts displaced classes and bookings back when their slots are still free. */
 export async function cancelBookingAction(id: string, restore = true): Promise<Result> {
-  const scope = await getScope();
+  const scope = await requireScope(...ROOM_BOOKING_ROLES);
   const result = await cancelBooking(scope, z.string().min(1).parse(id), restore);
   if (!result.ok) return result;
   revalidate();
@@ -96,7 +97,7 @@ export async function cancelBookingAction(id: string, restore = true): Promise<R
 }
 
 export async function shortenBookingAction(input: { id: string; startMin: number; endMin: number; restore: boolean }): Promise<Result<{ restored: number }>> {
-  const scope = await getScope();
+  const scope = await requireScope(...ROOM_BOOKING_ROLES);
   const parsed = z.object({ id: z.string().min(1), startMin: z.number().int().min(0), endMin: z.number().int().max(24 * 60), restore: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "Choose a valid time." };
   const result = await shortenBooking(scope, parsed.data.id, parsed.data.startMin, parsed.data.endMin, parsed.data.restore);
@@ -106,7 +107,7 @@ export async function shortenBookingAction(input: { id: string; startMin: number
 }
 
 export async function editBookingAction(input: { id: string; purpose: string; attendees: number }): Promise<Result> {
-  const scope = await getScope();
+  const scope = await requireScope(...ROOM_BOOKING_ROLES);
   const parsed = z.object({ id: z.string().min(1), purpose: z.string().trim().min(3, "Describe the purpose in at least 3 characters").max(200), attendees: z.number().int().min(1).max(1000) }).safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the details." };
   const result = await editBookingDetails(scope, parsed.data.id, parsed.data.purpose, parsed.data.attendees);
@@ -117,7 +118,7 @@ export async function editBookingAction(input: { id: string; purpose: string; at
 
 /** The owning department approves or rejects an urgent override of its room. */
 export async function reviewOverrideAction(id: string, approve: boolean, note?: string): Promise<Result> {
-  const scope = await getScope();
+  const scope = await requireScope(...ROOM_BOOKING_ROLES);
   const result = await reviewOverride(scope, z.string().min(1).parse(id), approve, note?.slice(0, 500));
   if (!result.ok) return result;
   revalidate();
@@ -125,7 +126,7 @@ export async function reviewOverrideAction(id: string, approve: boolean, note?: 
 }
 
 export async function respondAcknowledgementAction(id: string, status: "ACKNOWLEDGED" | "ALTERNATIVE_REQUESTED", note?: string): Promise<Result> {
-  const scope = await getScope();
+  const scope = await requireScope(...ROOM_BOOKING_ROLES);
   const result = await respondAcknowledgement(scope, z.string().min(1).parse(id), z.enum(["ACKNOWLEDGED", "ALTERNATIVE_REQUESTED"]).parse(status), note?.slice(0, 500));
   if (!result.ok) return result;
   revalidate();
@@ -133,13 +134,13 @@ export async function respondAcknowledgementAction(id: string, status: "ACKNOWLE
 }
 
 export async function bookingTimelineAction(id: string): Promise<Result<{ id: string; at: string; who: string; action: string }[]>> {
-  const scope = await getScope();
+  const scope = await requireScope(...ROOM_BOOKING_ROLES);
   return { ok: true, data: await bookingTimeline(scope, z.string().min(1).parse(id)) };
 }
 
 /** Occupancy grid for one day or a six-day week. */
 export async function availabilityAction(from: string, days: 1 | 6): Promise<Result<{ rooms: { id: string; name: string; capacity: number; building: string; closed: boolean }[]; blocks: AvailabilityBlock[] }>> {
-  const scope = await getScope();
+  const scope = await requireScope(...ROOM_BOOKING_ROLES);
   const parsed = z.object({ from: date, days: z.union([z.literal(1), z.literal(6)]) }).safeParse({ from, days });
   if (!parsed.success) return { ok: false, error: "Choose a date." };
   return { ok: true, data: await roomAvailability(scope, parsed.data.from, parsed.data.days) };

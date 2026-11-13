@@ -6,15 +6,15 @@ import { ImportWorkspace } from "./import-workspace";
 export const metadata = { title: "Bulk Data Import · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function ImportPage({ searchParams }: { searchParams: Promise<{ kind?: string }> }) {
-  await requireScope(...STAFF_ROLES);
+  const scope = await requireScope(...STAFF_ROLES);
   const { kind } = await searchParams;
   return (
     <div className="space-y-4">
       <PageHeader
         title="Bulk Data Import"
-        description="Add many subjects or rooms at once from a CSV or Excel file, or paste rows copied from a spreadsheet. Every row is validated and previewed before saving. To add one at a time, use the Subjects or Rooms page."
+        description={scope.isAdmin ? "Import subjects or rooms from a spreadsheet. Review the preview before saving." : "Import subjects from a spreadsheet. Review the preview before saving."}
       />
-      <ImportWorkspace initialKind={kind === "rooms" ? "rooms" : "subjects"} />
+      <ImportWorkspace initialKind={scope.isAdmin && kind === "rooms" ? "rooms" : "subjects"} allowRooms={scope.isAdmin} />
     </div>
   );
 }

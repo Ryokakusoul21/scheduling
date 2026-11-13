@@ -5,6 +5,7 @@ import { Plus, GraduationCap, Student, ArrowRight } from "@phosphor-icons/react/
 import { Button } from "@/components/ui/button";
 import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
+import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
 import { ConfirmDialog, FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
 import { EmptyState, PageHeader } from "@/components/ux/states";
 import { DragHandle, SortableList } from "@/components/ux/sortable-list";
@@ -68,6 +69,7 @@ export function ProgramsManager({ programs, departments }: { programs: ProgramRo
         }
       />
 
+      <CollectionView storageKey="programs:view" label="Programs" table={<RecordsTable label="Programs" columns={["Program", "Level", "Department", "Sections", "Subjects", "Semesters", "Actions"]} rows={programs.map((p) => ({ id: p.id, label: p.code, cells: [<Link key="name" href={`/programs/${p.id}`} className="font-medium text-primary hover:underline">{p.code}<span className="block text-xs text-muted-foreground">{p.name}</span></Link>, p.level === "COLLEGE" ? "College" : "Senior High", p.department ?? "—", p.sections, p.subjects, p.terms, <div key="actions" className="flex gap-1.5"><ActionButton kind="edit" onClick={() => dialog.openEdit(p)}>Edit</ActionButton><ActionButton kind="delete" onClick={() => del.openEdit(p)}>Delete</ActionButton></div>] }))} onReorder={(ids) => reorderAction("program", ids)} />}>
       {sections.map((s) => (
         <ProgramSection
           key={s.level}
@@ -80,6 +82,7 @@ export function ProgramsManager({ programs, departments }: { programs: ProgramRo
           onAdd={() => dialog.openEdit({ level: s.level })}
         />
       ))}
+      </CollectionView>
 
       <FormDialog
         open={!!dialog.state}

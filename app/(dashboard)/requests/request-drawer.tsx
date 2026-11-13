@@ -17,7 +17,7 @@ function timeline(r: RequestRow): Step[] {
   const last = new Date(r.updatedAt);
   const steps: Step[] = [{ key: "sent", title: "Submitted", detail: `${r.requestedByName} · ${formatWhen(sent)}`, tone: "done" }];
   if (r.status === "PENDING") return [...steps, { key: "wait", title: "Waiting for review", detail: `Sent ${timeAgo(sent)}`, tone: "current" }];
-  if (r.status === "CANCELLED") return [...steps, { key: "cancel", title: "Cancelled by the requester", detail: formatWhen(last), tone: "muted" }];
+  if (r.status === "CANCELLED") return [...steps, { key: "cancel", title: "Cancelled", detail: `${r.reviewedByName || "Department head"} · ${formatWhen(last)}`, tone: "muted" }];
   const rejected = r.status === "REJECTED";
   return [
     ...steps,

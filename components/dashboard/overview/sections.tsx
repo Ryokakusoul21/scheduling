@@ -3,7 +3,6 @@ import {
   CalendarBlank,
   CheckCircle,
   CalendarCheck,
-  ClipboardText,
   Clock,
   SealCheck,
   TrendDown,
@@ -56,7 +55,6 @@ export async function AdminAttention({ scope }: { scope: Scope }) {
     { key: "not-applied", icon: WarningCircle, tone: "warning" as const, title: "Fixes not applied", detail: "Suggested fixes that need a manual decision", count: flagCount("NOT_APPLIED"), href: "/workload" },
     { key: "reports", icon: UserMinus, tone: "warning" as const, title: "Faculty unavailability reports", detail: "Reassign or cancel the affected classes", count: c.pendingReports, href: "/adjustments" },
     { key: "publish", icon: UploadSimple, tone: "info" as const, title: "Classes awaiting approval", detail: "Drafts and edits sent for review in the Scheduler", count: c.toPublish, href: "/scheduler" },
-    { key: "requests", icon: ClipboardText, tone: "info" as const, title: "Pending schedule requests", detail: "Faculty waiting for a decision", count: c.pendingRequests, href: "/requests" },
     { key: "accounts", icon: UserCheck, tone: "info" as const, title: "Accounts awaiting approval", detail: "Verified registrations need the Registrar", count: c.pendingAccounts, href: "/admin/users" },
     { key: "sections", icon: CalendarBlank, tone: "neutral" as const, title: "Sections with no classes", detail: "Nothing scheduled yet in the active terms", count: c.unscheduledSections, href: "/scheduler" },
   ].filter((a) => a.count > 0);

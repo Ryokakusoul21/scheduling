@@ -3,6 +3,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 const EVENT = "persisted-preference";
+const memory = new Map<string, string>();
 
 function subscribe(callback: () => void) {
   window.addEventListener(EVENT, callback);
@@ -19,9 +20,9 @@ export function usePersisted<T>(key: string, fallback: T): [T, (value: T) => voi
     subscribe,
     () => {
       try {
-        return window.localStorage.getItem(key);
+        return memory.get(key) ?? window.localStorage.getItem(key);
       } catch {
-        return null;
+        return memory.get(key) ?? null;
       }
     },
     () => null,
@@ -38,8 +39,10 @@ export function usePersisted<T>(key: string, fallback: T): [T, (value: T) => voi
     (next: T) => {
       try {
         window.localStorage.setItem(key, JSON.stringify(next));
+        memory.delete(key);
       } catch {
         // Storage can be blocked; the choice then lasts only until reload.
+        memory.set(key, JSON.stringify(next));
       }
       window.dispatchEvent(new Event(EVENT));
     },

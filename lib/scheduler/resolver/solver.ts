@@ -1,3 +1,4 @@
+import { timetableStarts } from "@/lib/timetable/config";
 /**
  * Deterministic repair solver. It turns issues into tasks, works on the hardest first, and tries the least
  * disruptive fix for each (free slot, room only, time only, swap, move one other class). Failed tasks get a
@@ -114,9 +115,13 @@ function facultyFor(run: Run, section: ResolverSection, subjectId: string) {
 /** Days with the fewest minutes for the section first, then every start time on the grid. */
 function slots(run: Run, sectionId: string, duration: number) {
   const minutes = (day: string) => (run.byDay.get(day) ?? []).filter((e) => e.sectionId === sectionId).reduce((s, e) => s + e.endMin - e.startMin, 0);
-  const days = [...DAYS].sort((a, b) => minutes(a) - minutes(b) || DAYS.indexOf(a) - DAYS.indexOf(b));
+  const config = run.input.timetables?.[sectionId];
+  const days = [...(config?.days ?? DAYS)].sort((a, b) => minutes(a) - minutes(b) || DAYS.indexOf(a) - DAYS.indexOf(b));
   const out: { dayOfWeek: (typeof DAYS)[number]; startMin: number }[] = [];
-  for (const dayOfWeek of days) for (let s = run.input.bounds.startMin; s + duration <= run.input.bounds.endMin; s += run.input.step) out.push({ dayOfWeek, startMin: s });
+  for (const dayOfWeek of days) {
+    if (config) for (const startMin of timetableStarts(config, dayOfWeek, duration)) out.push({ dayOfWeek, startMin });
+    else for (let s = run.input.bounds.startMin; s + duration <= run.input.bounds.endMin; s += run.input.step) out.push({ dayOfWeek, startMin: s });
+  }
   return out;
 }
 
@@ -366,7 +371,7 @@ function plan(run: Run, issues: Issue[], unresolved: Unresolved[]): Task[] {
       const have = plotted([...run.state.values()], section.id, issue.subjectId!, issue.component!);
       if (have < required) {
         let remaining = required - have;
-        const chunk = defaultDuration(issue.component!, section.level);
+        const chunk = defaultDuration(issue.component!, section.level, input.timetables?.[section.id]);
         while (remaining > 0) {
           const duration = Math.min(chunk, remaining);
           tasks.push({ kind: "place", issue, section, subjectId: issue.subjectId!, component: issue.component!, duration });

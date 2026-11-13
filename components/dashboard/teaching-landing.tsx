@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Section, QuietState } from "./overview/kit";
 import { PendingFixesSection } from "./overview/sections";
 import { ClassFocus, LandingMetrics, dashboardLink } from "./landing-kit";
+import { NotificationMessage } from "@/components/notifications/notification-message";
 
 const stamp = (date: Date) => date.toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
@@ -36,7 +37,7 @@ export async function FacultyLanding({ scope }: { scope: Scope }) {
         </li>)}</ol>}
       </Section>
       <Section id="teaching-updates" title="Your latest updates" href="/notifications" linkLabel="All notifications">
-        {!data.notifications.length ? <QuietState icon={CheckCircle} title="No updates yet" /> : <ul className="divide-y">{data.notifications.map((notification) => <li key={notification.id} className="space-y-1 py-3 first:pt-0"><div className="flex items-start gap-2">{!notification.isRead && <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" aria-label="Unread" />}<p className="font-medium">{notification.title}</p></div><p className="text-xs text-muted-foreground">{notification.message}</p><p className="text-xs text-muted-foreground">{stamp(notification.createdAt)}</p></li>)}</ul>}
+        {!data.notifications.length ? <QuietState icon={CheckCircle} title="No updates yet" /> : <ul className="divide-y">{data.notifications.map((notification) => <li key={notification.id} className="space-y-1 py-3 first:pt-0"><div className="flex items-start gap-2">{!notification.isRead && <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" aria-label="Unread" />}<p className="font-bold">{notification.title}</p></div><NotificationMessage message={notification.message} className="text-xs text-muted-foreground" /><p className="text-xs text-muted-foreground">{stamp(notification.createdAt)}</p></li>)}</ul>}
       </Section>
     </div>
   </div>;

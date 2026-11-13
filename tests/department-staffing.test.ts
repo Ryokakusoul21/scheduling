@@ -16,9 +16,9 @@ const assignment = (overrides: Partial<Assignment> = {}): Assignment => ({
 });
 
 describe("department staffing summary", () => {
-  it("limits department management to school administrators", () => {
+  it("limits department management to the Registrar", () => {
     expect(canAccessPath("/admin/departments", "REGISTRAR")).toBe(true);
-    expect(canAccessPath("/admin/departments", "SUPER_ADMINISTRATOR")).toBe(true);
+    expect(canAccessPath("/admin/departments", "SUPER_ADMINISTRATOR")).toBe(false);
     expect(canAccessPath("/admin/departments", "HEAD_OF_DEPARTMENT")).toBe(false);
   });
 

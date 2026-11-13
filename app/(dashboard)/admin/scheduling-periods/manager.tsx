@@ -1,10 +1,12 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { CalendarDots, LockKey, LockKeyOpen } from "@phosphor-icons/react/ssr";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -33,6 +35,7 @@ function displayDate(date: string) {
 
 export function SchedulingPeriodsManager({ semesters, periods }: { semesters: { id: string; label: string }[]; periods: Period[] }) {
   const [pending, startTransition] = useTransition();
+  const [managing, setManaging] = useState<string | null>(null);
   const inputClass = "h-9 rounded-md border border-input bg-background px-2 text-sm";
 
   function save(formData: FormData) {
@@ -51,6 +54,33 @@ export function SchedulingPeriodsManager({ semesters, periods }: { semesters: { 
       else toast.error(result.error);
     });
   }
+
+  const renderPeriod = (period: Period) => (
+          <Card key={period.id}>
+            <CardContent className="flex flex-col gap-4 pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold">{period.name}</h3>
+                  <Badge variant={period.status === "OPEN" ? "default" : "secondary"}>{period.status === "OPEN" ? "Open" : "Closed"}</Badge>
+                  <Badge variant="outline">{period.kind === "CLASS_TIMETABLE" ? "Class timetable" : "Examination"}</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">{period.semester} · {displayDate(period.startsAt)} to {displayDate(period.endsAt)}</p>
+                <form action={save} className="grid gap-2 pt-2 sm:grid-cols-2 lg:grid-cols-5">
+                  <input type="hidden" name="semesterId" value={period.semesterId} />
+                  <input type="hidden" name="kind" value={period.kind} />
+                  <Field><FieldLabel htmlFor={`name-${period.id}`}>Name</FieldLabel><Input id={`name-${period.id}`} name="name" defaultValue={period.name} maxLength={100} required /></Field>
+                  <Field><FieldLabel htmlFor={`starts-${period.id}`}>Opens</FieldLabel><Input id={`starts-${period.id}`} name="startsAt" type="datetime-local" defaultValue={localInput(period.startsAt)} required /></Field>
+                  <Field><FieldLabel htmlFor={`ends-${period.id}`}>Closes</FieldLabel><Input id={`ends-${period.id}`} name="endsAt" type="datetime-local" defaultValue={localInput(period.endsAt)} required /></Field>
+                  <div className="flex items-end"><Button type="submit" variant="outline" disabled={pending}>Save dates</Button></div>
+                </form>
+              </div>
+              <Button variant={period.status === "OPEN" ? "outline" : "default"} disabled={pending} onClick={() => setStatus(period)}>
+                {period.status === "OPEN" ? <LockKey className="size-4" /> : <LockKeyOpen className="size-4" />}
+                {period.status === "OPEN" ? "Close period" : "Open period"}
+              </Button>
+            </CardContent>
+          </Card>
+  );
 
   return (
     <div className="space-y-4">
@@ -105,38 +135,14 @@ export function SchedulingPeriodsManager({ semesters, periods }: { semesters: { 
 
       <section className="space-y-3" aria-label="Configured scheduling periods">
         <h2 className="text-lg font-semibold">Configured periods</h2>
-        {periods.length ? periods.map((period) => (
-          <Card key={period.id}>
-            <CardContent className="flex flex-col gap-4 pt-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold">{period.name}</h3>
-                  <Badge variant={period.status === "OPEN" ? "default" : "secondary"}>{period.status === "OPEN" ? "Open" : "Closed"}</Badge>
-                  <Badge variant="outline">{period.kind === "CLASS_TIMETABLE" ? "Class timetable" : "Examination"}</Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">{period.semester} · {displayDate(period.startsAt)} to {displayDate(period.endsAt)}</p>
-                <form action={save} className="grid gap-2 pt-2 sm:grid-cols-2 lg:grid-cols-5">
-                  <input type="hidden" name="semesterId" value={period.semesterId} />
-                  <input type="hidden" name="kind" value={period.kind} />
-                  <Field><FieldLabel htmlFor={`name-${period.id}`}>Name</FieldLabel><Input id={`name-${period.id}`} name="name" defaultValue={period.name} maxLength={100} required /></Field>
-                  <Field><FieldLabel htmlFor={`starts-${period.id}`}>Opens</FieldLabel><Input id={`starts-${period.id}`} name="startsAt" type="datetime-local" defaultValue={localInput(period.startsAt)} required /></Field>
-                  <Field><FieldLabel htmlFor={`ends-${period.id}`}>Closes</FieldLabel><Input id={`ends-${period.id}`} name="endsAt" type="datetime-local" defaultValue={localInput(period.endsAt)} required /></Field>
-                  <div className="flex items-end"><Button type="submit" variant="outline" disabled={pending}>Save dates</Button></div>
-                </form>
-              </div>
-              <Button variant={period.status === "OPEN" ? "outline" : "default"} disabled={pending} onClick={() => setStatus(period)}>
-                {period.status === "OPEN" ? <LockKey className="size-4" /> : <LockKeyOpen className="size-4" />}
-                {period.status === "OPEN" ? "Close period" : "Open period"}
-              </Button>
-            </CardContent>
-          </Card>
-        )) : (
+        {periods.length ? <CollectionView storageKey="scheduling-periods:view" label="Scheduling periods" table={<RecordsTable label="Scheduling periods" columns={["Period", "Term", "Workflow", "Opens", "Closes", "Status", "Actions"]} rows={periods.map((p) => ({ id: p.id, cells: [p.name, p.semester, p.kind === "CLASS_TIMETABLE" ? "Class timetable" : "Examination", displayDate(p.startsAt), displayDate(p.endsAt), p.status === "OPEN" ? "Open" : "Closed", <div key="actions" className="flex gap-2"><Button size="sm" variant="outline" onClick={() => setManaging(p.id)}>Edit dates</Button><Button size="sm" disabled={pending} onClick={() => setStatus(p)}>{p.status === "OPEN" ? "Close period" : "Open period"}</Button></div>] }))} />}>{periods.map(renderPeriod)}</CollectionView> : (
           <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
             <CalendarDots className="mx-auto mb-2 size-6" />
             No scheduling periods have been configured.
           </div>
         )}
       </section>
+      <Dialog open={!!managing} onOpenChange={(on) => !on && !pending && setManaging(null)}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle>Edit scheduling period</DialogTitle><DialogDescription>Update dates or open and close this submission window.</DialogDescription></DialogHeader>{periods.filter((p) => p.id === managing).map(renderPeriod)}</DialogContent></Dialog>
     </div>
   );
 }

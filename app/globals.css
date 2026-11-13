@@ -60,8 +60,8 @@
 
 :root {
   color-scheme: light;
-  --background: oklch(0.965 0.008 250);
-  --foreground: oklch(0.22 0.04 258);
+  --background: oklch(0.935 0.012 250);
+  --foreground: oklch(0.2 0.04 258);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.22 0.04 258);
   --popover: oklch(1 0 0);
@@ -71,12 +71,12 @@
   --secondary: oklch(0.95 0.02 240);
   --secondary-foreground: oklch(0.33 0.15 264);
   --muted: oklch(0.96 0.012 240);
-  --muted-foreground: oklch(0.5 0.03 258);
-  --accent: oklch(0.93 0.035 250);
+  --muted-foreground: oklch(0.45 0.03 258);
+  --accent: oklch(0.92 0.035 250);
   --accent-foreground: oklch(0.33 0.15 264);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.9 0.015 240);
-  --input: oklch(0.9 0.015 240);
+  --border: oklch(0.86 0.018 245);
+  --input: oklch(0.86 0.018 245);
   --ring: oklch(0.62 0.19 259);
   --gold: oklch(0.62 0.19 259);
   --gold-foreground: oklch(0.98 0.01 240);
@@ -162,6 +162,14 @@
   html {
     @apply font-sans;
   }
+}
+
+/* Light mode only: white cards lift off the tinted page, and the dark sidebar gets a visible edge. */
+:root:not(.dark) [data-slot="card"] {
+  box-shadow: 0 1px 3px oklch(0.25 0.05 258 / 12%);
+}
+:root:not(.dark) aside {
+  box-shadow: 2px 0 8px oklch(0.2 0.05 258 / 18%);
 }
 
 .sidebar-scroll {

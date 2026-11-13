@@ -1,3 +1,4 @@
+import { effectiveTimetable } from "@/lib/timetable/config";
 /** Builds the resolver's input from the Scheduler page data already in the browser. */
 import type { SchedulerData, SchedulerEntry } from "@/components/scheduler/types";
 import { DEFAULT_GRID } from "../timetable";
@@ -40,7 +41,8 @@ export function buildResolverInput(data: SchedulerData, entries: SchedulerEntry[
       programNames: new Map(data.programs.map((p) => [p.id, p.name])),
     },
     termRanges: new Map(data.terms.map((t) => [t.id, { start: t.start, end: t.end }])),
-    bounds: { startMin: DEFAULT_GRID.dayStart, endMin: DEFAULT_GRID.dayEnd },
+    timetables: data.timetable ? Object.fromEntries(data.sections.map((s) => [s.id, effectiveTimetable(data.timetable, s.departmentId, termOf(s.id))])) : undefined,
+    bounds: data.timetable ? { startMin: 0, endMin: 1440 } : { startMin: DEFAULT_GRID.dayStart, endMin: DEFAULT_GRID.dayEnd },
     step: DEFAULT_GRID.slot,
   };
 }

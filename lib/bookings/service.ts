@@ -147,7 +147,7 @@ export async function createBooking(scope: Scope, d: BookingInput) {
     if (plan.blockers.length) return { ok: false, error: plan.blockers.join(" ") } satisfies Fail;
     const booking = await prisma.roomBooking.create({ data: { ...fields, status: "AWAITING_APPROVAL", approvalDepartmentId: approval } });
     await audit(prisma, scope, booking.id, `Requested a booking of ${v.room.roomName}, awaiting the owning department's approval`, { ...d, displacedClasses: plan.items.length });
-    await notifyManagers(approval, { title: "Room booking needs department approval", message: `${scope.name} asks to take ${v.room.roomName} on ${d.date}, ${formatRange(d.startMin, d.endMin)} for "${d.purpose}" (${reasonLabel(d.urgentReason ?? null)}). ${plan.items.length} class(es) would move.`, link: `/bookings?booking=${booking.id}`, type: "WARNING" });
+    await notifyManagers(approval, { title: "Booking approval needed", message: `${scope.name}: ${v.room.roomName}, ${d.date}, ${formatRange(d.startMin, d.endMin)}. ${plan.items.length} class move(s).`, link: `/bookings?booking=${booking.id}`, type: "WARNING" });
     return { ok: true as const, bookingId: booking.id, status: "AWAITING_APPROVAL" as const, items: redact(plan.items, scope), displaced: plan.displaced };
   }
   return commit(scope, d, { fields, roomName: v.room.roomName });
@@ -217,7 +217,8 @@ async function notifyDisplacement(bookingId: string, d: BookingInput, roomName: 
   if (!plan.items.length && !plan.displaced.length) return;
   const why = `${roomName} was needed for "${d.purpose}"${d.urgentReason ? ` (${reasonLabel(d.urgentReason)})` : ""}.`;
   const line = (i: PlanItem) => `${i.label}: ${when(i.before)} now ${i.kind === "ONLINE" ? "meets online or asynchronously at the same time" : `meets ${when(i.after!)}`}.`;
-  await notifyFacultyEach(plan.items.map((i) => ({ facultyIds: [i.before.facultyId], msg: { title: "Your class was moved for an urgent booking", message: `${line(i)} ${why} Please acknowledge or request an alternative in Room Booking.`, link: `/bookings?booking=${bookingId}`, type: "WARNING" as const } })));
+  const summary = (i: PlanItem) => `${i.label}: ${i.kind === "ONLINE" ? "now online/asynchronous; same time" : `moved to ${when(i.after!)}`}.`;
+  await notifyFacultyEach(plan.items.map((i) => ({ facultyIds: [i.before.facultyId], msg: { title: "Class moved", message: summary(i), link: `/bookings?booking=${bookingId}`, type: "WARNING" as const } })));
 
   const sections = [...new Set(plan.items.map((i) => sectionOf.get(i.scheduleId)).filter((s): s is string => !!s))];
   const [faculty, students, sectionRows, owners] = await Promise.all([
@@ -229,7 +230,7 @@ async function notifyDisplacement(bookingId: string, d: BookingInput, roomName: 
   for (const i of plan.items) {
     const section = sectionOf.get(i.scheduleId);
     const learners = students.filter((s) => s.sectionId === section);
-    await notifyUsers(learners.map((s) => s.userId), { title: "Class moved", message: `${line(i)} ${why}`, link: "/student", type: "WARNING" });
+    await notifyUsers(learners.map((s) => s.userId), { title: "Class moved", message: summary(i), link: "/student", type: "WARNING" });
     const email = faculty.find((f) => f.id === i.before.facultyId)?.email;
     for (const to of [email, ...learners.map((s) => s.user.email)].filter((x): x is string => !!x)) {
       await sendMail({ to, subject: `Class moved: ${i.label}`, text: `${line(i)}\n\n${why}`, html: `<p>${line(i)}</p><p>${why}</p>` });
@@ -237,7 +238,7 @@ async function notifyDisplacement(bookingId: string, d: BookingInput, roomName: 
   }
   for (const dept of new Set(sectionRows.map((s) => s.departmentId).filter((x): x is string => !!x))) {
     const own = plan.items.filter((i) => sectionRows.find((s) => s.id === sectionOf.get(i.scheduleId))?.departmentId === dept);
-    if (own.length) await notifyManagers(dept, { title: "Classes moved for an urgent booking", message: `${own.length} class(es) of your department moved. ${why} ${own.map(line).join(" ")}`, link: "/adjustments", type: "WARNING" });
+    if (own.length) await notifyManagers(dept, { title: "Classes moved", message: `${own.length} class(es) moved for an urgent booking in ${roomName}. Review adjustments.`, link: "/adjustments", type: "WARNING" });
   }
   for (const x of plan.displaced) {
     const message = x.toRoomId ? `Your booking "${x.purpose}" moved from ${roomName} to ${x.toRoomName}. ${why}` : `Your booking "${x.purpose}" in ${roomName} was cancelled because no other room was free. ${why}`;
@@ -298,7 +299,7 @@ export async function releaseDisplaced(scope: Scope, bookingId: string) {
     await tx.bookingAcknowledgement.deleteMany({ where: { bookingId, status: "PENDING" } });
     return restoreDisplaced(tx, scope, bookingId, null);
   });
-  if (owners.length) await notifyUsers(owners, { title: "Room booking restored", message: "The higher-priority booking that moved your booking was cancelled, so it is back in its original room.", link: "/bookings" });
+  if (owners.length) await notifyUsers(owners, { title: "Booking restored", message: "Your booking is back in its original room.", link: "/bookings" });
 }
 
 /** Cancels a booking; with `restore`, displaced classes and bookings go back when their original slots are still free. */
@@ -322,7 +323,7 @@ export async function cancelBooking(scope: Scope, id: string, restore: boolean) 
     return owners;
   }, { timeout: 30000 });
   if (undo) await notifyRestored(b.batch!.adjustments.map((a) => a.scheduleId), b.room.roomName, b.purpose);
-  if (restoredOwners.length) await notifyUsers(restoredOwners, { title: "Room booking restored", message: `The higher-priority booking of ${b.room.roomName} was cancelled, so your booking is back in its original room.`, link: "/bookings" });
+  if (restoredOwners.length) await notifyUsers(restoredOwners, { title: "Booking restored", message: `Your booking in ${b.room.roomName} is restored.`, link: "/bookings" });
   if (b.bookedById !== scope.userId) await notifyUsers([b.bookedById], { title: "Room booking cancelled", message: `Your booking of ${b.room.roomName} for "${b.purpose}" was cancelled by the responsible department head.`, link: "/bookings" });
   queueWorkloadCheck("A room booking was cancelled", scope.userId);
   return { ok: true as const };
@@ -359,7 +360,7 @@ export async function shortenBooking(scope: Scope, id: string, startMin: number,
     return restored;
   });
   if (back.length) await notifyRestored(back.map((x) => x.a.scheduleId), b.room.roomName, b.purpose);
-  if (owners.length) await notifyUsers(owners, { title: "Room booking restored", message: `The higher-priority booking of ${b.room.roomName} was shortened, so your booking is back in its original room.`, link: "/bookings" });
+  if (owners.length) await notifyUsers(owners, { title: "Booking restored", message: `Your booking in ${b.room.roomName} is restored.`, link: "/bookings" });
   return { ok: true as const, restored: back.length };
 }
 

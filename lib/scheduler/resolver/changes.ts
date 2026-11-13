@@ -29,7 +29,8 @@ const key = (f: Finding) => `${f.source}|${[...f.entryIds].sort().join("+")}`;
 export function introducedHard(change: Change, before: ResolverEntry[], after: ResolverEntry[], world: ValidationWorld): Finding[] {
   if (!change.after) return [];
   const had = new Set(change.before ? validatePlacement(change.before, live(before), world).filter((f) => f.hard).map(key) : []);
-  return validatePlacement(change.after, live(after), world).filter((f) => f.hard && !had.has(key(f)));
+  const timeChanged = !change.before || ["sectionId", "semesterId", "dayOfWeek", "startMin", "endMin"].some((k) => change.before![k as keyof ResolverEntry] !== change.after![k as keyof ResolverEntry]);
+  return validatePlacement(change.after, live(after), world).filter((f) => f.hard && (!had.has(key(f)) || (timeChanged && f.source === "TIMETABLE_CONFIGURATION")));
 }
 
 /**

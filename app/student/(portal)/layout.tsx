@@ -38,6 +38,7 @@ export default async function StudentPortalLayout({ children }: { children: Reac
         <div className="flex min-w-0 flex-1 flex-col overflow-clip print:block print:overflow-visible">
           <div className="contents print:hidden">
             <Topbar
+              userId={user.id}
               name={account?.name ?? user.name ?? user.email ?? "Student"}
               email={user.email ?? ""}
               image={account?.image}

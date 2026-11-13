@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
-import { ADMIN_ROLES, STAFF_ROLES } from "@/lib/permissions/roles";
+import { ADMIN_ROLES } from "@/lib/permissions/roles";
 import { canManageDepartment, requireScope } from "@/lib/permissions/scope";
 import { BUILDING_PURPOSES } from "@/lib/rooms/buildings";
 
@@ -139,7 +139,7 @@ const GENERAL_SHARED = "GENERAL";
 const OWN_ROOMS = "You can only manage rooms that belong to your department.";
 
 export async function saveRoomAction(id: string | null, formData: FormData): Promise<Result> {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope(...ADMIN_ROLES);
   const parsed = roomSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const d = parsed.data;
@@ -150,8 +150,7 @@ export async function saveRoomAction(id: string | null, formData: FormData): Pro
   if (programIds.length && (await prisma.program.count({ where: { id: { in: programIds } } })) !== programIds.length) {
     return { ok: false, error: "A selected program or strand no longer exists. Refresh and try again." };
   }
-  // Rooms of a Head of Department always belong to their department; shared rooms are managed by the Registrar.
-  const departmentId = scope.isAdmin ? d.departmentId || null : scope.departmentId;
+  const departmentId = d.departmentId || null;
   if (!canManageDepartment(scope, departmentId)) return { ok: false, error: OWN_ROOMS };
   if (id) {
     const existing = await prisma.room.findUnique({ where: { id }, select: { departmentId: true } });

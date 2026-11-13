@@ -57,6 +57,7 @@ export interface ResolverRoom extends SchedRoom {
 }
 
 export interface ResolverInput {
+  timetables?: Record<string, import("@/lib/timetable/config").TimetableConfig>;
   entries: ResolverEntry[];
   sections: ResolverSection[];
   subjects: ResolverSubject[];

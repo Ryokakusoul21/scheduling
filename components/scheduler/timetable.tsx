@@ -138,7 +138,7 @@ export function Timetable({
       <div
         role="grid"
         aria-label="Weekly timetable"
-        aria-rowcount={(grid.dayEnd - grid.dayStart) / grid.slot}
+        aria-rowcount={Math.ceil((grid.dayEnd - grid.dayStart) / grid.slot)}
         aria-colcount={days.length}
         className="min-w-[760px]"
         style={{ display: "grid", gridTemplateColumns: `64px repeat(${days.length}, minmax(110px, 1fr))` }}
@@ -157,7 +157,7 @@ export function Timetable({
               style={{ top: minutesToY(h, grid) }}
               className="absolute right-2 -translate-y-1/2 text-[10px] font-medium text-muted-foreground"
             >
-              {formatTime(h)}
+              {formatTime(h, grid.hour12)}
             </div>
           ))}
         </div>
@@ -249,18 +249,18 @@ function DayColumn({
       onDoubleClick={(e) => {
         if (!editable || !onEmptySlot || e.target !== e.currentTarget) return;
         const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
-        const start = grid.dayStart + Math.floor(y / grid.rowHeight) * grid.slot;
+        const start = grid.dayStart + Math.floor(y / grid.rowHeight * grid.slot / (grid.snapStep ?? grid.slot)) * (grid.snapStep ?? grid.slot);
         onEmptySlot(day, start);
       }}
     >
       {hours.map((h) => (
         <div key={h} aria-hidden style={{ top: minutesToY(h, grid) }} className="pointer-events-none absolute inset-x-0 border-t border-border/70" />
       ))}
-      {hours.map((h) => (
+      {Array.from({ length: Math.ceil((grid.dayEnd - grid.dayStart) / grid.slot) }, (_, i) => grid.dayStart + i * grid.slot).map((h) => (
         <div
-          key={`half-${h}`}
+          key={`slot-${h}`}
           aria-hidden
-          style={{ top: minutesToY(h + 30, grid) }}
+          style={{ top: minutesToY(h, grid) }}
           className="pointer-events-none absolute inset-x-0 border-t border-dashed border-border/40"
         />
       ))}
@@ -269,7 +269,7 @@ function DayColumn({
           key={x.startMin}
           aria-hidden
           title={x.reasons.length ? x.reasons.join(", ") : "Valid slot"}
-          style={{ top: minutesToY(x.startMin, grid), height: grid.rowHeight }}
+          style={{ top: minutesToY(x.startMin, grid), height: grid.rowHeight * (grid.snapStep ?? grid.slot) / grid.slot }}
           className={cn(
             "pointer-events-none absolute inset-x-0 border-l-4",
             x.reasons.length
@@ -287,7 +287,7 @@ function DayColumn({
             status === "conflict" ? "border-red-600 bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-200" : status === "warning" ? "border-amber-600 bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200" : "border-emerald-600 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200"
           )}
         >
-          {blocked?.length ? `Not allowed: ${blocked.join(", ")}` : status === "conflict" ? "Hard conflict" : status === "warning" ? "Soft warning" : "Available"} · {formatRange(preview.startMin, preview.endMin)}
+          {blocked?.length ? `Not allowed: ${blocked.join(", ")}` : status === "conflict" ? "Hard conflict" : status === "warning" ? "Soft warning" : "Available"} · {formatRange(preview.startMin, preview.endMin, grid.hour12)}
         </div>
       )}
       {children}
@@ -341,7 +341,7 @@ const Block = memo(function Block({
   const statusLabel = entry.status === "PUBLISHED" ? "" : entry.status.charAt(0) + entry.status.slice(1).toLowerCase();
   const label = [
     `${info.title} ${info.subtitle}`,
-    `${DAY_LONG[entry.dayOfWeek]} ${formatRange(entry.startMin, entry.endMin)}`,
+    `${DAY_LONG[entry.dayOfWeek]} ${formatRange(entry.startMin, entry.endMin, grid.hour12)}`,
     ...info.lines,
     info.proposed && "Proposed change, not saved yet",
     statusLabel && `Status: ${statusLabel}`,

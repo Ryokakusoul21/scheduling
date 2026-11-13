@@ -1,3 +1,4 @@
+import { timetableStarts, type TimetableConfig } from "@/lib/timetable/config";
 import { ACADEMIC_LEVELS, GRADE_LEVELS, YEAR_LEVELS, gradeLabel, levelLabel, yearLabel } from "@/lib/academics/levels";
 import { DEFAULT_EXAM_RULES, type ExamContext, type ExamIssue, type ExamSlot } from "./rules";
 import type { DayOfWeek } from "@/lib/scheduler/types";
@@ -152,6 +153,7 @@ export function generateExaminationSchedule(
   context: ExamContext,
   scheduledClasses: ExamSlot[] = [],
   unavailable: AutoScheduleUnavailability[] = [],
+  timetables?: Record<string, TimetableConfig>,
 ): AutoScheduleResult {
   const proposals: AutoScheduleProposal[] = [];
   const unscheduled: UnscheduledClass[] = [];
@@ -176,6 +178,7 @@ export function generateExaminationSchedule(
     }
 
     const duration = item.endMin - item.startMin;
+    const timeConfig = timetables?.[item.sectionId];
     const suitableRooms = rooms
       .filter((room) => room.capacity >= item.studentCount)
       .sort((a, b) => Number(b.id === item.roomId) - Number(a.id === item.roomId) || a.capacity - b.capacity || a.roomName.localeCompare(b.roomName));
@@ -183,7 +186,7 @@ export function generateExaminationSchedule(
       unscheduled.push({ ...label, reason: "The scheduled class teacher is inactive or unavailable to serve as a proctor." });
       continue;
     }
-    if (duration <= 0 || duration > DAY_END - DAY_START) {
+    if (duration <= 0 || duration > (timeConfig ? timeConfig.dayEnd - timeConfig.dayStart : DAY_END - DAY_START)) {
       unscheduled.push({ ...label, reason: "The class duration does not fit within the examination day." });
       continue;
     }
@@ -194,8 +197,10 @@ export function generateExaminationSchedule(
 
     let best: { proposal: AutoScheduleProposal; score: number } | null = null;
     for (let date = context.window.start; date <= context.window.end; date = addDay(date)) {
-      if (!WEEKDAYS.has(dateDay(date))) continue;
-      for (let startMin = DAY_START; startMin + duration <= DAY_END; startMin += SLOT_MINUTES) {
+      if (timeConfig ? !timeConfig.days.includes(DAY_NAMES[dateDay(date)]) : !WEEKDAYS.has(dateDay(date))) continue;
+      const starts = timeConfig ? timetableStarts(timeConfig, DAY_NAMES[dateDay(date)], duration)
+        : Array.from({ length: Math.max(0, Math.floor((DAY_END - DAY_START - duration) / SLOT_MINUTES) + 1) }, (_, i) => DAY_START + i * SLOT_MINUTES);
+      for (const startMin of starts) {
         for (const room of suitableRooms) {
           const day = DAY_NAMES[dateDay(date)];
           if (item.proctorDayOff === day || !fitsAvailability(item.proctorAvailability, day, startMin, startMin + duration)) continue;

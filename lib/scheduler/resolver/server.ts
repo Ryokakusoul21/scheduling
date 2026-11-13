@@ -1,3 +1,5 @@
+import { effectiveTimetable } from "@/lib/timetable/config";
+import { loadTimetableBundle } from "@/lib/timetable/service";
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { isForeign } from "@/lib/permissions/department";
@@ -23,6 +25,7 @@ export async function serverInput(scope: Scope, termIds: string[]): Promise<Reso
     activeRules(),
     loadContext(),
   ]);
+  const timetables = await loadTimetableBundle();
   const window = (a: { dayOfWeek: ResolverEntry["dayOfWeek"]; startMin: number; endMin: number }) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin });
   return {
     entries: schedules.map((s) => ({
@@ -46,7 +49,8 @@ export async function serverInput(scope: Scope, termIds: string[]): Promise<Reso
     rules,
     ruleCtx,
     termRanges: new Map(semesters.map((t) => [t.id, { start: t.startDate.getTime(), end: t.endDate.getTime() }])),
-    bounds: { startMin: DEFAULT_GRID.dayStart, endMin: DEFAULT_GRID.dayEnd },
+    timetables: Object.fromEntries(sections.map((s) => [s.id, effectiveTimetable(timetables, s.departmentId, s.semesterId)])),
+    bounds: { startMin: 0, endMin: 1440 },
     step: DEFAULT_GRID.slot,
   };
 }

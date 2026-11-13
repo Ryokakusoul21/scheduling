@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { SCHEDULING_ROLES } from "@/lib/permissions/roles";
 import { canManageDepartment, requireScope } from "@/lib/permissions/scope";
 import { departmentWhere } from "@/lib/permissions/department";
 import { ConstraintsManager } from "./manager";
@@ -7,7 +7,7 @@ import { ConstraintsManager } from "./manager";
 export const metadata = { title: "Scheduling Constraints · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function ConstraintsPage() {
-  const scope = await requireScope(...STAFF_ROLES);
+  const scope = await requireScope(...SCHEDULING_ROLES);
   // A Head of Department sees school-wide rules (read-only) and their own department's rules.
   const [constraints, departments, faculty, subjects] = await Promise.all([
     prisma.schedulingConstraint.findMany({

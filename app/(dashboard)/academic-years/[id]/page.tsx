@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { ACADEMIC_LEVELS, LEVELS, isAcademicLevel, termLabel } from "@/lib/academics/levels";
 import { CardGrid } from "@/components/ux/card-grid";
+import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
 import { PageHeader, SelectCard } from "@/components/ux/states";
 import { Badge } from "@/components/ui/badge";
 import { TermsManager } from "./terms-manager";
@@ -54,6 +56,7 @@ export default async function AcademicYearDetailPage({
         actions={year.isActive ? <Badge>Active academic year</Badge> : undefined}
       />
 
+      <CollectionView storageKey="academic-levels:view" label="Academic levels" table={<RecordsTable label="Academic levels" columns={["Level", "Terms", "Active terms"]} rows={ACADEMIC_LEVELS.map((l) => ({ id: l, cells: [<Link key="level" href={`/academic-years/${year.id}?level=${l}`} aria-current={level === l ? "page" : undefined} className="font-medium text-primary hover:underline">{LEVELS[l].label}</Link>, termsByLevel(l).length, [...new Set(termsByLevel(l).filter((t) => t.isActive).map((t) => termLabel(t.type)))].join(", ") || "No active term"] }))} />}>
       <CardGrid label="Academic levels" className="xl:grid-cols-4">
         {ACADEMIC_LEVELS.map((l) => {
           const terms = termsByLevel(l);
@@ -81,6 +84,7 @@ export default async function AcademicYearDetailPage({
           );
         })}
       </CardGrid>
+      </CollectionView>
 
       {level && (
         <TermsManager

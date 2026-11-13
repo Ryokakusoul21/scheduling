@@ -23,7 +23,7 @@ export async function AdministratorDashboard({ scope }: { scope: Scope }) {
   const departments = [...data.staffing].sort((a, b) => rank[a.recommendationLevel] - rank[b.recommendationLevel]);
   return <div className="space-y-5">
     <LandingMetrics items={[
-      { label: "Departments", value: data.staffing.length, hint: "Institution-wide academic structure", href: "/admin/departments" },
+      { label: "Departments", value: data.staffing.length, hint: "Institution-wide academic structure", href: "#department-health" },
       { label: "Staffing attention", value: attention.length, hint: "Capacity, allocation, or workload indicators", href: "#department-health", attention: attention.length > 0 },
       { label: "Active faculty", value: faculty, hint: "Across departments with staffing records", href: "/faculty" },
       { label: "Accounts to review", value: data.pendingAccounts, hint: "Verified registrations awaiting activation", href: "/admin/users", attention: data.pendingAccounts > 0 },
@@ -31,7 +31,7 @@ export async function AdministratorDashboard({ scope }: { scope: Scope }) {
       { label: "Capacity gaps", value: data.staffing.filter((row) => row.additionalCapacityNeeded > 0).length, hint: "Departments with a teaching capacity gap", href: "#department-health" },
     ]} />
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-      <Section id="department-health" title="Department health" count={attention.length} href="/admin/departments" linkLabel="Manage departments">
+      <Section id="department-health" title="Department health" count={attention.length}>
         <p className="text-sm text-muted-foreground">Departments needing a staffing review appear first.</p>
         {!departments.length ? <QuietState icon={Buildings} title="No departments yet">Create a department to start monitoring capacity.</QuietState> : <ul className="divide-y">
           {departments.slice(0, 5).map((department) => <li key={department.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0">

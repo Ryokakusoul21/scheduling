@@ -2,7 +2,8 @@
 
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { MagnifyingGlass, Plus, Rows, SquaresFour, UserSquare, X } from "@phosphor-icons/react/ssr";
+import { MagnifyingGlass, Plus, UserSquare, X } from "@phosphor-icons/react/ssr";
+import { useCollectionView, ViewSwitch } from "@/components/ux/collection-view";
 import { Button } from "@/components/ui/button";
 import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
@@ -62,7 +63,7 @@ export function FacultyBrowser({
   const [level, setLevel] = useState<string>(ACADEMIC_LEVELS[0]);
   const [department, setDepartment] = useState("");
   const [status, setStatus] = useState("");
-  const [view, setView] = useState<"cards" | "table">("cards");
+  const [view, setView] = useCollectionView("faculty:view");
   const searchRef = useRef<HTMLInputElement>(null);
   const dialog = useDialogState<FacultyRow>();
   const { ref: gridRef, onKeyDown: onGridKeyDown, onFocus: onGridFocus } = useRovingFocus({ orientation: "grid" });
@@ -70,7 +71,7 @@ export function FacultyBrowser({
 
   useShortcut({ keys: "n", description: "Add faculty member", group: "Faculty", handler: dialog.openCreate });
   useShortcut({ keys: "s", description: "Search faculty", group: "Faculty", handler: () => searchRef.current?.focus() });
-  useShortcut({ keys: "t", description: "Switch cards / table", group: "Faculty", handler: () => setView((v) => (v === "cards" ? "table" : "cards")) });
+  useShortcut({ keys: "t", description: "Switch cards / table", group: "Faculty", handler: () => setView(view === "cards" ? "table" : "cards") });
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -142,7 +143,6 @@ export function FacultyBrowser({
           </Button>
         }
       />
-
       <div role="group" aria-label="Academic level" className="flex gap-1 overflow-x-auto rounded-xl border bg-card p-1">
         {ACADEMIC_LEVELS.map((l) => (
           <Button key={l} type="button" variant={level === l ? "default" : "ghost"} aria-pressed={level === l} onClick={() => setLevel(l)} className="shrink-0">
@@ -150,6 +150,7 @@ export function FacultyBrowser({
           </Button>
         ))}
       </div>
+
       <Card className="flex-row flex-wrap items-center gap-3 p-3">
         <div className="relative w-full min-w-0 flex-1 sm:min-w-56">
           <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -177,25 +178,7 @@ export function FacultyBrowser({
             <X className="size-4" /> Clear
           </Button>
         )}
-        <div role="radiogroup" aria-label="View" className="ml-auto inline-flex rounded-lg border p-0.5">
-          {(
-            [
-              ["cards", SquaresFour, "Cards"],
-              ["table", Rows, "Table"],
-            ] as const
-          ).map(([v, Icon, label]) => (
-            <button
-              key={v}
-              type="button"
-              role="radio"
-              aria-checked={view === v}
-              onClick={() => setView(v)}
-              className={cn("inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm", view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
-            >
-              <Icon className="size-4" /> {label}
-            </button>
-          ))}
-        </div>
+        <div className="ml-auto"><ViewSwitch value={view} onChange={setView} label="Faculty view" /></div>
       </Card>
 
       <p className="text-sm text-muted-foreground" aria-live="polite">

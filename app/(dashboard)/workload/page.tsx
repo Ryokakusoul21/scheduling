@@ -18,8 +18,8 @@ export default async function WorkloadPage() {
         title={staff ? "Faculty Workload" : "My Teaching Load"}
         description={
           staff
-            ? `Teaching loads in the active terms against the allowed ${range}. Every schedule change rechecks all loads and proposes fixes that apply only after Head of Department approval.`
-            : `Your teaching load in the active terms against the allowed ${range}. You are notified whenever it changes.`
+            ? `Active-term loads · Allowed: ${range}.`
+            : `Your active-term classes · Allowed: ${range}.`
         }
         actions={<LiveRefresh />}
       />

@@ -1,3 +1,5 @@
+import { getTimetableConfig } from "@/lib/timetable/service";
+import { timetableTimeError } from "@/lib/timetable/config";
 import "server-only";
 import { revalidatePath } from "next/cache";
 import type { ScheduleStatus } from "@prisma/client";
@@ -108,13 +110,24 @@ export async function checkClass(d: ClassData, actor: { userId: string }, opts: 
   if (!section || !subject || !faculty || !room || !term) {
     return { ok: false as const, error: "The section, subject, faculty, room, or term no longer exists. Refresh and try again." };
   }
-  // Archived records may stay on an existing class but can never be newly assigned.
-  const before = d.id ? await prisma.schedule.findUnique({ where: { id: d.id }, select: { sectionId: true, subjectId: true, facultyId: true, roomId: true } }) : null;
   // Academic levels are never mixed: section, subject, and term must share one level.
   if (subject.level !== section.level || term.level !== section.level) {
     return { ok: false as const, error: "The section, subject, and term must belong to the same academic level." };
   }
+  // Archived records may stay on an existing class but can never be newly assigned.
+  const before = d.id ? await prisma.schedule.findUnique({ where: { id: d.id }, select: { sectionId: true, subjectId: true, facultyId: true, roomId: true, component: true, semesterId: true, dayOfWeek: true, startMin: true, endMin: true } }) : null;
   if (d.id && !before) return { ok: false as const, error: "This class was deleted by someone else." };
+  const timeChanged = !before || before.sectionId !== d.sectionId || before.semesterId !== d.semesterId || before.dayOfWeek !== d.dayOfWeek || before.startMin !== d.startMin || before.endMin !== d.endMin;
+  if (timeChanged) {
+    const error = timetableTimeError(await getTimetableConfig(d.semesterId, section.departmentId), d);
+    if (error) return { ok: false as const, error };
+  }
+  if (timeChanged || before?.subjectId !== d.subjectId || before?.component !== d.component) {
+    const required = Math.round((d.component === "LECTURE" ? subject.lectureHours : subject.labHours) * 60);
+    const meetings = await prisma.schedule.findMany({ where: { semesterId: d.semesterId, sectionId: d.sectionId, subjectId: d.subjectId, component: d.component, status: { not: "ARCHIVED" }, ...(d.id ? { id: { not: d.id } } : {}) }, select: { startMin: true, endMin: true } });
+    const total = meetings.reduce((sum, e) => sum + e.endMin - e.startMin, 0) + d.endMin - d.startMin;
+    if (required <= 0 || total > required) return { ok: false as const, error: `This placement would exceed the required ${required / 60} weekly hours for this subject component.` };
+  }
   const archived = [
     { label: "section", row: section, prev: before?.sectionId },
     { label: "subject", row: subject, prev: before?.subjectId },
@@ -129,7 +142,7 @@ export async function checkClass(d: ClassData, actor: { userId: string }, opts: 
 
 /** Writes a class that already passed checkClass and records it in the audit log. */
 export async function writeClass(d: ClassData, actor: { userId: string; role: AppRole }, action: string, changeReason?: string): Promise<SaveResult> {
-  if (actor.role === "SUPER_ADMINISTRATOR") return { ok: false, error: "Use Emergency Schedule Access for a documented emergency correction." };
+  if (actor.role === "SUPER_ADMINISTRATOR") return { ok: false, error: "The Super Administrator cannot edit class schedules. Contact the Registrar for an emergency correction." };
   const { id, status, notes, ...data } = d;
   const owner = await prisma.section.findUnique({ where: { id: data.sectionId }, select: { departmentId: true } });
   if (!owner) return { ok: false, error: "Choose an existing section." };

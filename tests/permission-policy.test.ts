@@ -49,6 +49,12 @@ describe("central permission policy", () => {
     expect(can(student, "view", { type: "examination", sectionId: "section-b" })).toBe(false);
   });
 
+  it("denies room booking data to the Super Administrator", () => {
+    const administrator = { role: "SUPER_ADMINISTRATOR", status: "ACTIVE" };
+    expect(can(administrator, "view", { type: "roomBooking" })).toBe(false);
+    expect(scopeQuery(administrator, "roomBooking")).toEqual({ id: { equals: "__denied__" } });
+  });
+
   it("builds database filters that exclude other departments", () => {
     expect(scopeQuery(hod, "program")).toEqual({ departmentId: { in: ["computer"] } });
     expect(scopeQuery(hod, "subject")).toEqual({ OR: [{ departmentId: { in: ["computer"] } }, { departmentId: null }, { level: "COLLEGE", programId: null }] });
@@ -72,6 +78,15 @@ describe("program catalog and department rename", () => {
     expect(can(hod, "rename", dept("computer"))).toBe(true);
     expect(can(hod, "rename", dept("business"))).toBe(false);
     expect(can({ role: "FACULTY", status: "ACTIVE", departmentId: "computer" }, "rename", dept("computer"))).toBe(false);
+  });
+  it("allows name and logo branding only in a Head's assigned departments", () => {
+    expect(can(hod, "updateBranding", dept("computer"))).toBe(true);
+    expect(can(hod, "updateBranding", dept("business"))).toBe(false);
+    expect(can({ ...hod, actingDepartmentIds: ["business"] }, "updateBranding", dept("business"))).toBe(true);
+    expect(can({ ...hod, departmentIds: [] }, "updateBranding", dept("computer"))).toBe(false);
+    expect(can({ ...hod, status: "SUSPENDED" }, "updateBranding", dept("computer"))).toBe(false);
+    expect(can(hod, "edit", dept("computer"))).toBe(false);
+    for (const role of ["FACULTY", "STUDENT"]) expect(can({ ...hod, role }, "updateBranding", dept("computer"))).toBe(false);
   });
   it("keeps the Registrar unrestricted", () => {
     expect(can(admin, "create", program)).toBe(true);

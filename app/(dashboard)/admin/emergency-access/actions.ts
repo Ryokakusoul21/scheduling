@@ -21,7 +21,7 @@ const schema = z.object({
 
 /** Deliberately separate from routine editing: placement only, never academic content or publication. */
 export async function emergencyCorrectionAction(input: z.input<typeof schema>) {
-  const admin = await requireRole("SUPER_ADMINISTRATOR");
+  const registrar = await requireRole("REGISTRAR");
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the correction." };
   const { id, updatedAt, reason, roomId, dayOfWeek, startMin, endMin } = parsed.data;
@@ -32,7 +32,7 @@ export async function emergencyCorrectionAction(input: z.input<typeof schema>) {
   if (Object.entries(placement).every(([key, value]) => before[key as keyof typeof placement] === value)) {
     return { ok: false, error: "Change the room, day, or time before saving a correction." };
   }
-  const problem = await checkClass({ ...before, ...placement, notes: before.notes ?? undefined }, { userId: admin.id }, { overrideSoft: false });
+  const problem = await checkClass({ ...before, ...placement, notes: before.notes ?? undefined }, { userId: registrar.id }, { overrideSoft: false });
   if (problem) return { ok: false, error: problem.error };
 
   const result = await prisma.$transaction(async (tx) => {
@@ -43,11 +43,11 @@ export async function emergencyCorrectionAction(input: z.input<typeof schema>) {
     if (!changed.count) return { ok: false, error: "This class changed. Reload it before correcting it." };
     const snapshot = { roomId: before.roomId, dayOfWeek: before.dayOfWeek, startMin: before.startMin, endMin: before.endMin, status: before.status, version: before.version };
     await tx.auditLog.create({ data: {
-      userId: admin.id, role: admin.role, departmentId: before.departmentId,
+      userId: registrar.id, role: registrar.role, departmentId: before.departmentId,
       action: "Emergency class schedule correction", entity: "Schedule", entityId: id,
       reason, oldValue: snapshot, newValue: { ...placement, status: before.status, version: before.version + 1 },
     } });
-    const message = { title: "Emergency class schedule correction", message: `An Administrator corrected a published class placement. Reason: ${reason}`, link: "/scheduler", type: "WARNING" as const };
+    const message = { title: "Emergency class schedule correction", message: `The Registrar corrected a published class placement. Reason: ${reason}`, link: "/scheduler", type: "WARNING" as const };
     const students = await tx.student.findMany({ where: { sectionId: before.sectionId, user: { status: "ACTIVE", archivedAt: null } }, select: { userId: true } });
     await notifyManagers(before.departmentId, message, tx);
     await notifyFaculty([before.facultyId], message, tx);
@@ -60,7 +60,7 @@ export async function emergencyCorrectionAction(input: z.input<typeof schema>) {
     revalidatePath("/admin/audit-logs");
     revalidatePath("/student/schedule");
     revalidatePath("/calendar");
-    queueWorkloadCheck("An emergency class placement was corrected", admin.id);
+    queueWorkloadCheck("An emergency class placement was corrected", registrar.id);
   }
   return result;
 }

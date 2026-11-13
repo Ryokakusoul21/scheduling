@@ -1,4 +1,4 @@
-import { SCHEDULING_ROLES, TEACHING_ROLES, type AppRole } from "@/lib/permissions/roles";
+import { ROOM_BOOKING_ROLES, SCHEDULING_ROLES, TEACHING_ROLES, type AppRole } from "@/lib/permissions/roles";
 import type { Icon } from "@phosphor-icons/react";
 import {
   SquaresFour as LayoutDashboard,
@@ -17,7 +17,6 @@ import {
   Bell,
   ClockCounterClockwise as History,
   Gear as Settings,
-  Robot as Bot,
   UsersThree,
   DoorOpen,
   ArrowsClockwise,
@@ -55,6 +54,8 @@ export const TAB_GROUPS: Record<TabGroupId, { label: string; icon: Icon }> = {
 export interface NavGroup {
   label: string;
   items: NavItem[];
+  /** Show a merged workspace directly instead of an extra expandable heading. */
+  direct?: boolean;
 }
 
 const STAFF: AppRole[] = ["SUPER_ADMINISTRATOR", "REGISTRAR", "HEAD_OF_DEPARTMENT"];
@@ -66,7 +67,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Overview",
     items: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, shortcut: "g d" },
-      { label: "Notifications", href: "/notifications", icon: Bell, shortcut: "g n" },
     ],
   },
   {
@@ -74,11 +74,10 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Scheduler", href: "/scheduler", icon: CalendarClock, shortcut: "g s" },
       { label: "Calendar of Activities", href: "/calendar", icon: CalendarCheck, shortcut: "g c" },
-      { label: "Room Booking", href: "/bookings", icon: DoorOpen, shortcut: "g b" },
+      { label: "Room Booking", href: "/bookings", icon: DoorOpen, roles: ROOM_BOOKING_ROLES, shortcut: "g b" },
       { label: "Schedule Adjustments", href: "/adjustments", icon: ArrowsClockwise, roles: SCHEDULING_ROLES, tabGroup: "changes" },
       { label: "Schedule Requests", href: "/requests", icon: ClipboardList, roles: TEACHING_ROLES, tabGroup: "changes" },
-      { label: "Scheduling Constraints", href: "/constraints", icon: ShieldCheck, roles: STAFF, tabGroup: "changes" },
-      { label: "Scheduling Assistant", href: "/assistant", icon: Bot },
+      { label: "Scheduling Constraints", href: "/constraints", icon: ShieldCheck, roles: SCHEDULING_ROLES, tabGroup: "changes" },
     ],
   },
   {
@@ -108,12 +107,13 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Administration",
     items: [
       { label: "Registrar Review Center", href: "/admin/review-center", icon: ShieldCheck, roles: ADMIN },
-      { label: "Department Management", href: "/admin/departments", icon: Building2, roles: ADMIN },
+      { label: "Department Management", href: "/admin/departments", icon: Building2, roles: ["REGISTRAR"], tabGroup: "setup" },
+      { label: "Department Profile", href: "/department", icon: Building2, roles: STAFF },
       { label: "Scheduling Periods", href: "/admin/scheduling-periods", icon: CalendarDays, roles: ["REGISTRAR"] },
       { label: "User Management", href: "/admin/users", icon: Users, roles: SUPER, tabGroup: "system" },
       { label: "Audit Logs", href: "/admin/audit-logs", icon: History, roles: SUPER, tabGroup: "system" },
       { label: "System Settings", href: "/admin/settings", icon: Settings, roles: SUPER, tabGroup: "system" },
-      { label: "Emergency Schedule Access", href: "/admin/emergency-access", icon: ShieldCheck, roles: SUPER, tabGroup: "system" },
+      { label: "Emergency Schedule Access", href: "/admin/emergency-access", icon: ShieldCheck, roles: ["REGISTRAR"] },
       { label: "View as Another Role", href: "/admin/view-as", icon: UserCircle, roles: SUPER, tabGroup: "system" },
     ],
   },
@@ -150,6 +150,7 @@ interface RoleMenuGroup {
   items: MenuEntry[];
   /** Keep secondary reference pages together in a sidebar entry with page tabs. */
   compact?: boolean;
+  direct?: boolean;
 }
 
 const ROLE_MENUS: Record<Exclude<AppRole, "STUDENT">, RoleMenuGroup[]> = {
@@ -160,7 +161,7 @@ const ROLE_MENUS: Record<Exclude<AppRole, "STUDENT">, RoleMenuGroup[]> = {
     },
     {
       label: "School Activity",
-      items: [{ href: "/scheduler", label: "School Timetables" }, { href: "/bookings", label: "Booking Monitoring" }, "/calendar", "/notifications"],
+      items: [{ href: "/scheduler", label: "School Timetables" }, "/calendar"],
     },
     {
       label: "Academic Records",
@@ -169,21 +170,23 @@ const ROLE_MENUS: Record<Exclude<AppRole, "STUDENT">, RoleMenuGroup[]> = {
     },
     {
       label: "System Administration",
-      items: ["/admin/users", "/admin/audit-logs", "/admin/departments", "/admin/settings", "/admin/emergency-access", "/admin/view-as", "/constraints"],
+      items: ["/admin/users", "/admin/audit-logs", "/admin/settings", "/admin/view-as"],
     },
   ],
   REGISTRAR: [
     { label: "Overview", items: ["/dashboard"] },
     {
       label: "Academic Setup",
-      items: ["/academic-years", "/programs", "/subjects", "/sections", "/faculty", "/rooms", "/admin/departments", "/import"],
+      compact: true,
+      direct: true,
+      items: [{ href: "/academic-years", label: "Years & Terms" }, { href: "/programs", label: "Programs" }, "/subjects", "/sections", "/faculty", "/rooms", { href: "/admin/departments", label: "Departments" }, { href: "/import", label: "Import" }],
     },
     {
       label: "Schedule Administration",
-      items: ["/admin/scheduling-periods", { href: "/admin/review-center", label: "Review & Publish Timetables" }, { href: "/scheduler", label: "School Timetables" }, "/constraints", "/adjustments"],
+      items: ["/admin/scheduling-periods", { href: "/admin/review-center", label: "Review & Publish Timetables" }, { href: "/scheduler", label: "School Timetables" }, "/constraints", "/adjustments", "/admin/emergency-access"],
     },
     { label: "Reports", compact: true, items: ["/analytics", "/workload", "/reports"] },
-    { label: "School Updates", items: ["/calendar", { href: "/bookings", label: "Booking Monitoring" }, "/notifications"] },
+    { label: "School Updates", items: ["/calendar", { href: "/bookings", label: "Booking Monitoring" }] },
   ],
   HEAD_OF_DEPARTMENT: [
     { label: "Department Scheduling", items: ["/dashboard", { href: "/scheduler", label: "Department Timetable" }] },
@@ -196,16 +199,16 @@ const ROLE_MENUS: Record<Exclude<AppRole, "STUDENT">, RoleMenuGroup[]> = {
       compact: true,
       items: ["/programs", "/subjects", "/sections", "/faculty", "/rooms"],
     },
-    { label: "Scheduling Tools", items: ["/constraints", "/assistant", "/calendar"] },
+    { label: "Scheduling Tools", items: ["/constraints", "/calendar"] },
+    { label: "Department Settings", items: ["/department"] },
     { label: "My Teaching", items: ["/my-subjects", "/availability"] },
     { label: "Department Reports", compact: true, items: ["/analytics", "/reports"] },
-    { label: "Updates", items: ["/notifications"] },
   ],
   FACULTY: [
     { label: "My Timetable", items: ["/dashboard", { href: "/scheduler", label: "My Timetable" }] },
-    { label: "Unavailability", items: [{ href: "/availability", label: "Submit Unavailability" }] },
+    { label: "Requests & Unavailability", items: [{ href: "/requests", label: "Request Changes" }, { href: "/availability", label: "Submit Unavailability" }] },
     { label: "My Teaching", items: ["/my-subjects", "/workload"] },
-    { label: "Updates", items: ["/calendar", "/notifications"] },
+    { label: "Updates", items: ["/calendar"] },
   ],
 };
 
@@ -214,6 +217,7 @@ function menuForRole(role: Exclude<AppRole, "STUDENT">): NavGroup[] {
   const available = NAV_GROUPS.flatMap((group) => group.items).filter((item) => !item.roles || item.roles.includes(role));
   return ROLE_MENUS[role].map((group) => ({
     label: group.label,
+    direct: group.direct,
     items: group.items.map((entry) => {
       const href = typeof entry === "string" ? entry : entry.href;
       const item = available.find((candidate) => candidate.href === href);
