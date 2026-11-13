@@ -33,6 +33,13 @@ Guidance for Claude Code working with code in this repo.
 - Student (view-only): own section timetable, room assignments, school activities; print and export them. Separate pages: /student/login, /student/register, /student/forgot-password, /student/reset-password.
 - Login screen with role-based access; dashboard tailored per role.
 
+## Academic Levels
+
+- Strict rule: academic levels (College, Senior High School, Junior High School, Elementary, Pre-elementary) are never combined in one list, report, timetable, or record.
+- Lists show one level at a time through level tabs (`components/academics/level-tabs.tsx`); College is the default.
+- A class or examination needs its section, subject, and term in the same level; faculty must teach that level.
+- Exceptions: shared physical resources (rooms, faculty totals in Workload) and school-wide calendar activities (explicit "All levels").
+
 ## Core Features
 
 1. Class and Examination Scheduling
