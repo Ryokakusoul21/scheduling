@@ -62,8 +62,10 @@ export function useSchedulerFilters(data: SchedulerData, defaults: Partial<Filte
     const read = (k: keyof Filters) => params.get(k) ?? defaults[k] ?? "";
     const level = read("level");
     // Stale or guessed address parameters outside the scope fall back to the default scoped view.
+    // Levels are never combined: the first scoped level is selected when none is given.
+    const first = (scopedLevels(data)[0] ?? "") as Filters["level"];
     return sanitizeFilters({
-      level: isAcademicLevel(level) ? level : "",
+      level: isAcademicLevel(level) ? level : first,
       departmentId: read("departmentId"),
       programId: read("programId"),
       yearLevel: read("yearLevel"),

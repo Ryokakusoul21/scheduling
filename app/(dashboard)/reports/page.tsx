@@ -2,17 +2,22 @@ import { prisma } from "@/lib/db/prisma";
 import { requireScope } from "@/lib/permissions/scope";
 import { departmentWhere } from "@/lib/permissions/department";
 import { isoDate } from "@/lib/occupancy/engine";
+import { DEFAULT_LEVEL, LevelTabs } from "@/components/academics/level-tabs";
+import { isAcademicLevel } from "@/lib/academics/levels";
 import { ScheduleReportTable } from "./report-table";
 
 export const metadata = { title: "Schedule Reports · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
-export default async function ReportsPage() {
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const params = await searchParams;
+  // Levels are never combined: a report covers exactly one academic level.
+  const level = isAcademicLevel(params.level) ? params.level : DEFAULT_LEVEL;
   // A Head of Department's report covers their own department only.
   const scope = await requireScope("SUPER_ADMINISTRATOR", "REGISTRAR", "HEAD_OF_DEPARTMENT");
 
   const [schedules, semesters, sections, faculty, rooms, departments, activities] = await Promise.all([
     prisma.schedule.findMany({
-      where: { status: { not: "ARCHIVED" }, ...departmentWhere.schedule(scope) },
+      where: { AND: [{ status: { not: "ARCHIVED" }, section: { level } }, departmentWhere.schedule(scope)] },
       include: {
         semester: { include: { academicYear: true } },
         subject: true,
@@ -22,14 +27,14 @@ export default async function ReportsPage() {
       },
       orderBy: [{ dayOfWeek: "asc" }, { startMin: "asc" }],
     }),
-    prisma.semester.findMany({ include: { academicYear: true }, orderBy: { startDate: "desc" } }),
-    prisma.section.findMany({ where: departmentWhere.section(scope), orderBy: { name: "asc" } }),
-    prisma.faculty.findMany({ where: departmentWhere.faculty(scope), orderBy: { fullName: "asc" } }),
+    prisma.semester.findMany({ where: { level }, include: { academicYear: true }, orderBy: { startDate: "desc" } }),
+    prisma.section.findMany({ where: { AND: [{ level }, departmentWhere.section(scope)] }, orderBy: { name: "asc" } }),
+    prisma.faculty.findMany({ where: { AND: [{ teachingLevels: { has: level } }, departmentWhere.faculty(scope)] }, orderBy: { fullName: "asc" } }),
     prisma.room.findMany({ where: departmentWhere.room(scope), orderBy: { roomName: "asc" } }),
     prisma.department.findMany({ where: departmentWhere.department(scope), orderBy: { name: "asc" }, select: { id: true, name: true } }),
     // Only approved activities belong in an official report.
     prisma.activity.findMany({
-      where: { status: "APPROVED", ...departmentWhere.activity(scope) },
+      where: { AND: [{ status: "APPROVED", OR: [{ level }, { level: null }] }, departmentWhere.activity(scope)] },
       include: { department: { select: { name: true } }, room: { select: { roomName: true } } },
       orderBy: [{ startDate: "asc" }, { startMin: "asc" }],
     }),
@@ -43,6 +48,8 @@ export default async function ReportsPage() {
           GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY — Class Schedule Report
         </p>
       </div>
+
+      <LevelTabs basePath="/reports" active={level} params={params} />
 
       <ScheduleReportTable
         rows={schedules.map((s) => ({

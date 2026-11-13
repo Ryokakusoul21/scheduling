@@ -7,6 +7,7 @@ import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { ANY_YEAR, GENERAL, flowHref, isComplete, parseFlow } from "@/lib/academics/flow";
 import { PROGRAM_CATALOG_FILTER, LEVELS, gradeLabel, yearLabel } from "@/lib/academics/levels";
 import { LevelFlow } from "@/components/academics/level-flow";
+import { DEFAULT_LEVEL, LevelTabs } from "@/components/academics/level-tabs";
 import { PageHeader } from "@/components/ux/states";
 import { SubjectsList } from "./subjects-list";
 import { CurriculumList } from "./curriculum-list";
@@ -22,7 +23,8 @@ export const metadata = { title: "Subjects · GRANBY COLLEGES OF SCIENCE AND TEC
 export default async function SubjectsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const scope = await requireScope(...STAFF_ROLES);
   const params = await searchParams;
-  const flow = parseFlow(params);
+  // Levels are never combined: the page always shows exactly one level, College by default.
+  const flow = parseFlow({ ...params, level: params.level ?? DEFAULT_LEVEL });
 
   const hasBasicPrograms = scope.role === "HEAD_OF_DEPARTMENT" && await prisma.program.count({ where: { ...departmentWhere.program(scope), level: "SENIOR_HIGH" } }) > 0;
   if (scope.role === "HEAD_OF_DEPARTMENT" && params.showOther !== "1" && !hasBasicPrograms && (!flow.level || flow.level === "COLLEGE")) {
@@ -185,6 +187,7 @@ export default async function SubjectsPage({ searchParams }: { searchParams: Pro
           <Link href="/subjects" className="font-medium text-primary underline-offset-2 hover:underline">Back to my curriculum</Link>
         </p>
       )}
+      <LevelTabs basePath="/subjects" active={flow.level ?? DEFAULT_LEVEL} params={params} noun="subjects" counts={Object.fromEntries(Object.keys(LEVELS).map((l) => [l, all.filter((r) => r.level === l).length]))} />
       <LevelFlow
         basePath="/subjects"
         rootLabel="Subjects"

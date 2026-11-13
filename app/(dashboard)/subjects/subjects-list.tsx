@@ -10,6 +10,7 @@ import { FormDialog, useDialogState, type FormField } from "@/components/ux/form
 import { ArchiveButton } from "@/components/ux/archive-button";
 import { DragHandle, SortableList } from "@/components/ux/sortable-list";
 import { EmptyState } from "@/components/ux/states";
+import { CollectionView } from "@/components/ux/collection-view";
 import { useShortcut } from "@/components/ux/shortcuts";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { reorderAction } from "@/actions/reorder";
@@ -120,6 +121,7 @@ export function SubjectsList({
           className="m-4"
         />
       ) : (
+        <CollectionView storageKey="subjects:basic-view" label="Subjects" defaultView="table" table={
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -194,6 +196,28 @@ export function SubjectsList({
             </SortableList>
           </Table>
         </div>
+        }>
+          <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+            {subjects.map((s) => (
+              <div key={s.id} className={cn("rounded-xl border bg-card p-4 shadow-xs", !s.editable && "bg-muted/40")}>
+                <div className="flex items-start justify-between gap-2">
+                  <button type="button" disabled={!s.editable} onClick={() => dialog.openEdit(s)} className="min-w-0 text-left">
+                    <p className="font-semibold">{s.code}</p>
+                    <p className="truncate text-sm text-muted-foreground">{s.name}</p>
+                  </button>
+                  {s.editable ? <div className="flex shrink-0 gap-1.5"><ActionButton kind="edit" onClick={() => dialog.openEdit(s)}>Edit</ActionButton><ArchiveButton kind="SUBJECT" id={s.id} name={s.code} /></div> : <Badge variant="outline"><Lock className="mr-1 size-3" /> Read-only</Badge>}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {showStrand && <Badge variant="secondary">{s.strand ?? "Core"}</Badge>}
+                  <Badge variant="outline">{s.units} units</Badge>
+                  <Badge variant="outline">{s.lectureHours} lecture / {s.labHours} laboratory hours</Badge>
+                  <Badge variant="outline">{ROOM_TYPES.find((r) => r.value === s.requiredRoomType)?.label ?? s.requiredRoomType}</Badge>
+                </div>
+                {s.classes > 0 && <p className="mt-2 text-xs text-muted-foreground">{s.classes} scheduled classes</p>}
+              </div>
+            ))}
+          </div>
+        </CollectionView>
       )}
 
       <FormDialog

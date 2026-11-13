@@ -35,14 +35,16 @@ export async function saveAssignmentPlanAction(input: PlanInput): Promise<Result
   const facultyIds = [...new Set(changes.flatMap((c) => (c.facultyId ? [c.facultyId] : [])))];
 
   const [subjects, term, sections, pool] = await Promise.all([
-    prisma.subject.findMany({ where: { id: { in: subjectIds }, archivedAt: null }, select: { id: true, code: true, units: true, lectureHours: true, labHours: true, departmentId: true, department: { select: { name: true } } } }),
-    prisma.semester.findUnique({ where: { id: semesterId }, select: { name: true, academicYear: { select: { name: true } } } }),
-    sectionIds.length ? prisma.section.findMany({ where: { id: { in: sectionIds }, archivedAt: null }, select: { id: true, name: true, semesterId: true } }) : [],
+    prisma.subject.findMany({ where: { id: { in: subjectIds }, archivedAt: null }, select: { id: true, code: true, level: true, units: true, lectureHours: true, labHours: true, departmentId: true, department: { select: { name: true } } } }),
+    prisma.semester.findUnique({ where: { id: semesterId }, select: { name: true, level: true, academicYear: { select: { name: true } } } }),
+    sectionIds.length ? prisma.section.findMany({ where: { id: { in: sectionIds }, archivedAt: null }, select: { id: true, name: true, level: true, semesterId: true } }) : [],
     assignableFaculty(semesterId),
   ]);
   if (subjects.length !== subjectIds.length) return { ok: false, error: "One of the subjects was archived or removed. Refresh and try again." };
   if (!term) return { ok: false, error: "Choose a valid term." };
   if (sections.length !== sectionIds.length || sections.some((s) => s.semesterId && s.semesterId !== semesterId)) return { ok: false, error: "A chosen section does not belong to this term." };
+  // Academic levels are never mixed: subjects, sections, and the term share one level.
+  if (subjects.some((x) => x.level !== term.level) || sections.some((x) => x.level !== term.level)) return { ok: false, error: "Subjects, sections, and the term must belong to the same academic level." };
   const people = new Map(pool.faculty.map((f) => [f.id, f]));
   if (facultyIds.some((id) => !people.has(id))) return { ok: false, error: "A chosen faculty member is not active." };
   const blocked = subjects.find((s) => !canManageSubject(scope, s));

@@ -7,6 +7,7 @@ import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { flowHref, isComplete, parseFlow } from "@/lib/academics/flow";
 import { PROGRAM_CATALOG_FILTER, LEVELS, gradeLabel, levelLabel, termLabel, yearLabel } from "@/lib/academics/levels";
 import { LevelFlow } from "@/components/academics/level-flow";
+import { DEFAULT_LEVEL, LevelTabs } from "@/components/academics/level-tabs";
 import { PageHeader } from "@/components/ux/states";
 import { cn } from "@/lib/utils";
 import { SectionsGrid } from "./sections-grid";
@@ -27,7 +28,8 @@ export default async function SectionsPage({ searchParams }: { searchParams: Pro
   const filters = parseSectionFilters(params, { ...defaults, years: academicYears.map((row) => row.name) });
   const termType = semesterType(filters.semester);
   const legacyYearLevel = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH"].includes(params.year ?? "") ? params.year : undefined;
-  const flow = parseFlow({ ...params, year: params.yearLevel ?? legacyYearLevel });
+  // Levels are never combined: the page always shows exactly one level, College by default.
+  const flow = parseFlow({ ...params, level: params.level ?? DEFAULT_LEVEL, year: params.yearLevel ?? legacyYearLevel });
 
   const hasBasicPrograms = scope.role === "HEAD_OF_DEPARTMENT" && await prisma.program.count({ where: { ...departmentWhere.program(scope), level: "SENIOR_HIGH" } }) > 0;
   if (scope.role === "HEAD_OF_DEPARTMENT" && params.other !== "1" && !hasBasicPrograms && (!flow.level || flow.level === "COLLEGE")) {
@@ -138,6 +140,7 @@ export default async function SectionsPage({ searchParams }: { searchParams: Pro
     <div className="space-y-4">
       <PageHeader title="Sections" description="Pick a level and year or grade to create and manage its class sections." />
       <SectionTermFilters years={academicYears.map((row) => row.name)} selectedYear={filters.year} selectedSemester={filters.semester} status={filters.status} showSemester={flow.level === "COLLEGE"} />
+      <LevelTabs basePath="/sections" active={flow.level ?? DEFAULT_LEVEL} params={params} noun="sections" counts={Object.fromEntries(Object.keys(LEVELS).map((l) => [l, all.filter((r) => r.level === l).length]))} />
       <LevelFlow basePath="/sections" rootLabel="Sections" noun="sections" flow={flow} rows={all} programs={programs} />
       {list}
     </div>
