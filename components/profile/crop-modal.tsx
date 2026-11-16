@@ -81,11 +81,12 @@ export function CropModal({ src, onCancel, onConfirm }: { src: string; onCancel:
             drag.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
           }}
           onPointerMove={(e) => {
-            if (drag.current) setOffset(clamp(drag.current.ox + e.clientX - drag.current.x, drag.current.oy + e.clientY - drag.current.y, scale));
+            const ratio = VIEW / e.currentTarget.getBoundingClientRect().width;
+            if (drag.current) setOffset(clamp(drag.current.ox + (e.clientX - drag.current.x) * ratio, drag.current.oy + (e.clientY - drag.current.y) * ratio, scale));
           }}
           onPointerUp={() => (drag.current = null)}
-          className="relative shrink-0 cursor-grab touch-none overflow-hidden rounded-xl bg-muted outline-none focus-visible:ring-3 focus-visible:ring-ring/60 active:cursor-grabbing"
-          style={{ width: VIEW, height: VIEW, maxWidth: "100%" }}
+          onPointerCancel={() => (drag.current = null)}
+          className="relative aspect-square w-full max-w-[280px] shrink-0 cursor-grab touch-none overflow-hidden rounded-xl bg-muted outline-none focus-visible:ring-3 focus-visible:ring-ring/60 active:cursor-grabbing"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -94,11 +95,13 @@ export function CropModal({ src, onCancel, onConfirm }: { src: string; onCancel:
             alt=""
             draggable={false}
             onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
-            className="pointer-events-none absolute top-1/2 left-1/2 max-w-none select-none"
+            className="pointer-events-none absolute max-w-none select-none"
             style={{
-              width: natural ? natural.w * scale : undefined,
-              height: natural ? natural.h * scale : undefined,
-              transform: `translate(-50%, -50%) translate(${offset.x}px, ${offset.y}px)`,
+              width: natural ? `${natural.w * scale / VIEW * 100}%` : undefined,
+              height: natural ? `${natural.h * scale / VIEW * 100}%` : undefined,
+              left: `${50 + offset.x / VIEW * 100}%`,
+              top: `${50 + offset.y / VIEW * 100}%`,
+              transform: "translate(-50%, -50%)",
             }}
           />
           {/* Dimmed corners leave a clear circle showing what will be kept. */}
@@ -121,13 +124,13 @@ export function CropModal({ src, onCancel, onConfirm }: { src: string; onCancel:
           step={0.01}
           value={zoom}
           onChange={(e) => setZoomClamped(Number(e.target.value))}
-          className="h-6 w-full accent-primary"
+          className="h-11 min-w-0 w-full accent-primary"
         />
       </div>
 
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={onCancel}>Back</Button>
-        <Button onClick={save} disabled={!natural}>Save photo</Button>
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+        <Button variant="outline" className="h-11" onClick={onCancel}>Back</Button>
+        <Button className="h-11" onClick={save} disabled={!natural}>Save photo</Button>
       </div>
     </div>
   );

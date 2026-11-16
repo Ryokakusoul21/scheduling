@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: { params: Promise<{ buildingI
 export default async function BuildingPage({ params, searchParams }: { params: Promise<{ buildingId: string }>; searchParams: Promise<{ q?: string }> }) {
   const scope = await requireScope(...STAFF_ROLES);
   const [{ buildingId }, { q }] = await Promise.all([params, searchParams]);
-  const [[building], floors, { departments, programs }, termLabel] = await Promise.all([
+  const [[building], floors, { departments }, termLabel] = await Promise.all([
     loadBuildings(scope, { id: buildingId }),
     // Every floor of every building, so a room can be moved elsewhere.
     prisma.floor.findMany({ where: scope.isAdmin ? {} : { rooms: { some: { departmentId: scope.manageDepartmentId } } }, orderBy: [{ building: { sortOrder: "asc" } }, { number: "asc" }], select: { id: true, name: true, building: { select: { name: true } } } }),
@@ -34,7 +34,6 @@ export default async function BuildingPage({ params, searchParams }: { params: P
         isAdmin={scope.isAdmin}
         termLabel={termLabel}
         departments={departments}
-        programs={programs}
       />
     </div>
   );

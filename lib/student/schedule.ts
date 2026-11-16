@@ -4,8 +4,13 @@ import type { PortalActivity, PortalClass, PortalMove } from "./portal";
 export const DAY_ENUMS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 
 /** True when a holiday or suspension on that date covers the class time. */
-export function isCancelled(c: Pick<PortalClass, "startMin" | "endMin">, dayActivities: PortalActivity[]) {
-  return dayActivities.some((a) => NO_CLASS_TYPES.has(a.type) && (a.startMin == null || (a.startMin < c.endMin && c.startMin < (a.endMin ?? 1440))));
+export function isCancelled(c: Pick<PortalClass, "id" | "startMin" | "endMin">, dayActivities: PortalActivity[]) {
+  return dayActivities.some((a) => NO_CLASS_TYPES.has(a.type) && (!a.scheduleIds?.length || a.scheduleIds.includes(c.id)) && (a.startMin == null || (a.startMin < c.endMin && c.startMin < (a.endMin ?? 1440))));
+}
+
+/** An individual-class order must never turn an entire section's day into a day off. */
+export function wholeDayClosure(classes: Pick<PortalClass, "id">[], activities: PortalActivity[]) {
+  return activities.find((activity) => NO_CLASS_TYPES.has(activity.type) && activity.startMin == null && (!activity.scheduleIds?.length || (classes.length > 0 && classes.every((cls) => activity.scheduleIds!.includes(cls.id))))) ?? null;
 }
 
 /** Adds days to a YYYY-MM-DD date and returns the new date and its weekday enum. */
@@ -49,6 +54,6 @@ export function nowAndNext(classes: PortalClass[], activities: PortalActivity[],
     if (found) next = { cls: found, date, inMinutes: offset === 0 ? found.startMin - now.minutes : null };
   }
 
-  const dayOff = todayActivities.find((a) => NO_CLASS_TYPES.has(a.type) && a.startMin == null) ?? null;
+  const dayOff = wholeDayClosure(today, todayActivities);
   return { now, today, next, dayOff, todayActivities };
 }

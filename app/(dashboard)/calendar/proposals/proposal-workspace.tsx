@@ -23,19 +23,7 @@ const LEVEL_OPTIONS = ACADEMIC_LEVELS.map((v) => ({ value: v, label: levelLabel(
 const CATEGORY_LABELS = { SCHOOL_EVENT: "School event", EXAMINATION_WEEK: "Examinations", HOLIDAY: "Holiday", CLASS_SUSPENSION: "Class suspension" } as const;
 const CATEGORY_OPTIONS = PROPOSAL_CATEGORIES.map((value) => ({ value, label: CATEGORY_LABELS[value] }));
 const blank = (): ProposalRowInput => ({ date: "", activity: "", time: "", location: "", level: "", category: "" });
-const SAMPLE: ProposalRowInput[] = [
-  ["July 28, 2026", "Freshmen and Transferees Departmental Orientation"], ["July 29, 2026", "First Year Opening of Classes"],
-  ["August 3, 2026", "Second and Third Year Opening of Classes"], ["August 8, 2026", "General Assembly (All Class Officers)"],
-  ["August 10, 2026", "Filing of Candidacy (Student Body Organization Officers)"], ["August 13, 2026", "Announcement of Official Candidates"],
-  ["August 14-17, 2026", "Campaign Period"], ["August 22, 2026", "Election and Announcement of Winners"],
-  ["August 27-29, 2026", "Tuition Fee Payments (Information Technology Department)"], ["September 1 to September 5, 2026", "Preliminary Examinations"],
-  ["September 19, 2026", "Student Body Organization Officers Leadership Training and Workshop (In-campus)"], ["October 1-7, 2026", "Midterm Examinations"],
-  ["October 19-24, 2026", "Sportsfest"], ["November 1, 2026", "All Saints Day"], ["November 4-10, 2026", "Semi-Finals Examination"],
-  ["November 21, 2026", "Educational Tour (Information Technology Department)"], ["November 30, 2026", "Bonifacio Day"],
-  ["December 2, 2026", "Granby Foundation"], ["December 7-11, 2026", "Final Examination"], ["December 12, 2026", "Information Technology Day"],
-  ["December 17-19, 2026", "Christmas Party"], ["December 20, 2026", "Start of Christmas Break and Semestral Break"],
-  ["January 4, 2027", "Enrolment Period (School Year 2026-2027, Second Semester)"], ["January 7-13, 2027", "Submission of Grades to the Registrar's Office"],
-].map(([date, activity]) => ({ date, activity, time: "", location: "", level: "COLLEGE" } as ProposalRowInput));
+const TEMPLATE = ["Date,Activity,Time,Location,School Level", '"July 28, 2026",Freshmen Orientation,8:00 AM-10:00 AM,Auditorium,COLLEGE', ""].join("\r\n");
 
 function parseDelimited(text: string) {
   return text.trim().split(/\r?\n/).map((line) => {
@@ -44,27 +32,30 @@ function parseDelimited(text: string) {
   }).filter((r) => r.date || r.activity);
 }
 
-export function ProposalWorkspace({ isAdmin, ownDepartmentId, selectedId, proposals, terms, departments }: { isAdmin: boolean; ownDepartmentId: string | null; selectedId?: string; proposals: ProposalListItem[]; terms: { id: string; label: string; level: string }[]; departments: { id: string; name: string }[] }) {
+export function ProposalWorkspace({ viewerName, isAdmin, ownDepartmentId, selectedId, proposals, terms, departments }: { viewerName: string; isAdmin: boolean; ownDepartmentId: string | null; selectedId?: string; proposals: ProposalListItem[]; terms: { id: string; label: string; level: string }[]; departments: { id: string; name: string }[] }) {
   const router = useRouter(); const [busy, start] = useTransition();
   const initial = proposals.find((p) => p.id === selectedId) ?? proposals[0] ?? null;
   const [activeId, setActiveId] = useState(initial?.id ?? ""); const active = proposals.find((p) => p.id === activeId) ?? null;
-  const [semesterId, setSemesterId] = useState(initial?.semesterId ?? terms[0]?.id ?? "");
+  const firstTerm = (l: string) => terms.find((t) => t.level === l)?.id ?? "";
   const [level, setLevel] = useState<AcademicLevel>(isAcademicLevel(initial?.level) ? initial.level : "COLLEGE");
+  const [semesterId, setSemesterId] = useState(initial?.semesterId ?? firstTerm(isAcademicLevel(initial?.level) ? initial.level : "COLLEGE"));
   const [departmentId, setDepartmentId] = useState(initial?.departmentId ?? ownDepartmentId ?? departments[0]?.id ?? "");
-  const [preparedBy, setPreparedBy] = useState(initial?.preparedBy ?? "");
+  const [preparedBy, setPreparedBy] = useState(initial?.preparedBy ?? viewerName);
   const [designation, setDesignation] = useState(initial?.designation ?? "Program Head (Acting)");
   const [rows, setRows] = useState<ProposalRowInput[]>(initial?.rows.map(({ date, activity, time, location, level, category }) => ({ date, activity, time, location, level, category })) ?? [blank()]);
-  const [errors, setErrors] = useState<string[][]>([]); const [paste, setPaste] = useState("");
+  const [errors, setErrors] = useState<string[][]>([]); const [validated, setValidated] = useState(false); const [paste, setPaste] = useState("");
   const [detailsRow, setDetailsRow] = useState<number | null>(null); const [previewOpen, setPreviewOpen] = useState(false);
   const editable = !isAdmin;
 
   function open(p: ProposalListItem | null) {
-    setActiveId(p?.id ?? ""); setSemesterId(p?.semesterId ?? terms[0]?.id ?? ""); setLevel(isAcademicLevel(p?.level) ? p.level : "COLLEGE"); setDepartmentId(p?.departmentId ?? ownDepartmentId ?? departments[0]?.id ?? ""); setPreparedBy(p?.preparedBy ?? ""); setDesignation(p?.designation ?? "Program Head (Acting)");
-    setRows(p?.rows.map(({ date, activity, time, location, level, category }) => ({ date, activity, time, location, level, category })) ?? [blank()]); setErrors([]);
+    setActiveId(p?.id ?? ""); setSemesterId(p?.semesterId ?? firstTerm("COLLEGE")); setLevel(isAcademicLevel(p?.level) ? p.level : "COLLEGE"); setDepartmentId(p?.departmentId ?? ownDepartmentId ?? departments[0]?.id ?? ""); setPreparedBy(p?.preparedBy ?? viewerName); setDesignation(p?.designation ?? "Program Head (Acting)");
+    setRows(p?.rows.map(({ date, activity, time, location, level, category }) => ({ date, activity, time, location, level, category })) ?? [blank()]); setErrors([]); setValidated(false);
   }
   function patch(i: number, key: keyof ProposalRowInput, value: string) { setRows((old) => old.map((r, n) => n === i ? { ...r, [key]: value } : r)); setErrors([]); }
-  const localErrors = useMemo(() => rows.map((r) => ({ date: !parseActivityDate(r.date) ? "Enter a valid date or range." : "", activity: !r.activity.trim() ? "Activity is required." : "", time: !parseActivityTime(r.time) ? "Enter a valid time range." : "" })), [rows]);
-  const hasLocalErrors = localErrors.some((e) => e.date || e.activity || e.time) || !preparedBy.trim() || !designation.trim() || !departmentId;
+  // Errors stay hidden on untouched fields until the user tries to validate or save.
+  const localErrors = useMemo(() => rows.map((r) => ({ date: (validated || r.date) && !parseActivityDate(r.date) ? "Enter a valid date or range." : "", activity: (validated || r.activity) && !r.activity.trim() ? "Activity is required." : "", time: !parseActivityTime(r.time) ? "Enter a valid time range." : "" })), [rows, validated]);
+  const hasLocalErrors = rows.some((r) => !parseActivityDate(r.date) || !r.activity.trim() || !parseActivityTime(r.time)) || !preparedBy.trim() || !designation.trim() || !departmentId;
+  const guard = (fn: () => void) => { if (hasLocalErrors) { setValidated(true); toast.error("Complete the highlighted fields first."); return; } fn(); };
   const run = (fn: () => Promise<{ ok: boolean; error?: string; errors?: string[][]; proposalId?: string }>, success: string) => start(async () => { const res = await fn(); if (!res.ok) { setErrors(res.errors ?? []); toast.error(res.error); return; } toast.success(success); router.refresh(); if (res.proposalId) setActiveId(res.proposalId); });
   function importRows(imported: ProposalRowInput[]) { if (!imported.length) return toast.error("No rows found."); setRows((old) => old.length === 1 && !old[0].date && !old[0].activity ? imported : [...old, ...imported]); setPaste(""); setErrors([]); }
 
@@ -77,54 +68,57 @@ export function ProposalWorkspace({ isAdmin, ownDepartmentId, selectedId, propos
   };
   const payload = () => ({ semesterId, departmentId, level, preparedBy, designation, rows: rows.map((row) => ({ ...row, level: isAcademicLevel(row.level) ? row.level : "" as const })) });
 
-  return <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
-    <Card><CardHeader><CardTitle className="text-base">Proposal history</CardTitle></CardHeader><CardContent className="space-y-2">
-      {!isAdmin && <Button className="w-full" onClick={() => open(null)} disabled={!ownDepartmentId}>New proposal</Button>}
-      {proposals.map((p) => <button key={p.id} onClick={() => open(p)} className={`w-full rounded-lg border p-3 text-left text-sm ${activeId === p.id ? "border-primary bg-primary/5" : "hover:bg-muted"}`}>
-        <div className="flex justify-between gap-2"><span className="font-medium">{p.schoolYear} · {p.semester}</span><Badge variant="outline">v{p.version}</Badge></div>
-        <p className="mt-1 text-xs text-muted-foreground">{p.department} · {levelLabel(p.level)}</p><p className="mt-1 text-xs font-medium">{STATUS[p.status]}</p>
-      </button>)}
-      {!proposals.length && <p className="text-sm text-muted-foreground">No proposals yet.</p>}
-    </CardContent></Card>
+  const readyRows = rows.filter((r) => parseActivityDate(r.date) && r.activity.trim() && parseActivityTime(r.time)).length;
+
+  return <div className="space-y-4">
+    <div className="flex flex-wrap items-center gap-2">
+      {proposals.length > 0 && <NativeSelect aria-label="Proposal history" value={activeId} onChange={(e) => open(proposals.find((p) => p.id === e.target.value) ?? null)} placeholder="Proposal history" options={proposals.map((p) => ({ value: p.id, label: `${p.schoolYear} · ${p.semester} · ${p.department} · v${p.version} · ${STATUS[p.status]}` }))} className="w-full sm:w-[28rem]" />}
+      {!isAdmin && <Button variant="outline" onClick={() => open(null)} disabled={!ownDepartmentId}>New proposal</Button>}
+    </div>
 
     <div className="space-y-4">
+      <h2 className="text-sm font-semibold">1. Details</h2>
       <Card><CardContent className="grid items-end gap-3 pt-6 md:grid-cols-2 xl:grid-cols-4">
-        <div><label className="mb-1 block text-xs font-medium">School year and semester</label><NativeSelect value={semesterId} onChange={(e) => { setSemesterId(e.target.value); const t=terms.find((x)=>x.id===e.target.value); if(t && isAcademicLevel(t.level)) setLevel(t.level); }} disabled={!editable || !!active} options={terms.map((t) => ({ value: t.id, label: t.label }))} /></div>
+        <div><label className="mb-1 block text-xs font-medium">School year and semester</label><NativeSelect value={semesterId} onChange={(e) => setSemesterId(e.target.value)} disabled={!editable || !!active} options={terms.filter((t) => t.level === level).map((t) => ({ value: t.id, label: t.label }))} /></div>
         <div><label className="mb-1 block text-xs font-medium">College / Department</label><NativeSelect value={departmentId} onChange={(e)=>setDepartmentId(e.target.value)} disabled={!editable || !isAdmin || !!active} options={departments.map((d)=>({value:d.id,label:d.name}))} /></div>
-        <div><label className="mb-1 block text-xs font-medium">School level</label><NativeSelect value={level} onChange={(e) => setLevel(e.target.value as AcademicLevel)} disabled={!editable} options={LEVEL_OPTIONS} /></div>
-        <div><label className="mb-1 block text-xs font-medium">Prepared by (Name)</label><Input value={preparedBy} onChange={(e)=>setPreparedBy(e.target.value)} disabled={!editable} placeholder="MR. MARVIN A. RAMOS" /></div>
-        <div className="md:col-span-2"><label className="mb-1 block text-xs font-medium">Designation / Title</label><Input value={designation} onChange={(e)=>setDesignation(e.target.value)} disabled={!editable} placeholder="Program Head (Acting)" /></div>
+        <div><label className="mb-1 block text-xs font-medium">School level</label><NativeSelect value={level} onChange={(e) => { const next = e.target.value as AcademicLevel; setLevel(next); if (!active) setSemesterId(firstTerm(next)); }} disabled={!editable || !!active} options={LEVEL_OPTIONS} /></div>
+        <div><label className="mb-1 block text-xs font-medium">Prepared by (Name)</label><Input value={preparedBy} onChange={(e)=>setPreparedBy(e.target.value)} disabled={!editable} placeholder="Full name" /></div>
+        <div className="md:col-span-2"><label className="mb-1 block text-xs font-medium">Designation / Title</label><Input value={designation} onChange={(e)=>setDesignation(e.target.value)} disabled={!editable} placeholder="Position or title" /></div>
         {active && <Badge variant="outline" className="h-9 px-3">{STATUS[active.status]} · Version {active.version}</Badge>}
         {active?.status === "APPROVED" && <ReportButtons doc={exportDoc} />}
       </CardContent></Card>
 
       {active?.reviewNote && <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm"><strong>Previous review note:</strong> {active.reviewNote}</div>}
-      {editable && !isAdmin && <Card><CardHeader><CardTitle className="text-base">Bulk entry</CardTitle></CardHeader><CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">Paste spreadsheet rows in this order: Date, Activity, Time, Location, School Level.</p>
-        <Textarea value={paste} onChange={(e) => setPaste(e.target.value)} placeholder={"July 28, 2026\tFreshmen Orientation\t8:00 AM-10:00 AM\tAuditorium\tCOLLEGE"} rows={3} />
+      <h2 className="text-sm font-semibold">2. Activities</h2>
+      {editable && !isAdmin && <details className="rounded-xl border bg-card"><summary className="cursor-pointer px-4 py-3 text-sm font-medium">Import rows from a spreadsheet</summary><div className="space-y-3 border-t p-4">
+        <p className="text-sm text-muted-foreground">Paste rows in this order: Date, Activity, Time, Location, School Level.</p>
+        <Textarea value={paste} onChange={(e) => setPaste(e.target.value)} placeholder={"July 28, 2026	Freshmen Orientation	8:00 AM-10:00 AM	Auditorium	COLLEGE"} rows={3} />
         <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => importRows(parseDelimited(paste))}>Add pasted rows</Button>
-          <Button variant="outline" onClick={() => setRows(SAMPLE)}>Load Sample Semester (College of Informatics)</Button>
-          <Button variant="outline" onClick={() => downloadText("school-activities-template.csv", "Date,Activity,Time,Location,School Level\r\n\"July 28, 2026\",Freshmen Orientation,8:00 AM-10:00 AM,Auditorium,COLLEGE\r\n")}>Download template</Button>
+          <Button variant="outline" onClick={() => downloadText("school-activities-template.csv", TEMPLATE)}>Download template</Button>
           <label className="inline-flex h-9 cursor-pointer items-center rounded-md border px-3 text-sm font-medium hover:bg-muted">Upload CSV<input type="file" accept=".csv,text/csv" className="sr-only" onChange={async (e) => { const f=e.target.files?.[0]; if(f) importRows(parseDelimited(await f.text())); e.target.value=""; }} /></label>
         </div>
-      </CardContent></Card>}
+      </div></details>}
 
-      <Card><CardContent className="overflow-x-auto pt-6"><Table><TableHeader><TableRow><TableHead className="w-[38%] min-w-56">Date / Date Range</TableHead><TableHead className="w-[62%] min-w-96">Activity</TableHead><TableHead className="w-44">Details and Action</TableHead></TableRow></TableHeader>
+      <Card><CardContent className="overflow-x-auto pt-6"><Table><TableHeader><TableRow><TableHead className="min-w-52">Date / Date Range</TableHead><TableHead className="min-w-72">Activity</TableHead><TableHead className="min-w-40">Time</TableHead><TableHead className="min-w-40">Location</TableHead><TableHead className="w-40"><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
         <TableBody>{rows.map((r,i)=><TableRow key={i} className={(errors[i]?.length || localErrors[i].date || localErrors[i].activity || localErrors[i].time) ? "bg-destructive/5 align-top" : "align-top"}>
-          <TableCell><Input value={r.date} onChange={(e)=>patch(i,"date",e.target.value)} disabled={!editable} placeholder="August 14-17, 2026" />{localErrors[i].date && <p className="mt-1 text-xs text-destructive">{localErrors[i].date}</p>}{errors[i]?.filter((x)=>/date|year|range/i.test(x)).map((x,n)=><p key={n} className="mt-1 text-xs text-destructive">{x}</p>)}</TableCell>
+          <TableCell><Input value={r.date} onChange={(e)=>patch(i,"date",e.target.value)} disabled={!editable} placeholder="e.g. August 14-17, 2026" />{localErrors[i].date && <p className="mt-1 text-xs text-destructive">{localErrors[i].date}</p>}{errors[i]?.filter((x)=>/date|year|range/i.test(x)).map((x,n)=><p key={n} className="mt-1 text-xs text-destructive">{x}</p>)}</TableCell>
           <TableCell><Input value={r.activity} onChange={(e)=>patch(i,"activity",e.target.value)} disabled={!editable} placeholder="Activity name" />{localErrors[i].activity && <p className="mt-1 text-xs text-destructive">{localErrors[i].activity}</p>}<div className="mt-1 flex flex-wrap items-center gap-1.5"><Badge variant="outline">{CATEGORY_LABELS[(r.category || inferActivityCategory(r.activity)) as keyof typeof CATEGORY_LABELS]}</Badge>{errors[i]?.filter((x)=>!/date|year|range/i.test(x)).map((x,n)=><span key={n} className="text-xs text-destructive">{x}</span>)}</div></TableCell>
-          <TableCell><div className="flex flex-wrap gap-1"><Button size="sm" variant="outline" onClick={()=>setDetailsRow(i)}>{editable ? "Add time & room details" : "View details"}</Button>{editable && <Button size="sm" variant="ghost" onClick={()=>setRows((old)=>old.filter((_,n)=>n!==i))}>Remove</Button>}</div>{(r.time||r.location) && <p className="mt-1 text-xs text-muted-foreground">{[r.time,r.location].filter(Boolean).join(" · ")}</p>}</TableCell>
+          <TableCell><Input value={r.time} onChange={(e)=>patch(i,"time",e.target.value)} disabled={!editable} placeholder="Whole day" />{localErrors[i].time && <p className="mt-1 text-xs text-destructive">{localErrors[i].time}</p>}</TableCell>
+          <TableCell><Input value={r.location} onChange={(e)=>patch(i,"location",e.target.value)} disabled={!editable} placeholder="Optional" /></TableCell>
+          <TableCell><div className="flex gap-1"><Button size="sm" variant="outline" onClick={()=>setDetailsRow(i)}>{editable ? "Level and type" : "View"}</Button>{editable && <Button size="sm" variant="ghost" onClick={()=>setRows((old)=>old.length>1?old.filter((_,n)=>n!==i):[blank()])}>Remove</Button>}</div></TableCell>
         </TableRow>)}</TableBody></Table>
         {editable && <Button className="mt-3" variant="outline" onClick={()=>setRows((r)=>[...r,blank()])}>Add row</Button>}
       </CardContent></Card>
 
-      <div className="flex flex-wrap gap-2">
-        {editable && <><Button variant="outline" disabled={busy || hasLocalErrors} onClick={()=>start(async()=>{const res=await previewProposalAction(payload());if(!res.ok){setErrors(res.errors??[]);toast.error(res.error);return;}setPreviewOpen(true);})}>Preview &amp; validate</Button>
-          <Button disabled={busy || hasLocalErrors} onClick={()=>run(()=>saveProposalDraftAction(payload(),active?.id),isAdmin?"Proposal changes saved.":"Draft saved.")}>{active?.status==="APPROVED"&&!isAdmin?"Create revision":"Save as Draft"}</Button></>}
-        {!isAdmin && active && ["DRAFT","CHANGES_REQUESTED","REJECTED","PENDING_APPROVAL"].includes(active.status) && <Button disabled={busy || hasLocalErrors} onClick={()=>run(async()=>{const saved=await saveProposalDraftAction(payload(),active.id);if(!saved.ok || !saved.proposalId)return saved;return submitProposalAction(saved.proposalId);},"Activities published.")}>Publish activities</Button>}
+      <h2 className="text-sm font-semibold">3. Review and save</h2>
+      <div className="flex flex-wrap items-center gap-2">
+        {editable && <p className="mr-2 text-sm text-muted-foreground" aria-live="polite">{readyRows} of {rows.length} rows ready{readyRows < rows.length ? ". Rows missing a valid date or activity are highlighted when you validate." : "."}</p>}
+        {editable && <><Button variant="outline" disabled={busy} onClick={()=>guard(()=>start(async()=>{const res=await previewProposalAction(payload());if(!res.ok){setErrors(res.errors??[]);toast.error(res.error);return;}setPreviewOpen(true);}))}>Preview &amp; validate</Button>
+          <Button disabled={busy} onClick={()=>guard(()=>run(()=>saveProposalDraftAction(payload(),active?.id),isAdmin?"Proposal changes saved.":"Draft saved."))}>{active?.status==="APPROVED"&&!isAdmin?"Create revision":"Save as Draft"}</Button></>}
+        {!isAdmin && active && ["DRAFT","CHANGES_REQUESTED","REJECTED","PENDING_APPROVAL"].includes(active.status) && <Button disabled={busy} onClick={()=>guard(()=>run(async()=>{const saved=await saveProposalDraftAction(payload(),active.id);if(!saved.ok || !saved.proposalId)return saved;return submitProposalAction(saved.proposalId);},"Activities published."))}>Publish activities</Button>}
 
       </div>
-      <Dialog open={detailsRow !== null} onOpenChange={(o)=>!o&&setDetailsRow(null)}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Add time &amp; room details</DialogTitle></DialogHeader>{detailsRow !== null && <div className="space-y-3"><div><label className="mb-1 block text-xs font-medium">Time (optional)</label><Input disabled={!editable} value={rows[detailsRow]?.time??""} onChange={(e)=>patch(detailsRow,"time",e.target.value)} placeholder="8:00 AM-10:00 AM" />{localErrors[detailsRow]?.time&&<p className="mt-1 text-xs text-destructive">{localErrors[detailsRow].time}</p>}</div><div><label className="mb-1 block text-xs font-medium">Location (optional)</label><Input disabled={!editable} value={rows[detailsRow]?.location??""} onChange={(e)=>patch(detailsRow,"location",e.target.value)} placeholder="Auditorium or room" /></div><div><label className="mb-1 block text-xs font-medium">School level</label><NativeSelect disabled={!editable} value={rows[detailsRow]?.level||level} onChange={(e)=>patch(detailsRow,"level",e.target.value)} options={LEVEL_OPTIONS}/></div><div><label className="mb-1 block text-xs font-medium">Category override (optional)</label><NativeSelect disabled={!editable} value={rows[detailsRow]?.category??""} onChange={(e)=>patch(detailsRow,"category",e.target.value)} placeholder={`Automatically detected: ${CATEGORY_LABELS[inferActivityCategory(rows[detailsRow]?.activity??"")]}`} options={CATEGORY_OPTIONS}/></div><Button className="w-full" onClick={()=>setDetailsRow(null)}>Done</Button></div>}</DialogContent></Dialog>
+      <Dialog open={detailsRow !== null} onOpenChange={(o)=>!o&&setDetailsRow(null)}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Level and type</DialogTitle></DialogHeader>{detailsRow !== null && <div className="space-y-3"><div><label className="mb-1 block text-xs font-medium">School level</label><NativeSelect disabled={!editable} value={rows[detailsRow]?.level||level} onChange={(e)=>patch(detailsRow,"level",e.target.value)} options={LEVEL_OPTIONS}/></div><div><label className="mb-1 block text-xs font-medium">Category override (optional)</label><NativeSelect disabled={!editable} value={rows[detailsRow]?.category??""} onChange={(e)=>patch(detailsRow,"category",e.target.value)} placeholder={`Automatically detected: ${CATEGORY_LABELS[inferActivityCategory(rows[detailsRow]?.activity??"")]}`} options={CATEGORY_OPTIONS}/></div><Button className="w-full" onClick={()=>setDetailsRow(null)}>Done</Button></div>}</DialogContent></Dialog>
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle>Official School Activities Preview</DialogTitle></DialogHeader><OfficialPreview department={currentDepartment} term={currentTerm} preparedBy={preparedBy} designation={designation} rows={exportDoc.rows}/><div className="flex justify-end"><ReportButtons doc={exportDoc}/></div></DialogContent></Dialog>
     </div>
   </div>;

@@ -31,13 +31,11 @@ import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ux/form-dialog";
-import { DragHandle, SortableList } from "@/components/ux/sortable-list";
 import { EmptyState, PageHeader } from "@/components/ux/states";
 import { NativeSelect } from "@/components/ux/native-select";
 import { ReportButtons } from "@/components/ux/export-buttons";
 import { useShortcut } from "@/components/ux/shortcuts";
 import { BuildingArt } from "@/components/rooms/building-art";
-import { reorderAction } from "@/actions/reorder";
 import type { ReportDoc } from "@/lib/export/report";
 import { BUILDING_PURPOSES, PURPOSE_LABELS, buildingStatus, hoursText } from "@/lib/rooms/buildings";
 import { cn } from "@/lib/utils";
@@ -68,9 +66,8 @@ export interface RoomReportRow {
   utilization: number;
 }
 
-type Sort = "custom" | "code" | "name" | "rooms" | "seats";
+type Sort = "code" | "name" | "rooms" | "seats";
 const SORTS: { value: Sort; label: string }[] = [
-  { value: "custom", label: "Custom order" },
   { value: "code", label: "Building code" },
   { value: "name", label: "Name" },
   { value: "rooms", label: "Most rooms" },
@@ -97,7 +94,7 @@ function Stat({ icon, label, value, note }: { icon: ReactNode; label: string; va
 function StatusBadge({ statuses }: { statuses: string[] }) {
   const s = buildingStatus(statuses);
   return (
-    <Badge variant="outline" className={cn("gap-1.5", s.operational ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200" : "border-amber-500/40 bg-amber-500/15 text-amber-900 dark:text-amber-200")}>
+    <Badge variant="outline" className={cn("gap-1.5", s.operational ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200" : "border-amber-500/50 bg-amber-500/15 text-amber-900 dark:text-amber-200")}>
       <span className={cn("size-1.5 rounded-full", s.operational ? "bg-emerald-500" : "bg-amber-500")} aria-hidden />
       {s.label}
     </Badge>
@@ -123,7 +120,7 @@ export function BuildingsOverview({
   const [query, setQuery] = useState(initialQuery);
   const [purpose, setPurpose] = useState("");
   const [status, setStatus] = useState("");
-  const [sort, setSort] = useState<Sort>("custom");
+  const [sort, setSort] = useState<Sort>("code");
   const [view, setView] = useCollectionView("buildings:view");
   const [editing, setEditing] = useState<{ building?: BuildingDetails } | null>(null);
   const [photoFor, setPhotoFor] = useState<BuildingSummary | null>(null);
@@ -147,14 +144,13 @@ export function BuildingsOverview({
         (!q || text.includes(q) || (roomMatches.get(b.id) ?? 0) > 0)
       );
     });
-    const by: Record<Sort, ((a: BuildingSummary, b: BuildingSummary) => number) | null> = {
-      custom: null,
+    const by: Record<Sort, (a: BuildingSummary, b: BuildingSummary) => number> = {
       code: (a, b) => (a.code || a.name).localeCompare(b.code || b.name),
       name: (a, b) => a.name.localeCompare(b.name),
       rooms: (a, b) => b.rooms - a.rooms,
       seats: (a, b) => b.seats - a.seats,
     };
-    return by[sort] ? [...list].sort(by[sort]!) : list;
+    return list.sort(by[sort]);
   }, [buildings, purpose, status, q, sort, roomMatches]);
 
   const totals = useMemo(() => {
@@ -181,7 +177,7 @@ export function BuildingsOverview({
         { header: "Building and Floor", value: (r) => r.location },
         { header: "Capacity", value: (r) => r.capacity },
         { header: "Type", value: (r) => r.type },
-        { header: "Designated Program/Strand", value: (r) => r.designation },
+        { header: "Department designation", value: (r) => r.designation },
         { header: "Availability", value: (r) => r.availability },
         { header: "Use This Term", value: (r) => `${r.utilization}%` },
       ],
@@ -261,7 +257,7 @@ export function BuildingsOverview({
         </div>
         <NativeSelect aria-label="Purpose" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="All purposes" options={BUILDING_PURPOSES.map((p) => ({ value: p, label: PURPOSE_LABELS[p] }))} className="w-full sm:w-52" />
         <NativeSelect aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} placeholder="All statuses" options={[{ value: "OPERATIONAL", label: "Operational" }, { value: "MAINTENANCE", label: "Maintenance" }]} className="w-full sm:w-40" />
-        <ViewSwitch value={view} onChange={setView} label="Buildings view" />
+        <div className="hidden sm:block"><ViewSwitch value={view} onChange={setView} label="Buildings view" /></div>
         <div className="sm:ml-auto">
           <ReportButtons doc={report} />
         </div>
@@ -284,8 +280,10 @@ export function BuildingsOverview({
           description={buildings.length ? undefined : "Add a building, then its floors and rooms."}
           action={buildings.length || !isAdmin ? undefined : <Button onClick={() => setEditing({})}>Add building</Button>}
         />
-      ) : view === "cards" ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      ) : (
+        <>
+        {/* Phones always get cards; the table is for wider screens. */}
+        <div className={cn("grid gap-4 sm:grid-cols-2 xl:grid-cols-3", view !== "cards" && "sm:hidden")}>
           {shown.map((b) => (
             <Card key={b.id} className="group gap-0 overflow-hidden py-0 transition-shadow hover:shadow-md">
               <div className="relative aspect-[16/8] overflow-hidden bg-muted">
@@ -314,12 +312,11 @@ export function BuildingsOverview({
             </Card>
           ))}
         </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border bg-card">
+        {view !== "cards" && (
+        <div className="hidden overflow-x-auto rounded-xl border bg-card sm:block">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10"><span className="sr-only">Reorder</span></TableHead>
                 <TableHead>Building</TableHead>
                 <TableHead>Location</TableHead>
                 <TableHead>Purpose</TableHead>
@@ -331,14 +328,9 @@ export function BuildingsOverview({
                 <TableHead><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
-            <SortableList
-              items={shown}
-              disabled={!isAdmin || filtering || sort !== "custom"}
-              getLabel={(b) => b.name}
-              onReorder={(ids) => reorderAction("building", ids)}
-              renderItem={(b, { setNodeRef, style, isDragging, handleProps }) => (
-                <TableRow ref={setNodeRef} style={style} className={cn(isDragging && "bg-card shadow-lg")}>
-                  <TableCell>{isAdmin && !filtering && sort === "custom" && <DragHandle {...handleProps} />}</TableCell>
+            <TableBody>
+              {shown.map((b) => (
+                <TableRow key={b.id}>
                   <TableCell>
                     <Link href={href(b)} className="flex items-center gap-3">
                       <span className="block h-10 w-16 shrink-0 overflow-hidden rounded-md bg-muted"><BuildingArt name={b.name} purpose={b.purpose} floors={b.floors} photo={b.photo} /></span>
@@ -357,12 +349,12 @@ export function BuildingsOverview({
                   <TableCell className="text-xs whitespace-nowrap text-muted-foreground">{hoursText(b.openingMin, b.closingMin) ?? "Not set"}</TableCell>
                   <TableCell className="text-right">{menu(b)}</TableCell>
                 </TableRow>
-              )}
-            >
-              {(rendered) => <TableBody>{rendered}</TableBody>}
-            </SortableList>
+              ))}
+            </TableBody>
           </Table>
         </div>
+        )}
+        </>
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">

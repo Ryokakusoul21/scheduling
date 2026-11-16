@@ -102,7 +102,7 @@ type Option = { value: string; label: string };
 
 /**
  * Title row with the filters (kept in the address so the server recomputes), spreadsheet and PDF export
- * of every report block, and the live-update indicator. Use inside a `.print-area` section.
+ * of every report block, and automatic data refresh. Use inside a `.print-area` section.
  */
 export function DashboardToolbar({
   title,
@@ -138,13 +138,13 @@ export function DashboardToolbar({
 
   return (
     <>
+      <LiveRefresh />
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           {title} {pending && <CircleNotch className="size-4 animate-spin text-muted-foreground" aria-label="Updating" />}
         </h2>
         <div className="flex items-center gap-2 print:hidden">
           <ExportMenu filename={filename} rows={flat.slice(1)} columns={Array.from({ length: width }, (_, i) => ({ header: String(flat[0]?.[i] ?? ""), value: (r: (string | number | null)[]) => r[i] }))} />
-          <LiveRefresh />
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 print:hidden">

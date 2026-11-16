@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db/prisma";
 import { ADMIN_ROLES } from "@/lib/permissions/roles";
 import { canManageDepartment, requireScope } from "@/lib/permissions/scope";
 import { BUILDING_PURPOSES } from "@/lib/rooms/buildings";
+import { UNASSIGNED } from "@/lib/rooms/rooms";
 
 type Result = { ok: boolean; error?: string };
 
@@ -133,9 +134,6 @@ const roomSchema = z.object({
   departmentId: z.string().optional(),
 });
 
-/** Form value for the "General / Shared" designation checkbox. */
-const GENERAL_SHARED = "GENERAL";
-
 const OWN_ROOMS = "You can only manage rooms that belong to your department.";
 
 export async function saveRoomAction(id: string | null, formData: FormData): Promise<Result> {
@@ -143,14 +141,11 @@ export async function saveRoomAction(id: string | null, formData: FormData): Pro
   const parsed = roomSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const d = parsed.data;
-  // No designation, or "General / Shared" ticked, means every program and strand may use the room.
-  const designated = formData.getAll("programIds").map(String).filter(Boolean);
-  const isGeneralShared = designated.length === 0 || designated.includes(GENERAL_SHARED);
-  const programIds = isGeneralShared ? [] : designated;
-  if (programIds.length && (await prisma.program.count({ where: { id: { in: programIds } } })) !== programIds.length) {
-    return { ok: false, error: "A selected program or strand no longer exists. Refresh and try again." };
+  const unassigned = d.departmentId === UNASSIGNED;
+  const departmentId = unassigned ? null : d.departmentId || null;
+  if (departmentId && !await prisma.department.findUnique({ where: { id: departmentId }, select: { id: true } })) {
+    return { ok: false, error: "The selected department no longer exists. Refresh and try again." };
   }
-  const departmentId = d.departmentId || null;
   if (!canManageDepartment(scope, departmentId)) return { ok: false, error: OWN_ROOMS };
   if (id) {
     const existing = await prisma.room.findUnique({ where: { id }, select: { departmentId: true } });
@@ -159,8 +154,8 @@ export async function saveRoomAction(id: string | null, formData: FormData): Pro
   const data = {
     ...d,
     departmentId,
-    isGeneralShared,
-    programs: { set: programIds.map((id) => ({ id })) },
+    isGeneralShared: departmentId === null && !unassigned,
+    programs: { set: [] },
     equipment: d.equipment ? d.equipment.split(",").map((e) => e.trim()).filter(Boolean) : [],
   };
   try {
@@ -170,7 +165,7 @@ export async function saveRoomAction(id: string | null, formData: FormData): Pro
       await prisma.room.create({
         data: {
           ...data,
-          programs: { connect: programIds.map((id) => ({ id })) },
+          programs: { connect: [] },
           sortOrder: (last._max.sortOrder ?? -1) + 1,
           availability: {
             create: (["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const).map((day) => ({

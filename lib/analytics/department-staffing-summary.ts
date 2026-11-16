@@ -1,4 +1,4 @@
-import type { Assignment } from "@/lib/workload/optimizer";
+import { hoursOf, type Assignment } from "@/lib/workload/optimizer";
 
 type DepartmentInput = { id: string; code: string; name: string };
 type FacultyInput = { id: string; departmentId: string | null; maxCapacity: number };
@@ -24,9 +24,7 @@ export interface DepartmentStaffingRow extends DepartmentInput {
 
 function assignmentLoad(assignment: Assignment, measure: WorkloadMeasure) {
   if (measure === "UNITS") return assignment.subjectUnits;
-  return assignment.meetings.length
-    ? assignment.meetings.reduce((total, meeting) => total + meeting.endMin - meeting.startMin, 0) / 60
-    : assignment.plannedHours ?? 0;
+  return hoursOf(assignment);
 }
 
 const round1 = (value: number) => Math.round(value * 10) / 10;

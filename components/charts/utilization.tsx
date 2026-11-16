@@ -41,7 +41,7 @@ export function RateChart({ title, rows, unit, limit = 10 }: { title: string; ro
                   formatter={(_v, _n, p) => [`${p.payload.rate}% (${p.payload.used} of ${p.payload.cap} ${unit})`, "Utilization Rate"]}
                 />
                 <Bar dataKey="rate" fill="var(--chart-1)" radius={[0, 4, 4, 0]} maxBarSize={24} minPointSize={2}>
-                  {data.map((d) => <Cell key={d.name} fill="var(--chart-1)" fillOpacity={!marked || d.mark ? 1 : 0.35} />)}
+                  {data.map((d, i) => <Cell key={i}fill="var(--chart-1)" fillOpacity={!marked || d.mark ? 1 : 0.35} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

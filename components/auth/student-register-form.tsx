@@ -41,7 +41,7 @@ export function StudentRegisterForm({ programs, sections }: { programs: { value:
     formState: { errors, isSubmitting },
   } = useForm<StudentRegisterInput>({
     resolver: zodResolver(studentRegisterSchema),
-    defaultValues: { studentNumber: "", name: "", email: "", programId: "", yearLevel: "", sectionId: "", password: "", confirmPassword: "", acceptTerms: false },
+    defaultValues: { studentNumber: "GC-", name: "", email: "", programId: "", yearLevel: "", sectionId: "", password: "", confirmPassword: "", acceptTerms: false },
   });
 
   const [password, programId, yearLevel] = useWatch({ control, name: ["password", "programId", "yearLevel"] });
@@ -109,7 +109,7 @@ export function StudentRegisterForm({ programs, sections }: { programs: { value:
     );
   }
 
-  const text = (name: "studentNumber" | "name" | "email", label: string, props: React.ComponentProps<typeof Input> = {}) => (
+  const text = (name: "name" | "email", label: string, props: React.ComponentProps<typeof Input> = {}) => (
     <Field data-invalid={!!errors[name]}>
       <FieldLabel htmlFor={name}>{label}</FieldLabel>
       <Input id={name} aria-invalid={!!errors[name]} {...props} {...register(name)} />
@@ -120,9 +120,34 @@ export function StudentRegisterForm({ programs, sections }: { programs: { value:
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate>
       <FieldGroup>
-        {text("studentNumber", "Student number or Learner Reference Number", { placeholder: "136512090001", autoComplete: "off" })}
+        <Field data-invalid={!!errors.studentNumber}>
+          <FieldLabel htmlFor="studentNumber">Student ID</FieldLabel>
+          <div className="relative">
+            <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 z-10 flex items-center text-sm font-medium text-muted-foreground">GC-</span>
+            <Controller
+              control={control}
+              name="studentNumber"
+              render={({ field }) => (
+                <Input
+                  {...field}
+                  id="studentNumber"
+                  value={field.value.slice(3)}
+                  onChange={(event) => field.onChange(`GC-${event.target.value.replace(/^\s*GC-/i, "")}`)}
+                  placeholder="136512090001"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="pl-11"
+                  aria-invalid={!!errors.studentNumber}
+                  aria-describedby="student-number-help student-number-error"
+                />
+              )}
+            />
+          </div>
+          <FieldDescription id="student-number-help">Your student ID always starts with GC-. Enter the remaining letters or numbers.</FieldDescription>
+          <FieldError id="student-number-error" errors={[errors.studentNumber]} />
+        </Field>
         {text("name", "Full name", { placeholder: "Juan Dela Cruz", autoComplete: "name" })}
-        {text("email", "Email", { type: "email", placeholder: "you@granby.edu.ph", autoComplete: "email" })}
+        {text("email", "Email", { type: "email", placeholder: "you@gmail.com", autoComplete: "email" })}
 
         <Field data-invalid={!!errors.programId}>
           <FieldLabel htmlFor="programId">Program or strand</FieldLabel>

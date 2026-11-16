@@ -88,7 +88,7 @@ export function BookingWorkspace({ readOnly = false, bookings, acknowledgements,
     setRequest(r);
     setOptions(null);
     startSearch(async () => {
-      const res = await findRoomsAction({ ...r, roomType: (r.roomType || undefined) as never, roomId: r.roomId || undefined });
+      const res = await findRoomsAction({ ...r, roomId: r.roomId || undefined });
       if (!res.ok) return announce(false, res.error);
       setOptions(res.data.options);
       if (res.data.caps) setCaps(res.data.caps);

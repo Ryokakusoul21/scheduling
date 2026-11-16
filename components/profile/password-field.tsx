@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { Eye, EyeSlash } from "@phosphor-icons/react/ssr";
 import { Input } from "@/components/ui/input";
+import { cn } from "cn";
 
 /** Password input with a show/hide toggle; extra props (including the form ref) go to the input. */
-export function PasswordField(props: Omit<React.ComponentProps<typeof Input>, "type">) {
+export function PasswordField({ className, ...props }: Omit<React.ComponentProps<typeof Input>, "type">) {
   const [shown, setShown] = useState(false);
   return (
-    <div className="relative">
-      <Input {...props} type={shown ? "text" : "password"} className="h-10 pr-11 md:text-base" />
+    <div className="relative min-w-0">
+      <Input {...props} type={shown ? "text" : "password"} className={cn("h-11 pr-11 text-base", className)} />
       <button
         type="button"
         onClick={() => setShown((s) => !s)}

@@ -1,6 +1,8 @@
+import { roomLabel } from "@/lib/rooms/label";
 import { prisma } from "@/lib/db/prisma";
 import { departmentWhere } from "@/lib/permissions/department";
-import { requireScope } from "@/lib/permissions/scope";
+import { policyUserFromScope, requireScope } from "@/lib/permissions/scope";
+import { can } from "@/lib/permissions/policy";
 import { ROOM_BOOKING_ROLES } from "@/lib/permissions/roles";
 import { PageHeader } from "@/components/ux/states";
 import { allowedPriorities, canManageBooking, canReviewOverride, isOverride, statusLabel, URGENT_REASONS, type Priority } from "@/lib/bookings/plan";
@@ -25,9 +27,12 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
   const [bookings, rooms, faculty, departments, myAcks, settings] = await Promise.all([
     prisma.roomBooking.findMany({
       // Own bookings, plus overrides of rooms this person must approve; the Registrar sees all.
-      where: { date: { gte: since }, ...(scope.isAdmin ? {} : { OR: [{ bookedById: scope.userId }, ...(scope.role === "HEAD_OF_DEPARTMENT" ? [approver, { departmentId: { in: scope.departmentIds } }] : [])] }) },
+      where: { AND: [
+        { OR: [{ date: { gte: since } }, ...(openId ? [{ id: openId }] : [])] },
+        ...(scope.isAdmin ? [] : [{ OR: [{ bookedById: scope.userId }, ...(scope.role === "HEAD_OF_DEPARTMENT" ? [approver, { departmentId: { in: scope.departmentIds } }] : [])] }]),
+      ] },
       include: {
-        room: { select: { roomName: true } },
+        room: { select: { roomNumber: true, roomName: true } },
         bookedBy: { select: { name: true } },
         acknowledgements: true,
         displaced: { select: { purpose: true, status: true, roomId: true } },
@@ -40,15 +45,15 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
       },
       orderBy: [{ date: "desc" }, { startMin: "asc" }],
     }),
-    prisma.room.findMany({ select: { id: true, roomName: true } }),
+    prisma.room.findMany({ select: { id: true, roomNumber: true, roomName: true } }),
     prisma.faculty.findMany({ select: { id: true, fullName: true } }),
     prisma.department.findMany({ select: { id: true, name: true } }),
     scope.facultyId
-      ? prisma.bookingAcknowledgement.findMany({ where: { facultyId: scope.facultyId, booking: { status: "CONFIRMED" } }, include: { booking: { select: { id: true, purpose: true, date: true, startMin: true, endMin: true, priority: true, room: { select: { roomName: true } }, bookedBy: { select: { name: true } } } } }, orderBy: { createdAt: "desc" }, take: 20 })
+      ? prisma.bookingAcknowledgement.findMany({ where: { facultyId: scope.facultyId, booking: { status: "CONFIRMED" } }, include: { booking: { select: { id: true, purpose: true, date: true, startMin: true, endMin: true, priority: true, room: { select: { roomNumber: true, roomName: true } }, bookedBy: { select: { name: true } } } } }, orderBy: { createdAt: "desc" }, take: 20 })
       : Promise.resolve([]),
     getBookingSettings(),
   ]);
-  const roomName = new Map(rooms.map((r) => [r.id, r.roomName]));
+  const roomName = new Map(rooms.map((r) => [r.id, roomLabel(r)]));
   const facultyName = new Map(faculty.map((f) => [f.id, f.fullName]));
   const deptName = new Map(departments.map((d) => [d.id, d.name]));
   const own = (d: string | null) => scope.isAdmin || (!!d && scope.departmentIds.includes(d));
@@ -83,7 +88,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
       past,
       startMin: b.startMin,
       endMin: b.endMin,
-      roomName: b.room.roomName,
+      roomName: roomLabel(b.room),
       purpose: b.purpose,
       attendees: b.attendees,
       status: b.status,
@@ -109,7 +114,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
     status: a.status,
     note: a.note,
     purpose: a.booking.purpose,
-    room: a.booking.room.roomName,
+    room: roomLabel(a.booking.room),
     when: `${formatDay(isoDate(a.booking.date))}, ${formatRange(a.booking.startMin, a.booking.endMin)}`,
     bookedBy: a.booking.bookedBy.name,
   }));
@@ -122,15 +127,19 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
   const priorities = allowedPriorities(scope.role);
   const roomChoices = (await prisma.room.findMany({
     where: { archivedAt: null, ...(priorities.some(isOverride) ? {} : departmentWhere.room(scope)) },
-    select: { id: true, roomName: true, capacity: true, floor: { select: { building: { select: { name: true } } } } },
-    orderBy: { roomName: "asc" },
-  })).map((r) => ({ value: r.id, label: `${r.roomName} · ${r.floor?.building.name ?? "No building"} · ${r.capacity} seats` }));
+    select: { id: true, roomNumber: true, roomName: true, capacity: true, floor: { select: { building: { select: { name: true } } } } },
+    orderBy: { roomNumber: "asc" },
+  })).map((r) => ({ value: r.id, label: `${roomLabel(r)} · ${r.floor?.building.name ?? "No building"} · ${r.capacity} seats` }));
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Room Booking" description="Find and book a room for a meeting or activity. Urgent bookings can take a room in use and move the classes in it." />
+      <PageHeader title="Room Booking" description={scope.role === "REGISTRAR"
+        ? "Find and book rooms across all departments and shared spaces. Bookings require approval from the responsible department head."
+        : scope.role === "FACULTY"
+          ? "Request a room in your department or a shared space, and manage your own bookings. Requests require approval from the responsible department head."
+          : "Find and book a room for a meeting or activity. Urgent bookings can take a room in use and move the classes in it."} />
       <BookingWorkspace
-        readOnly={scope.isAdmin}
+        readOnly={!can(policyUserFromScope(scope), "create", { type: "roomBooking", ownerUserId: scope.userId })}
         bookings={rows}
         acknowledgements={acks}
         showBookedBy={scope.isAdmin}

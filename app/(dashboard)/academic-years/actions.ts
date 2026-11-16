@@ -6,15 +6,17 @@ import type { AcademicLevel, SemesterType } from "@prisma/client";
 import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
-import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { ADMIN_ROLES } from "@/lib/permissions/roles";
 import { ACADEMIC_LEVELS, QUARTER_TYPES, SEMESTER_TYPES, LEVELS, isAcademicLevel, termLabel } from "@/lib/academics/levels";
 
 type Result = { ok: boolean; error?: string };
 
 function revalidate(yearId?: string) {
   revalidatePath("/academic-years");
+  revalidatePath("/programs");
   if (yearId) revalidatePath(`/academic-years/${yearId}`);
   revalidatePath("/scheduler");
+  revalidatePath("/subjects");
 }
 
 // ---------------------------------------------------------------------------
@@ -31,7 +33,7 @@ const yearSchema = z
   .refine((d) => new Date(d.endDate) > new Date(d.startDate), { message: "End date must be after the start date" });
 
 export async function saveAcademicYearAction(id: string | null, formData: FormData): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  await requireRole(...ADMIN_ROLES);
   const parsed = yearSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const { name, startDate, endDate, isActive } = parsed.data;
@@ -53,7 +55,7 @@ export async function saveAcademicYearAction(id: string | null, formData: FormDa
 }
 
 export async function setActiveAcademicYearAction(id: string): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  await requireRole(...ADMIN_ROLES);
   await prisma.$transaction([
     prisma.academicYear.updateMany({ data: { isActive: false } }),
     prisma.academicYear.update({ where: { id }, data: { isActive: true } }),
@@ -64,7 +66,7 @@ export async function setActiveAcademicYearAction(id: string): Promise<Result> {
 }
 
 export async function deleteAcademicYearAction(id: string): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  await requireRole(...ADMIN_ROLES);
   const terms = await prisma.semester.count({ where: { academicYearId: id } });
   if (terms > 0) return { ok: false, error: `Delete its ${terms} term(s) first.` };
   await prisma.academicYear.delete({ where: { id } });
@@ -100,7 +102,7 @@ async function activateTerm(id: string, level: AcademicLevel, programId: string 
 }
 
 export async function saveTermAction(id: string | null, formData: FormData): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  await requireRole(...ADMIN_ROLES);
   const parsed = termSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const d = parsed.data;
@@ -129,7 +131,7 @@ export async function saveTermAction(id: string | null, formData: FormData): Pro
 }
 
 export async function setActiveTermAction(id: string): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  await requireRole(...ADMIN_ROLES);
   const term = await prisma.semester.update({ where: { id }, data: { isActive: true } });
   await activateTerm(term.id, term.level, term.programId);
   revalidate(term.academicYearId);
@@ -138,7 +140,7 @@ export async function setActiveTermAction(id: string): Promise<Result> {
 }
 
 export async function deleteTermAction(id: string): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  await requireRole(...ADMIN_ROLES);
   const [schedules, sections] = await Promise.all([
     prisma.schedule.count({ where: { semesterId: id } }),
     prisma.section.count({ where: { semesterId: id } }),
@@ -155,7 +157,7 @@ export async function deleteTermAction(id: string): Promise<Result> {
  * basic education, or 1st/2nd semester + summer for College.
  */
 export async function createDefaultTermsAction(academicYearId: string, level: AcademicLevel, programId: string | null): Promise<Result> {
-  await requireRole(...STAFF_ROLES);
+  await requireRole(...ADMIN_ROLES);
   if (!isAcademicLevel(level)) return { ok: false, error: "Choose an academic level offered by Granby." };
   const year = await prisma.academicYear.findUnique({ where: { id: academicYearId } });
   if (!year) return { ok: false, error: "Academic year not found." };

@@ -2,13 +2,14 @@ import { PageHeader } from "@/components/ux/states";
 import { requireScope } from "@/lib/permissions/scope";
 import { prisma } from "@/lib/db/prisma";
 import { DepartmentManager } from "./manager";
+import { conflictingDepartmentHead } from "@/lib/departments/heads";
 
 export const metadata = { title: "Department Management · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 export default async function DepartmentManagementPage() {
   await requireScope("REGISTRAR");
   const now = new Date();
-  const [departments, leaders] = await Promise.all([
+  const [departments, leaders, facultyCandidates] = await Promise.all([
     prisma.department.findMany({
       orderBy: { name: "asc" },
       include: { _count: { select: { programs: true, faculty: true, sections: true, rooms: true } } },
@@ -21,11 +22,15 @@ export default async function DepartmentManagementPage() {
         email: true,
         faculty: { select: { departmentId: true } },
         departmentAssignments: {
-          where: { AND: [{ OR: [{ startsAt: null }, { startsAt: { lte: now } }] }, { OR: [{ endsAt: null }, { endsAt: { gte: now } }] }] },
-          select: { departmentId: true, acting: true },
+          select: { departmentId: true, acting: true, startsAt: true, endsAt: true },
         },
       },
       orderBy: { name: "asc" },
+    }),
+    prisma.faculty.findMany({
+      where: { status: "ACTIVE", archivedAt: null, user: { role: "FACULTY", status: "ACTIVE", archivedAt: null } },
+      select: { id: true, fullName: true, employeeId: true, departmentId: true, position: true },
+      orderBy: { fullName: "asc" },
     }),
   ]);
 
@@ -40,9 +45,15 @@ export default async function DepartmentManagementPage() {
       sections: department._count.sections,
       rooms: department._count.rooms,
     },
+    facultyCandidates: facultyCandidates.filter((faculty) => faculty.departmentId === department.id).map((faculty) => ({
+      id: faculty.id, name: faculty.fullName, detail: [faculty.employeeId, faculty.position].filter(Boolean).join(" · "),
+    })),
+    headOptions: leaders.filter((candidate) => !conflictingDepartmentHead(leaders.map((leader) => leader.id === candidate.id
+      ? { ...leader, departmentAssignments: [...leader.departmentAssignments, { departmentId: department.id, startsAt: null, endsAt: null }] }
+      : leader), candidate.id, now)).map((user) => ({ id: user.id, label: `${user.name} · ${user.email}` })),
     heads: leaders.flatMap((leader) => {
       const byFaculty = leader.faculty?.departmentId === department.id;
-      const assignment = leader.departmentAssignments.find((item) => item.departmentId === department.id);
+      const assignment = leader.departmentAssignments.find((item) => item.departmentId === department.id && (!item.startsAt || item.startsAt <= now) && (!item.endsAt || item.endsAt >= now));
       return byFaculty || assignment
         ? [{ id: leader.id, name: leader.name, email: leader.email, acting: assignment?.acting ?? false, linkedThroughFaculty: byFaculty }]
         : [];
@@ -53,11 +64,10 @@ export default async function DepartmentManagementPage() {
     <div className="space-y-5">
       <PageHeader
         title="Department Management"
-        description="Maintain department records, assign active Heads of Department, and review each department’s academic and staffing footprint."
+        description="Assign one active Head of Department per department, review faculty to consider, and maintain department records."
       />
       <DepartmentManager
         departments={rows}
-        headOptions={leaders.map((user) => ({ id: user.id, label: `${user.name} · ${user.email}` }))}
       />
     </div>
   );

@@ -93,7 +93,7 @@ export function BookDialog({ option, request, pending, onConfirm, onClose }: { o
                     </li>
                   ))}
                 </ul>
-                <p className="text-[13px]">Faculty, learners, and the Heads of Department concerned are notified by bell and email. Cancelling or shortening this booking can restore them.</p>
+                <p className="text-[13px]">Faculty, learners, and heads concerned are notified by bell and email.</p>
                 {urgent && !option.needsApproval && (
                   <label className="flex items-start gap-2 text-sm font-medium">
                     <Checkbox checked={agreed} onCheckedChange={(on) => setAgreed(!!on)} className="mt-0.5" /> I confirm: {summary}.

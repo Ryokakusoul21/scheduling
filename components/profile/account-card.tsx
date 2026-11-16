@@ -89,9 +89,9 @@ export function AccountCard({
                 <form
                   onSubmit={(e) => (e.preventDefault(), save())}
                   onKeyDown={(e) => e.key === "Escape" && cancel()}
-                  className="flex max-w-md flex-wrap items-start gap-2"
+                  className="grid w-full min-w-0 max-w-md gap-2"
                 >
-                  <div className="min-w-48 flex-1 space-y-1">
+                  <div className="min-w-0 space-y-1">
                     <Input
                       ref={input}
                       value={value}
@@ -100,17 +100,19 @@ export function AccountCard({
                       aria-invalid={!!error}
                       aria-describedby={error ? "name-error" : undefined}
                       maxLength={100}
-                      className="h-10 md:text-base"
+                      className="h-11 text-base"
                     />
                     {error && <p id="name-error" role="alert" className="text-sm text-destructive">{error}</p>}
                   </div>
-                  <Button type="submit" disabled={pending || value.trim() === name || value.trim().length < 2} className="h-10">Save</Button>
-                  <Button type="button" variant="outline" onClick={cancel} className="h-10">Cancel</Button>
+                  <div className="grid grid-cols-2 gap-2 sm:flex">
+                    <Button type="submit" disabled={pending || value.trim() === name || value.trim().length < 2} className="h-11 sm:px-5">Save</Button>
+                    <Button type="button" variant="outline" onClick={cancel} className="h-11 sm:px-5">Cancel</Button>
+                  </div>
                 </form>
               ) : (
-                <dd className="flex items-center gap-2 text-base font-medium">
-                  {name}
-                  <Button variant="ghost" size="icon" className="size-8" aria-label="Edit name" onClick={() => setEditing(true)}>
+                <dd className="flex min-w-0 items-start gap-2 text-base font-medium">
+                  <span className="min-w-0 flex-1 py-2 [overflow-wrap:anywhere]">{name}</span>
+                  <Button variant="ghost" size="icon" className="size-11 shrink-0" aria-label="Edit name" onClick={() => setEditing(true)}>
                     <PencilSimple className="size-4" />
                   </Button>
                 </dd>
@@ -127,7 +129,7 @@ export function AccountCard({
             {details.map((d) => (
               <div key={d.label} className="space-y-1">
                 <Label locked>{d.label}</Label>
-                <dd className="text-base font-medium">{d.value}</dd>
+                <dd className="text-base font-medium [overflow-wrap:anywhere]">{d.value}</dd>
               </div>
             ))}
           </dl>

@@ -3,6 +3,7 @@ import { formatTime } from "@/lib/scheduler/timetable";
 import type { DayOfWeek } from "@/lib/scheduler/types";
 /** Printable and spreadsheet reports with the institution header, built from the same column list. */
 import { cell, downloadText, toCsv, type Column } from "./csv";
+import { TIMETABLE_PRINT_CSS, TIMETABLE_PRINT_SCRIPT, timetablePrintColumns } from "./timetable-print";
 
 export const SCHOOL_NAME = "GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY";
 
@@ -145,7 +146,7 @@ function timetablePrintHtml(doc: ReportDoc<TimetableRow>) {
           : row.room;
       return `<td rowspan="${spanOf(row)}" class="meeting"><b>${escape(title)}${row.component === "LABORATORY" ? " (Laboratory)" : ""}</b><br>(${escape(context)})<br>${escape(printClock(row.startMin))}–${escape(printClock(row.endMin))}</td>`;
     }).join("");
-    return `<tr><td class="time">${printClock(time)}</td><td class="time">${printClock(ticks[index + 1])}</td>${meetings}</tr>`;
+    return `<tr><td class="time">${escape(printClock(time))} – ${escape(printClock(ticks[index + 1]))}</td>${meetings}</tr>`;
   }).join("");
 
   const details = [
@@ -172,17 +173,11 @@ function timetablePrintHtml(doc: ReportDoc<TimetableRow>) {
   }).join("") || '<tr><td colspan="4">No classes scheduled yet.</td></tr>';
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escape(doc.title)}</title><style>
-@page{size:A4 landscape;margin:0}*{box-sizing:border-box}body{margin:0;padding:8mm;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:11px}
-.sheet{padding:4px}.head{display:flex;align-items:center;justify-content:center;gap:14px;text-align:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:10px;line-height:1.3}.head img{object-fit:contain}.head b{font-size:13px}.dept{font-size:17px;font-weight:700}
-.title{text-align:center;margin-bottom:8px}.title .term{margin-top:2px}.info{margin:0 auto 10px;border-collapse:collapse}.info td{padding:1px 6px}.info .label{width:110px}
-table.grid,table.subjects{width:100%;border-collapse:collapse;table-layout:fixed}.grid th,.grid td,.subjects th,.subjects td{border:1px solid #000;text-align:center;padding:0 2px}
-.grid th{height:22px;font-size:10px}.grid td{height:24px;font-size:9px}.grid td.time{width:38px;font-size:9px}.grid td.meeting{vertical-align:middle;line-height:1.25;overflow-wrap:anywhere}
-.subjects{margin:14px auto 0;width:90%}.subjects th{background:#f3f4f6;font-size:10px}.subjects td{font-size:10px;padding:2px 4px}
-@media print{thead{display:table-header-group}tr{break-inside: avoid;page-break-inside:avoid}}
-</style></head><body><section class="sheet"><div class="head"><img src="${escape(`${globalThis.location?.origin ?? ""}/branding/logo.jpg`)}" alt="" width="64" height="64"><div><b>${escape(SCHOOL_NAME)}</b>${doc.timetableDetails?.department ? `<div class="dept">${escape(doc.timetableDetails.department)}</div>` : ""}<div>Naic, Cavite, Philippines</div></div></div>
+${TIMETABLE_PRINT_CSS}
+</style></head><body><section class="sheet"><div class="sheet-content"><div class="head"><img src="${escape(`${globalThis.location?.origin ?? ""}/branding/logo.jpg`)}" alt="" width="64" height="64"><div><b>${escape(SCHOOL_NAME)}</b>${doc.timetableDetails?.department ? `<div class="dept">${escape(doc.timetableDetails.department)}</div>` : ""}<div>Naic, Cavite, Philippines</div></div></div>
 <div class="title"><b>SCHEDULE OF CLASSES</b><div class="term">${escape(doc.term)}</div></div><div>Date Generated: ${escape(generatedOn())}</div><table class="info">${details}</table>
-<table class="grid"><thead><tr><th colspan="2">TIME</th>${PRINT_DAYS.map((day) => `<th>${day}</th>`).join("")}</tr></thead><tbody>${bodyRows}</tbody></table>
-<table class="subjects"><thead><tr><th>SUBJ CODE</th><th>SUBJECT TITLE</th><th>UNITS</th><th>INSTRUCTOR/S</th></tr></thead><tbody>${subjectRows}</tbody></table></section></body></html>`;
+<table class="grid">${timetablePrintColumns(PRINT_DAYS.length)}<thead><tr><th>TIME</th>${PRINT_DAYS.map((day) => `<th>${day}</th>`).join("")}</tr></thead><tbody>${bodyRows}</tbody></table>
+<table class="subjects"><thead><tr><th>SUBJ CODE</th><th>SUBJECT TITLE</th><th>UNITS</th><th>INSTRUCTOR/S</th></tr></thead><tbody>${subjectRows}</tbody></table></div></section>${TIMETABLE_PRINT_SCRIPT}</body></html>`;
 }
 
 export function reportHtml<T>(doc: ReportDoc<T>) {

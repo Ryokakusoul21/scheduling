@@ -229,6 +229,17 @@
   }
 }
 
+/* Process animation: class blocks pop into the timetable while a highlight sweeps across. */
+@keyframes process-pop {
+  0% { opacity: 0; transform: scale(0.3); }
+  10%, 82% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+@keyframes process-scan {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(500%); }
+}
+
 /* Theme switch: the new theme is revealed by a circle instead of the default fade. */
 ::view-transition-old(root),
 ::view-transition-new(root) {

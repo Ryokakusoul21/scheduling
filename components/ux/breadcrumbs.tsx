@@ -87,11 +87,11 @@ export function Breadcrumbs({ items, className }: { items: BreadcrumbItem[]; cla
 }
 
 /** URL-driven page breadcrumb. Layouts render it once so every current and future page inherits it. */
-export function AppBreadcrumbs({ role, departmentName }: { role: AppRole; departmentName?: string | null }) {
+export function AppBreadcrumbs({ role, departmentName, departmentNames }: { role: AppRole; departmentName?: string | null; departmentNames?: Record<string, string> }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const query = searchParams.toString();
-  const items = useMemo(() => buildBreadcrumbs(pathname, new URLSearchParams(query), role, departmentName), [pathname, query, role, departmentName]);
+  const items = useMemo(() => buildBreadcrumbs(pathname, new URLSearchParams(query), role, departmentName, departmentNames), [pathname, query, role, departmentName, departmentNames]);
   if (pathname === "/scheduler") return null;
   return <Breadcrumbs key={`${pathname}?${query}`} items={items} />;
 }

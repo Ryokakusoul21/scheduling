@@ -7,13 +7,5 @@ export const metadata = { title: "Notifications · GRANBY COLLEGES OF SCIENCE AN
 export default async function NotificationsPage() {
   const user = await requireUser();
   const initialPage = await loadNotifications(user);
-  return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Notifications</h1>
-        <p className="text-sm text-muted-foreground">Schedule updates and account alerts.</p>
-      </div>
-      <NotificationsList initialPage={initialPage} userId={user.id} />
-    </div>
-  );
+  return <NotificationsList initialPage={initialPage} userId={user.id} initialNow={new Date().toISOString()} />;
 }

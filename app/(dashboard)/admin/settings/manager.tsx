@@ -114,7 +114,7 @@ export function SettingsManager({
                   <input type="number" step="0.5" min={0} name="tolerance" id="tolerance" defaultValue={workload.tolerance} required className={inputClass} aria-describedby="tolerance-help" />
                 </Field>
               </div>
-              <p id="tolerance-help" className="text-xs text-muted-foreground">Balance tolerance is how far a load may sit from its department&apos;s average before the check proposes evening it out. Use 0 to turn it off.</p>
+              <p id="tolerance-help" className="text-xs text-muted-foreground">How far a load may sit from the department average. 0 turns it off.</p>
               <Field>
                 <FieldLabel htmlFor="crossDepartment">Reassignments across departments</FieldLabel>
                 <select name="crossDepartment" id="crossDepartment" defaultValue={workload.crossDepartment} className={inputClass}>
@@ -135,7 +135,7 @@ export function SettingsManager({
         <CardContent>
           <form action={handleBooking}>
             <FieldGroup>
-              <p className="text-xs text-muted-foreground">Buffer time is kept free between two bookings of the same room. Urgent overrides beyond the monthly caps are refused (the Registrar is not capped).</p>
+              <p className="text-xs text-muted-foreground">Buffer time is kept free between bookings of the same room.</p>
               <div className="grid grid-cols-2 gap-3">
                 <Field><FieldLabel htmlFor="openTime">Rooms open</FieldLabel><input type="time" step={1800} name="openTime" id="openTime" defaultValue={hhmm(booking.openMin)} required className={inputClass} /></Field>
                 <Field><FieldLabel htmlFor="closeTime">Rooms close</FieldLabel><input type="time" step={1800} name="closeTime" id="closeTime" defaultValue={hhmm(booking.closeMin)} required className={inputClass} /></Field>

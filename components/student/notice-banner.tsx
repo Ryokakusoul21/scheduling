@@ -34,7 +34,7 @@ export function NoticeBanner({ activities }: { activities: PortalActivity[] }) {
   const dismissed: string[] = JSON.parse(raw);
   const today = manilaNow().date;
   const horizon = shiftDate(today, 14).date;
-  const notices = activities.filter((a) => AFFECTS_CLASSES.has(a.type) && a.endDate >= today && a.startDate <= horizon && !dismissed.includes(a.id));
+  const notices = activities.filter((a) => (AFFECTS_CLASSES.has(a.type) || (a.type === "SCHOOL_EVENT" && !!a.scheduleIds?.length)) && a.endDate >= today && a.startDate <= horizon && !dismissed.includes(a.id));
   if (notices.length === 0) return null;
 
   function dismiss(id: string) {

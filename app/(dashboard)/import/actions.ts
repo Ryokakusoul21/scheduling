@@ -125,7 +125,7 @@ export async function commitImportAction(kind: ImportKind, records: Record<strin
           id: crypto.randomUUID(), roomNumber: d.roomNumber, roomName: d.roomName, floorId: floorId.get(`${buildingId.get(key(d.building))}|${key(d.floor)}`)!,
           capacity: d.capacity, roomType: d.roomType, equipment: d.equipment, departmentId: d.departmentId,
         }));
-        await tx.room.createMany({ data: rows });
+        await tx.room.createMany({ data: rows.map((row) => ({ ...row, isGeneralShared: row.departmentId === null })) });
         await tx.roomAvailability.createMany({
           data: rows.flatMap((r) => (["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const).map((day) => ({ roomId: r.id, dayOfWeek: day, startMin: 7 * 60, endMin: 19 * 60 }))),
         });

@@ -56,7 +56,7 @@ export function OtpInput({
   }
 
   return (
-    <div role="group" aria-label={label} aria-describedby={describedBy} className="flex gap-2">
+    <div role="group" aria-label={label} aria-describedby={describedBy} className="grid w-full max-w-[328px] grid-cols-6 gap-1.5 sm:gap-2">
       {digits.map((d, i) => (
         <input
           key={i}
@@ -77,7 +77,7 @@ export function OtpInput({
           }}
           onFocus={(e) => e.target.select()}
           className={cn(
-            "size-12 rounded-lg border bg-transparent text-center font-mono text-xl font-semibold outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 motion-reduce:transition-none dark:bg-input/30",
+            "h-12 w-full min-w-0 rounded-lg border bg-transparent text-center font-mono text-xl font-semibold outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 motion-reduce:transition-none dark:bg-input/30",
             invalid ? "border-destructive ring-3 ring-destructive/20" : "border-input",
           )}
         />

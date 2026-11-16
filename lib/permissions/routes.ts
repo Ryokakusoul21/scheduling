@@ -8,13 +8,12 @@ import { ADMIN_ROLES, ROOM_BOOKING_ROLES, SCHEDULING_ROLES, STAFF_ROLES, SUPER_R
 export const ROUTE_ROLES: { prefix: string; roles: AppRole[] }[] = [
   { prefix: "/department", roles: STAFF_ROLES },
   { prefix: "/requests", roles: TEACHING_ROLES },
+  { prefix: "/assignment-approvals", roles: STAFF_ROLES },
   { prefix: "/calendar/proposals", roles: STAFF_ROLES },
   { prefix: "/admin/users", roles: SUPER_ROLES },
   { prefix: "/admin/audit-logs", roles: SUPER_ROLES },
   { prefix: "/admin/settings", roles: SUPER_ROLES },
   { prefix: "/admin/view-as", roles: SUPER_ROLES },
-  { prefix: "/admin/emergency-access", roles: ["REGISTRAR"] },
-  { prefix: "/admin/scheduling-periods", roles: ["REGISTRAR"] },
   { prefix: "/admin/departments", roles: ["REGISTRAR"] },
   { prefix: "/admin", roles: ADMIN_ROLES },
   { prefix: "/bookings", roles: ROOM_BOOKING_ROLES },
@@ -29,6 +28,7 @@ export const ROUTE_ROLES: { prefix: string; roles: AppRole[] }[] = [
   { prefix: "/analytics", roles: STAFF_ROLES },
   { prefix: "/adjustments", roles: SCHEDULING_ROLES },
   { prefix: "/constraints", roles: SCHEDULING_ROLES },
+  { prefix: "/suspensions", roles: SCHEDULING_ROLES },
   { prefix: "/availability", roles: TEACHING_ROLES },
   { prefix: "/my-subjects", roles: TEACHING_ROLES },
 ];

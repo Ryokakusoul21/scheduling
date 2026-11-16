@@ -1,3 +1,4 @@
+import { roomLabel } from "@/lib/rooms/label";
 import { prisma } from "@/lib/db/prisma";
 import { requireScope } from "@/lib/permissions/scope";
 import { departmentWhere } from "@/lib/permissions/department";
@@ -103,7 +104,7 @@ export default async function RequestsPage() {
         room: s.room.roomNumber,
         faculty: s.faculty.fullName,
       }))}
-      rooms={rooms.map((r) => ({ id: r.id, label: `${r.roomNumber} ${r.roomName}` }))}
+      rooms={rooms.map((r) => ({ id: r.id, label: roomLabel(r) }))}
       faculty={faculty.map((f) => ({ id: f.id, label: `${f.fullName} · ${f.department?.name ?? "No department"}` }))}
     />
   );

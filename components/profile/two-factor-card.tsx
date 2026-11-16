@@ -33,12 +33,12 @@ async function copy(text: string, done: string) {
 
 function Stepper({ current }: { current: number }) {
   return (
-    <ol className="flex flex-wrap gap-x-6 gap-y-2" aria-label="Setup progress">
+    <ol className="grid gap-3 sm:flex sm:flex-wrap sm:gap-x-6" aria-label="Setup progress">
       {STEPS.map((label, i) => (
         <li key={label} aria-current={i === current ? "step" : undefined} className="flex items-center gap-2 text-sm">
           <span
             className={cn(
-              "flex size-6 items-center justify-center rounded-full text-xs font-semibold",
+              "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
               i < current ? "bg-emerald-700 text-white" : i === current ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
             )}
           >
@@ -157,7 +157,7 @@ export function TwoFactorCard({ enabled, recoveryLeft }: { enabled: boolean; rec
       </CardHeader>
       <CardContent className="space-y-5">
         {view === "idle" && !enabled && (
-          <Button onClick={begin} disabled={pending} className="h-10">
+          <Button onClick={begin} disabled={pending} className="min-h-11 w-full py-2 whitespace-normal sm:w-auto">
             {pending ? <CircleNotch className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />} Set up two-factor authentication
           </Button>
         )}
@@ -167,9 +167,9 @@ export function TwoFactorCard({ enabled, recoveryLeft }: { enabled: boolean; rec
             <p className="text-sm text-muted-foreground">
               Your account is protected. {recoveryLeft} recovery {recoveryLeft === 1 ? "code" : "codes"} left.
             </p>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" className="h-10" onClick={() => setView("regenerate")}>New recovery codes</Button>
-              <Button variant="outline" className="h-10 text-destructive hover:text-destructive" onClick={() => setView("disable")}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <Button variant="outline" className="min-h-11 py-2 whitespace-normal" onClick={() => setView("regenerate")}>New recovery codes</Button>
+              <Button variant="outline" className="min-h-11 py-2 whitespace-normal text-destructive hover:text-destructive" onClick={() => setView("disable")}>
                 Disable two-factor authentication
               </Button>
             </div>
@@ -180,20 +180,20 @@ export function TwoFactorCard({ enabled, recoveryLeft }: { enabled: boolean; rec
 
         {view === "scan" && setup && (
           <div className="space-y-4">
-            <div className="grid gap-5 sm:grid-cols-[auto_1fr] sm:items-center">
+            <div className="grid min-w-0 gap-5 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
               {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
-              <img src={setup.qr} alt="Two-factor setup QR code" width={200} height={200} className="mx-auto rounded-lg border bg-white p-2" />
-              <div className="space-y-2">
+              <img src={setup.qr} alt="Two-factor setup QR code" width={200} height={200} className="mx-auto h-auto max-w-full rounded-lg border bg-white p-2" />
+              <div className="min-w-0 space-y-2">
                 <p className="text-sm">Scan the code with your authenticator app. Cannot scan? Enter this key instead:</p>
-                <p className="rounded-lg border bg-muted/40 p-3 font-mono text-base tracking-wider break-words">{groupedKey}</p>
-                <Button variant="outline" size="sm" onClick={() => copy(setup.secret, "Key copied")}>
+                <p className="rounded-lg border bg-muted/40 p-3 font-mono text-base tracking-wider [overflow-wrap:anywhere]">{groupedKey}</p>
+                <Button variant="outline" className="h-11 w-full sm:w-auto" onClick={() => copy(setup.secret, "Key copied")}>
                   <Copy className="size-4" /> Copy key
                 </Button>
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button className="h-10" onClick={() => setView("verify")}>Next</Button>
-              <Button variant="ghost" className="h-10" onClick={reset}>Cancel</Button>
+            <div className="grid grid-cols-2 gap-2 sm:flex">
+              <Button className="h-11 sm:px-5" onClick={() => setView("verify")}>Next</Button>
+              <Button variant="ghost" className="h-11 sm:px-5" onClick={reset}>Cancel</Button>
             </div>
           </div>
         )}
@@ -205,11 +205,11 @@ export function TwoFactorCard({ enabled, recoveryLeft }: { enabled: boolean; rec
               <OtpInput value={code} onChange={setCode} label="Verification code" invalid={!!error} describedBy={error ? "otp-error" : "otp-help"} autoFocus />
               <p id="otp-error" role="alert" className="min-h-5 text-sm text-destructive">{error}</p>
             </div>
-            <div className="flex gap-2">
-              <Button className="h-10" onClick={verify} disabled={pending || code.length !== 6}>
+            <div className="grid grid-cols-2 gap-2 sm:flex">
+              <Button className="h-11 sm:px-5" onClick={verify} disabled={pending || code.length !== 6}>
                 {pending && <CircleNotch className="size-4 animate-spin" />} Verify
               </Button>
-              <Button variant="outline" className="h-10" onClick={() => (setError(null), setCode(""), setView("scan"))}>Back</Button>
+              <Button variant="outline" className="h-11 sm:px-5" onClick={() => (setError(null), setCode(""), setView("scan"))}>Back</Button>
             </div>
           </div>
         )}
@@ -219,22 +219,22 @@ export function TwoFactorCard({ enabled, recoveryLeft }: { enabled: boolean; rec
             <p className="text-sm">
               Keep these recovery codes somewhere safe. Each one signs you in once if you lose your authenticator. They will not be shown again.
             </p>
-            <ul className="grid max-w-md grid-cols-2 gap-2 rounded-lg border bg-muted/40 p-3 font-mono text-base">
-              {codes.map((c) => <li key={c}>{c}</li>)}
+            <ul className="grid max-w-md grid-cols-1 gap-2 rounded-lg border bg-muted/40 p-3 font-mono text-base min-[380px]:grid-cols-2">
+              {codes.map((c) => <li key={c} className="min-w-0 [overflow-wrap:anywhere]">{c}</li>)}
             </ul>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => copy(codes.join("\n"), "Recovery codes copied")}>
+            <div className="grid grid-cols-2 gap-2 sm:flex">
+              <Button variant="outline" className="h-11" onClick={() => copy(codes.join("\n"), "Recovery codes copied")}>
                 <Copy className="size-4" /> Copy
               </Button>
-              <Button variant="outline" size="sm" onClick={download}>
+              <Button variant="outline" className="h-11" onClick={download}>
                 <DownloadSimple className="size-4" /> Download
               </Button>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} className="size-4 accent-primary" />
+            <label className="flex min-h-11 items-center gap-3 text-sm">
+              <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} className="size-5 shrink-0 accent-primary" />
               I have saved these codes
             </label>
-            <Button className="h-10" disabled={!saved} onClick={() => (reset(), setCodes([]), router.refresh())}>Done</Button>
+            <Button className="h-11 w-full sm:w-auto sm:px-5" disabled={!saved} onClick={() => (reset(), setCodes([]), router.refresh())}>Done</Button>
           </div>
         )}
 
@@ -251,17 +251,17 @@ export function TwoFactorCard({ enabled, recoveryLeft }: { enabled: boolean; rec
               </div>
             )}
             <p role="alert" className="min-h-5 text-sm text-destructive">{error}</p>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               {view === "disable" ? (
-                <Button variant="destructive" className="h-10" onClick={disable} disabled={pending || !password || code.length !== 6}>
+                <Button variant="destructive" className="h-11" onClick={disable} disabled={pending || !password || code.length !== 6}>
                   {pending && <CircleNotch className="size-4 animate-spin" />} Disable
                 </Button>
               ) : (
-                <Button className="h-10" onClick={regenerate} disabled={pending || !password}>
+                <Button className="h-11" onClick={regenerate} disabled={pending || !password}>
                   {pending && <CircleNotch className="size-4 animate-spin" />} Generate new codes
                 </Button>
               )}
-              <Button variant="ghost" className="h-10" onClick={reset}>Cancel</Button>
+              <Button variant="ghost" className="h-11" onClick={reset}>Cancel</Button>
             </div>
           </div>
         )}

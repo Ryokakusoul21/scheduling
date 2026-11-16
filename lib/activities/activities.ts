@@ -1,3 +1,4 @@
+import { roomLabel } from "@/lib/rooms/label";
 import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
@@ -20,7 +21,7 @@ export function visibleActivities(scope: Pick<Scope, "isAdmin" | "role" | "depar
   return { status: "APPROVED", OR: [{ departmentId: null }, ...(own ? [{ departmentId: own }] : [])] };
 }
 
-const include = { department: { select: { name: true } }, room: { select: { roomName: true } } } as const;
+const include = { department: { select: { name: true } }, room: { select: { roomNumber: true, roomName: true } }, batch: { select: { suspension: { select: { id: true } } } } } as const;
 type Row = Prisma.ActivityGetPayload<{ include: typeof include }>;
 
 /** Activities with display fields; conflicts are filled in only when requested (they need the occupancy plan). */
@@ -29,9 +30,10 @@ export async function listActivities(where: Prisma.ActivityWhereInput, opts: { c
   const submitters = new Map(
     (await prisma.user.findMany({ where: { id: { in: rows.map((r) => r.createdById).filter((id): id is string => !!id) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]),
   );
-  const conflicts = opts.conflicts ? await activityConflicts(rows) : new Map<string, string[]>();
+  const conflicts = opts.conflicts ? await activityConflicts(rows.filter((row) => !row.batch?.suspension)) : new Map<string, string[]>();
   return rows.map((a) => ({
     id: a.id,
+    classChange: !!a.batch?.suspension,
     type: a.type,
     title: a.title,
     description: a.description ?? "",
@@ -44,7 +46,7 @@ export async function listActivities(where: Prisma.ActivityWhereInput, opts: { c
     level: a.level,
     roomId: a.roomId,
     locationText: a.location ?? "",
-    location: [a.room?.roomName, a.location].filter(Boolean).join(", "),
+    location: [roomLabel(a.room), a.location].filter(Boolean).join(", "),
     participants: a.participants ?? "",
     status: a.status as ActivityStatus,
     reviewNote: a.reviewNote ?? "",

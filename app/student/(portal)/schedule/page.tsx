@@ -4,7 +4,7 @@ import { TimetableReportButtons } from "@/components/ux/export-buttons";
 import { NoSectionState, StudentPageHeader } from "@/components/student/page-header";
 import { StudentTimetable } from "@/components/student/timetable";
 
-export const metadata = { title: "My Schedule · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
+export const metadata = { title: "My Timetable · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
 /** The student's own section timetable as a weekly grid, day agenda, or grouped list. */
 export default async function StudentSchedulePage() {
@@ -16,9 +16,10 @@ export default async function StudentSchedulePage() {
     .sort((a, b) => DAY_ENUMS.indexOf(a.dayOfWeek) - DAY_ENUMS.indexOf(b.dayOfWeek) || a.startMin - b.startMin);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <StudentPageHeader
-        title="My Schedule"
+        title="My timetable"
+        description="Plan your week, find your classroom, and explore the details of each subject."
         portal={portal}
         actions={<TimetableReportButtons title={`Class Timetable: ${section}`} term={portal.term} rows={rows} filename={`class-timetable-${section.replace(/\W+/g, "-").toLowerCase()}`} details={{ course: portal.section.program, year: portal.section.stage, section }} />}
       />

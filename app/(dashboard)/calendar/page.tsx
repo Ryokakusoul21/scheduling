@@ -1,3 +1,4 @@
+import { roomLabel } from "@/lib/rooms/label";
 import { prisma } from "@/lib/db/prisma";
 import { getScope } from "@/lib/permissions/scope";
 import { isoDate } from "@/lib/occupancy/engine";
@@ -33,13 +34,13 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
   const [departments, rooms, term, pendingCount] = await Promise.all([
     prisma.department.findMany({ where: departmentWhere.department(scope), orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.room.findMany({ where: { archivedAt: null, ...departmentWhere.room(scope) }, orderBy: { roomName: "asc" }, select: { id: true, roomName: true } }),
+    prisma.room.findMany({ where: { archivedAt: null, ...departmentWhere.room(scope) }, orderBy: { roomNumber: "asc" }, select: { id: true, roomNumber: true, roomName: true } }),
     activeTermLabel(),
     scope.isAdmin ? prisma.activity.count({ where: { status: "PENDING" } }) : 0,
   ]);
   const formOptions = {
     departments: departments.map((d) => ({ value: d.id, label: d.name })),
-    rooms: rooms.map((r) => ({ value: r.id, label: r.roomName })),
+    rooms: rooms.map((r) => ({ value: r.id, label: roomLabel(r) })),
     ownDepartmentId: scope.departmentId,
   };
   const canSubmit = scope.isAdmin || scope.role === "HEAD_OF_DEPARTMENT";
@@ -53,7 +54,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         : await listActivities({ type: { not: "CLASS_SUSPENSION" }, departmentId: { not: null }, endDate: { gte: new Date(`${today}T00:00:00Z`) } }, { conflicts: true });
     return (
       <div className="space-y-4 pt-1">
-        <PageHeader title="Calendar of Activities" description="School events, holidays, and class suspensions, with approval of department submissions." />
+        <PageHeader title="Calendar of Activities" description={tab === "approvals" ? "Review department submissions before they reach the school calendar." : "School events, holidays, and class suspensions."} />
         {nav}
         {tab === "table" ? (
           <ActivitiesTable items={items} today={today} term={term} departments={formOptions.departments} formOptions={formOptions} canEdit={canSubmit} isAdmin={scope.isAdmin} ownDepartmentId={scope.departmentId} />
@@ -75,7 +76,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     prisma.roomBooking.findMany({
       // Bookings of other departments' rooms stay hidden.
       where: { status: "CONFIRMED", date: { gte: fromDate, lte: toDate }, room: departmentWhere.room(scope) },
-      include: { room: { select: { roomName: true } }, bookedBy: { select: { name: true } } },
+      include: { room: { select: { roomNumber: true, roomName: true } }, bookedBy: { select: { name: true } } },
     }),
     // Rejected submissions never reach the calendar; pending ones show only to the Registrar and their department.
     listActivities({ AND: [visibleActivities(scope), { status: { not: "REJECTED" } }, { startDate: { lte: toDate } }, { endDate: { gte: fromDate } }] }),
@@ -84,9 +85,9 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const events: CalendarEvent[] = [];
   for (const b of bookings) {
     events.push({
-      id: `booking-${b.id}`, type: "BOOKING", title: `${b.priority === "URGENT" || b.priority === "CRITICAL" ? "Urgent: " : ""}${b.room.roomName}: ${b.purpose}`, date: isoDate(b.date), endDate: isoDate(b.date),
+      id: `booking-${b.id}`, type: "BOOKING", title: `${b.priority === "URGENT" || b.priority === "CRITICAL" ? "Urgent: " : ""}${roomLabel(b.room)}: ${b.purpose}`, date: isoDate(b.date), endDate: isoDate(b.date),
       startMin: b.startMin, endMin: b.endMin, detail: `Booked by ${b.bookedBy.name} · ${b.attendees} attendees`, href: "/bookings",
-      info: { code: b.room.roomName, subject: b.purpose, room: b.room.roomName, faculty: b.bookedBy.name },
+      info: { code: roomLabel(b.room), subject: b.purpose, room: roomLabel(b.room), faculty: b.bookedBy.name },
       resources: { roomId: b.roomId },
     });
   }
@@ -100,7 +101,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       pending,
       activity: a,
       info: { room: a.location || undefined, department: a.department, stage: a.level ? levelLabel(a.level) : "All levels" },
-      href: a.type === "CLASS_SUSPENSION" ? "/adjustments" : undefined,
+      href: a.type === "CLASS_SUSPENSION" || a.classChange ? "/suspensions" : undefined,
     });
   }
   const official = activities.filter((a) => a.status === "APPROVED");

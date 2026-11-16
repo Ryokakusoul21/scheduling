@@ -18,7 +18,7 @@ export default async function StudentRegisterPage() {
   ]);
 
   return (
-    <AuthShell title="Create a student account" description="Register to view your section's timetable and school activities.">
+    <AuthShell title="Create account">
       <StudentRegisterForm programs={programs.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` }))} sections={sections} />
     </AuthShell>
   );

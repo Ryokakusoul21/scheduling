@@ -1,7 +1,7 @@
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { requireScope } from "@/lib/permissions/scope";
 import { activeTermLabel } from "@/lib/academics/term-label";
-import { loadBuildings, roomFormOptions } from "@/lib/rooms/load";
+import { loadBuildings } from "@/lib/rooms/load";
 import { designation, ROOM_TYPES, STATUSES } from "@/lib/rooms/rooms";
 import { BuildingsOverview } from "./buildings-overview";
 
@@ -10,7 +10,7 @@ export const metadata = { title: "Buildings and Rooms · GRANBY COLLEGES OF SCIE
 export default async function RoomsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const scope = await requireScope(...STAFF_ROLES);
   const { q } = await searchParams;
-  const [buildings, { programs }, termLabel] = await Promise.all([loadBuildings(scope), roomFormOptions(scope), activeTermLabel()]);
+  const [buildings, termLabel] = await Promise.all([loadBuildings(scope), activeTermLabel()]);
 
   return (
     <BuildingsOverview
@@ -38,7 +38,7 @@ export default async function RoomsPage({ searchParams }: { searchParams: Promis
             location: `${b.name}, ${f.name}`,
             capacity: r.capacity,
             type: ROOM_TYPES.find((t) => t.value === r.roomType)?.label ?? r.roomType,
-            designation: designation(r, programs),
+            designation: designation(r),
             availability: STATUSES.find((t) => t.value === r.status)?.label ?? r.status,
             utilization: r.utilization,
           })),

@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { useState } from "react";
+import { SignOutConfirmation } from "@/components/auth/sign-out-confirmation";
 import { flushSync } from "react-dom";
 import { useTheme } from "@/lib/theme/theme-provider";
 import { Moon, Sun, SignOut as LogOut, User as UserIcon, Keyboard } from "@phosphor-icons/react/ssr";
@@ -42,7 +42,7 @@ export function Topbar({
   /** Secondary line under the name in the account menu, for example the student number. */
   subtitle?: string;
 }) {
-  const router = useRouter();
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const { theme, setTheme } = useTheme();
   const dark = theme === "dark";
   const themeLabel = `Switch to ${dark ? "light" : "dark"} mode`;
@@ -59,7 +59,7 @@ export function Topbar({
     );
   }
   const { openHelp } = useShortcuts();
-  // Students stay inside the portal: no staff search, and their own notification, profile, and login pages.
+  // Students have their own workspace and account pages, without a notification inbox.
   const student = role === "STUDENT";
   const home = student ? "/student" : "";
 
@@ -68,7 +68,7 @@ export function Topbar({
     <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-black/10 bg-card px-4 py-2 md:flex-nowrap md:px-6">
 
       {student ? (
-        <p className="hidden truncate text-sm font-semibold md:block">GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY</p>
+        <div className="min-w-0"><p className="text-sm font-semibold">Student workspace</p><p className="hidden text-xs text-muted-foreground sm:block">Granby Colleges of Science and Technology</p></div>
       ) : (
         <div className="order-3 w-full md:order-none md:max-w-md md:flex-1">
           <GlobalSearch />
@@ -76,15 +76,15 @@ export function Topbar({
       )}
 
       <div className="ml-auto flex items-center gap-1.5">
-        <Tooltip>
+        {!student && <Tooltip>
           <TooltipTrigger
             render={<Button variant="ghost" size="icon" className="hidden size-9 sm:inline-flex" aria-label="Keyboard shortcuts" aria-keyshortcuts="?" onClick={openHelp} />}
           >
             <Keyboard className="size-5" />
           </TooltipTrigger>
           <TooltipContent>Keyboard shortcuts (?)</TooltipContent>
-        </Tooltip>
-        <NotificationsMenu unread={unreadNotifications} allHref={`${home}/notifications`} userId={userId} />
+        </Tooltip>}
+        {!student && <NotificationsMenu unread={unreadNotifications} allHref="/notifications" userId={userId} />}
 
         <Tooltip>
           <TooltipTrigger render={<Button variant="ghost" size="icon" className="size-9" aria-label={themeLabel} onClick={toggleTheme} />}>
@@ -103,7 +103,7 @@ export function Topbar({
               <p className="text-xs text-muted-foreground">{roleLabel(role)}</p>
             </div>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuContent align="end" className="w-56" finalFocus={confirmLogout ? false : undefined}>
             <DropdownMenuLabel>
               <p className="truncate text-sm font-medium">{name}</p>
               <p className="truncate text-xs font-normal text-muted-foreground">{email}</p>
@@ -116,7 +116,7 @@ export function Topbar({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
-              onClick={() => signOut({ callbackUrl: student ? "/student/login" : "/login" }).then(() => router.refresh())}
+              onClick={() => setConfirmLogout(true)}
             >
               <LogOut className="size-4" /> {student ? "Sign out" : "Log out"}
             </DropdownMenuItem>
@@ -124,6 +124,7 @@ export function Topbar({
         </DropdownMenu>
       </div>
     </header>
+    <SignOutConfirmation open={confirmLogout} onOpenChange={setConfirmLogout} callbackUrl={student ? "/student/login" : "/login"} />
     </TooltipProvider>
   );
 }

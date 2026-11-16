@@ -1,3 +1,5 @@
+import { roomLabel } from "@/lib/rooms/label";
+import { publishedFilter, submittedTimetableFilter } from "@/lib/scheduler/visibility";
 import "server-only";
 import { z } from "zod";
 import type { FunctionDeclaration } from "@google/genai";
@@ -61,7 +63,7 @@ export async function createAssistantData(scope: Scope) {
     select: { id: true, type: true, level: true, academicYear: { select: { name: true } }, program: { select: { code: true } } },
   });
   const termNames = terms.map((t) => `${levelLabel(t.level)}${t.program ? ` ${t.program.code}` : ""}: ${termLabel(t.type)}, ${t.academicYear.name}`);
-  const active = { semesterId: { in: terms.map((t) => t.id) }, status: { not: "ARCHIVED" as const } };
+  const active = { semesterId: { in: terms.map((t) => t.id) }, status: publishedFilter(scope.role).status ?? { not: "ARCHIVED" as const }, ...submittedTimetableFilter(scope.role) };
   const sources = new Map<string, AssistantSource>();
   const retrievedAt = new Date().toISOString();
   function source(label: string, href: string) {
@@ -124,7 +126,7 @@ export async function createAssistantData(scope: Scope) {
       for (const row of rows) source(`${row.section.name} · ${row.subject.code}`, `/scheduler?ay=${encodeURIComponent(row.semester.academicYearId)}&termId=${encodeURIComponent(row.semesterId)}`);
       return { total, nextOffset: total > offset + rows.length ? offset + rows.length : null, rows: rows.map((s) => ({
         subject: `${s.subject.code} ${s.subject.name}`, section: s.section.name, faculty: s.faculty.fullName, termId: s.semesterId,
-        room: `${s.room.roomName} (${s.room.roomNumber})`, day: s.dayOfWeek,
+        room: roomLabel(s.room), day: s.dayOfWeek,
         start: formatTime(s.startMin), end: formatTime(s.endMin), status: s.status, component: s.component,
       })) };
     }
@@ -132,7 +134,7 @@ export async function createAssistantData(scope: Scope) {
     if (name === "getWorkloads") {
       const { query, status, offset } = loadSchema.parse(input);
       const [data, visible] = await Promise.all([
-        loadWorkload(terms.map((t) => t.id), null),
+        loadWorkload(terms.map((t) => t.id), null, { visibilityRole: scope.role }),
         prisma.faculty.findMany({ where: { archivedAt: null, ...departmentWhere.faculty(scope) }, select: { id: true } }),
       ]);
       const ids = new Set(visible.map((f) => f.id));
@@ -157,7 +159,7 @@ export async function createAssistantData(scope: Scope) {
       source("Buildings and Rooms", query ? `/rooms?q=${encodeURIComponent(query)}` : "/rooms");
       return { total, nextOffset: total > offset + rows.length ? offset + rows.length : null,
         note: "Scheduled weekly hours summed across active terms, not a utilization percentage or a free-slot guarantee.",
-        rows: rows.map(({ schedules, floor, ...r }) => ({ ...r, building: floor?.building.name, floor: floor?.name,
+        rows: rows.map(({ schedules, floor, ...r }) => ({ ...r, roomName: roomLabel(r), building: floor?.building.name, floor: floor?.name,
           scheduledHours: Math.round(schedules.reduce((sum, s) => sum + s.endMin - s.startMin, 0) / 6) / 10,
         })),
       };

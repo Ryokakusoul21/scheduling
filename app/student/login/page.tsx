@@ -11,6 +11,7 @@ export const metadata = { title: "Student Sign In · GRANBY COLLEGES OF SCIENCE 
 const NOTICES: Record<string, string> = {
   verified: "Email verified. You can now sign in.",
   reset: "Your password has been reset. Sign in with your new password.",
+  idle: "You were signed out after being inactive. Please sign in again.",
 };
 
 export default async function StudentLoginPage({ searchParams }: { searchParams: Promise<{ callbackUrl?: string; notice?: string }> }) {
@@ -20,7 +21,7 @@ export default async function StudentLoginPage({ searchParams }: { searchParams:
   const message = notice ? NOTICES[notice] : undefined;
 
   return (
-    <AuthShell title="Student sign in" description="View your class timetable, rooms, and school activities.">
+    <AuthShell title="Student sign in">
       {message && (
         <div role="status" className="mb-4 flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm">
           <CheckCircle className="mt-0.5 size-4 shrink-0 text-emerald-600" />

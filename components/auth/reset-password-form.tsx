@@ -8,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { CircleNotch as Loader2 } from "@phosphor-icons/react/ssr";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/auth/password-input";
 import { Field, FieldGroup, FieldLabel, FieldError } from "@/components/ui/field";
 import { PasswordStrength } from "@/components/auth/password-strength";
 import { resetPasswordAction, type Audience } from "@/actions/auth";
@@ -34,7 +34,13 @@ export function ResetPasswordForm({ token, audience = "staff" }: { token: string
 
   async function onSubmit(values: ResetPasswordInput) {
     setFormError(null);
-    const result = await resetPasswordAction({ ...values, token, audience });
+    let result;
+    try {
+      result = await resetPasswordAction({ ...values, token, audience });
+    } catch {
+      setFormError("We couldn’t reset your password. Please try again in a moment.");
+      return;
+    }
     if (result.ok) {
       router.replace(`${base}/login?notice=reset`);
       return;
@@ -46,31 +52,32 @@ export function ResetPasswordForm({ token, audience = "staff" }: { token: string
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate>
+    <form onSubmit={handleSubmit(onSubmit)} noValidate aria-busy={isSubmitting}>
       <FieldGroup>
         <Field data-invalid={!!errors.password}>
           <FieldLabel htmlFor="password">New password</FieldLabel>
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             autoComplete="new-password"
             autoFocus
             aria-invalid={!!errors.password}
+            aria-describedby="password-help password-error"
             {...register("password")}
           />
+          <p id="password-help" className="text-xs leading-5 text-muted-foreground">Use 8–128 characters with uppercase and lowercase letters, a number, and a symbol.</p>
           <PasswordStrength password={password} />
-          <FieldError errors={[errors.password]} />
+          <FieldError id="password-error" errors={[errors.password]} />
         </Field>
         <Field data-invalid={!!errors.confirmPassword}>
           <FieldLabel htmlFor="confirmPassword">Confirm new password</FieldLabel>
-          <Input
+          <PasswordInput
             id="confirmPassword"
-            type="password"
             autoComplete="new-password"
             aria-invalid={!!errors.confirmPassword}
+            aria-describedby="confirm-error"
             {...register("confirmPassword")}
           />
-          <FieldError errors={[errors.confirmPassword]} />
+          <FieldError id="confirm-error" errors={[errors.confirmPassword]} />
         </Field>
         {formError && (
           <div role="alert" className="space-y-1 text-sm font-medium text-destructive">
@@ -82,7 +89,7 @@ export function ResetPasswordForm({ token, audience = "staff" }: { token: string
         )}
         <Button type="submit" className="w-full" disabled={isSubmitting}>
           {isSubmitting && <Loader2 className="size-4 animate-spin" />}
-          Reset password
+          {isSubmitting ? "Resetting password…" : "Save new password"}
         </Button>
       </FieldGroup>
     </form>

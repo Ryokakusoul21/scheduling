@@ -40,3 +40,29 @@ export function notificationTime(value: string) {
     timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short",
   });
 }
+
+/** Calendar-day groups use the school's UTC+8 date, regardless of the device timezone. */
+export function groupNotifications(items: NotificationItem[], now: Date) {
+  const dateOf = (date: Date) => date.toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
+  const today = dateOf(now);
+  const yesterday = new Date(`${today}T00:00:00Z`);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const previousDate = yesterday.toISOString().slice(0, 10);
+  const groups: { label: string; items: NotificationItem[] }[] = [
+    { label: "Today", items: [] }, { label: "Yesterday", items: [] }, { label: "Earlier", items: [] },
+  ];
+  for (const item of [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))) {
+    const date = dateOf(new Date(item.createdAt));
+    groups[date === today ? 0 : date === previousDate ? 1 : 2].items.push(item);
+  }
+  return groups.filter((group) => group.items.length > 0);
+}
+
+export function notificationRelativeTime(value: string, now: Date) {
+  const elapsed = Math.max(0, now.getTime() - new Date(value).getTime());
+  if (elapsed < 60_000) return "Just now";
+  if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)}m ago`;
+  if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)}h ago`;
+  if (elapsed < 7 * 86_400_000) return `${Math.floor(elapsed / 86_400_000)}d ago`;
+  return new Date(value).toLocaleDateString("en-PH", { timeZone: "Asia/Taipei", month: "short", day: "numeric", year: "numeric" });
+}

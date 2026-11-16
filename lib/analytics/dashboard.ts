@@ -1,3 +1,4 @@
+import { roomLabel } from "@/lib/rooms/label";
 import "server-only";
 import type { Semester } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
@@ -9,6 +10,7 @@ import { loadWorkload } from "@/lib/workload/load";
 import { loadReport, type LoadStatus } from "@/lib/workload/optimizer";
 import { byGroup, facultyUtilization, overall, peakHeatmap, roomUtilization, type RateRow } from "./timetable";
 import { countChange, extremes, rateChange, weeklyCounts, type Change } from "./trends";
+import { submittedTimetableFilter } from "@/lib/scheduler/visibility";
 
 /** Weekly hours a room is open when it has no availability windows: Monday to Saturday, 7:00 AM to 7:00 PM. */
 const DEFAULT_ROOM_HOURS = 72;
@@ -36,7 +38,7 @@ async function termFigures(term: Semester, f: DashboardFilters) {
   const inBuilding = f.buildingId ? { room: { floor: { buildingId: f.buildingId } } } : {};
   const [schedules, rooms, facultyRows, termSections, conflicts, workload] = await Promise.all([
     prisma.schedule.findMany({
-      where: { semesterId: term.id, status: { not: "ARCHIVED" }, ...inDept, ...inBuilding },
+      where: { semesterId: term.id, ...submittedTimetableFilter("REGISTRAR"), ...inDept, ...inBuilding },
       select: { id: true, roomId: true, facultyId: true, sectionId: true, subjectId: true, dayOfWeek: true, startMin: true, endMin: true },
     }),
     prisma.room.findMany({
@@ -46,7 +48,7 @@ async function termFigures(term: Semester, f: DashboardFilters) {
     prisma.faculty.findMany({ where: { archivedAt: null, ...(f.departmentId ? { departmentId: f.departmentId } : {}) }, include: { department: { select: { name: true } } } }),
     prisma.section.findMany({ where: { semesterId: term.id, archivedAt: null, ...(f.departmentId ? { departmentId: f.departmentId } : {}) }, select: { id: true, studentCount: true } }),
     detectConflictsForTerms([term.id]),
-    loadWorkload([term.id], f.departmentId),
+    loadWorkload([term.id], f.departmentId, { visibilityRole: "REGISTRAR" }),
   ]);
 
   const students = termSections.reduce((s, r) => s + r.studentCount, 0);
@@ -58,7 +60,7 @@ async function termFigures(term: Semester, f: DashboardFilters) {
       .filter((r) => !f.departmentId || r.departmentId === f.departmentId || (!r.departmentId && usedRooms.has(r.id)))
       .map((r) => ({
         id: r.id,
-        name: r.roomName,
+        name: roomLabel(r),
         building: r.floor?.building.name ?? "No building",
         availableHours: r.availability.length ? r.availability.reduce((s, a) => s + a.endMin - a.startMin, 0) / 60 : DEFAULT_ROOM_HOURS,
       }))
@@ -70,7 +72,7 @@ async function termFigures(term: Semester, f: DashboardFilters) {
   const scheduleIds = new Set(schedules.map((s) => s.id));
   const [allMeetings, resolved] = await Promise.all([
     prisma.schedule.findMany({
-      where: { semesterId: term.id, status: { not: "ARCHIVED" }, facultyId: { in: inScopeFaculty.map((x) => x.id) } },
+      where: { semesterId: term.id, ...submittedTimetableFilter("REGISTRAR"), facultyId: { in: inScopeFaculty.map((x) => x.id) } },
       select: { roomId: true, facultyId: true, dayOfWeek: true, startMin: true, endMin: true },
     }),
     prisma.scheduleAdjustment.findMany({
@@ -208,7 +210,7 @@ async function upcoming(f: DashboardFilters) {
         ...(f.departmentId ? { section: { departmentId: f.departmentId } } : {}),
         ...(f.buildingId ? { room: { floor: { buildingId: f.buildingId } } } : {}),
       },
-      include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomName: true } }, proctor: { select: { fullName: true } } },
+      include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomNumber: true, roomName: true } }, proctor: { select: { fullName: true } } },
       orderBy: [{ date: "asc" }, { startMin: "asc" }],
       take: 12,
     }),
@@ -218,7 +220,7 @@ async function upcoming(f: DashboardFilters) {
   return [
     ...exams.map((e) => ({
       id: `exam-${e.id}`, kind: "Examination", date: isoDate(e.date), endDate: isoDate(e.date), startMin: e.startMin as number | null, endMin: e.endMin as number | null,
-      title: `${e.subject.code} ${e.section.name}`, detail: `${e.room.roomName} · Proctor: ${e.proctor.fullName}`,
+      title: `${e.subject.code} ${e.section.name}`, detail: `${roomLabel(e.room)} · Proctor: ${e.proctor.fullName}`,
     })),
     ...activities.map((a) => ({
       id: `activity-${a.id}`, kind: a.type === "HOLIDAY" ? "Holiday" : a.type === "CLASS_SUSPENSION" ? "Class suspension" : "School event",

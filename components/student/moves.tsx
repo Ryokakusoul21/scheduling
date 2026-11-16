@@ -21,7 +21,7 @@ function line(m: PortalMove) {
 }
 
 /** Classes of the student's section that were moved or taken online soon, with a general reason. */
-export function MovedList({ moves }: { moves: PortalMove[] }) {
+export function MovedList({ moves, showSection }: { moves: PortalMove[]; showSection?: boolean }) {
   if (moves.length === 0) return null;
   return (
     <section aria-label="Changes to your classes" className="space-y-2 print:hidden">
@@ -29,9 +29,11 @@ export function MovedList({ moves }: { moves: PortalMove[] }) {
         <div key={m.id} role="status" className="flex items-start gap-3 rounded-xl border border-amber-600/30 bg-amber-50 p-3 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100">
           <ArrowsClockwise className="mt-0.5 size-5 shrink-0" aria-hidden />
           <div className="min-w-0 space-y-0.5">
-            <p className="text-sm font-semibold">{m.subjectCode} was moved <span className="font-normal">· {m.subjectName}</span></p>
+            <p className="text-sm font-semibold">{m.subjectCode} {m.kind === "ONLINE" ? "will meet virtually" : "was moved"} <span className="font-normal">· {showSection && m.section ? m.section : m.subjectName}</span></p>
             <p className="text-sm">{line(m)}</p>
             <p className="text-xs">{m.reason}</p>
+            {m.instructions && <p className="text-xs">{m.instructions}</p>}
+            {m.meetingLink?.startsWith("https://") && <a href={m.meetingLink} target="_blank" rel="noopener noreferrer" className="inline-block pt-1 text-sm font-medium underline underline-offset-4">Join virtual class</a>}
           </div>
         </div>
       ))}

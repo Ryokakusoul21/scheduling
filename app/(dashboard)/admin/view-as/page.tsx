@@ -38,7 +38,7 @@ export default async function ViewAsPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="View as Another Role" description="Check what each role sees, using the sample accounts. Viewing is read-only: nothing can be saved, approved, or deleted. A banner at the top takes you back to your own account. Every view is recorded in the Audit Logs." />
+      <PageHeader title="View as Another Role" description="Preview each role read-only with sample accounts." />
       {group("Staff", accounts.filter((a) => DEMO_STAFF.includes(a)))}
       {group("Students", DEMO_STUDENTS)}
     </div>

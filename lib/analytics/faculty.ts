@@ -1,3 +1,4 @@
+import { roomLabel } from "@/lib/rooms/label";
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { levelLabel, termLabel } from "@/lib/academics/levels";
@@ -40,13 +41,14 @@ export async function facultyAnalytics({ facultyId, userId, termId }: { facultyI
 
   const [classes, prevClasses, plan, bookings, adjustments, fixes, notifications, exams, activities, department] = await Promise.all([
     prisma.schedule.findMany({
-      where: { facultyId, semesterId: term.id, status: { not: "ARCHIVED" } },
-      include: { subject: { select: { code: true, name: true, units: true } }, section: { select: { id: true, name: true, studentCount: true } }, room: { select: { roomName: true } } },
+      // Only classes the Registrar has published reach a faculty member's own timetable.
+      where: { facultyId, semesterId: term.id, status: "PUBLISHED" },
+      include: { subject: { select: { code: true, name: true, units: true } }, section: { select: { id: true, name: true, studentCount: true } }, room: { select: { roomNumber: true, roomName: true } } },
       orderBy: [{ dayOfWeek: "asc" }, { startMin: "asc" }],
     }),
     prev ? prisma.schedule.findMany({ where: { facultyId, semesterId: prev.id, status: { not: "ARCHIVED" } }, select: { startMin: true, endMin: true } }) : [],
-    loadPlan(today, weekEnd),
-    prisma.roomBooking.findMany({ where: { bookedById: userId, status: "CONFIRMED", date: { gte: new Date(`${today}T00:00:00Z`) } }, include: { room: { select: { roomName: true } } }, orderBy: { date: "asc" } }),
+    loadPlan(today, weekEnd, { publishedOnly: true }),
+    prisma.roomBooking.findMany({ where: { bookedById: userId, status: "CONFIRMED", date: { gte: new Date(`${today}T00:00:00Z`) } }, include: { room: { select: { roomNumber: true, roomName: true } } }, orderBy: { date: "asc" } }),
     prisma.scheduleAdjustment.findMany({
       where: { batch: { undoneAt: null }, OR: [{ schedule: { facultyId, semesterId: term.id } }, { facultyId }] },
       include: { batch: { select: { cause: true } }, schedule: { select: { subject: { select: { code: true } }, section: { select: { name: true } } } } },
@@ -60,7 +62,7 @@ export async function facultyAnalytics({ facultyId, userId, termId }: { facultyI
     }),
     prisma.examination.findMany({
       where: { status: "PUBLISHED", date: { gte: new Date(`${today}T00:00:00Z`), lte: new Date(`${addDays(today, 21)}T00:00:00Z`) }, OR: [{ proctorId: facultyId }, { section: { schedules: { some: { facultyId } } } }] },
-      include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomName: true } } },
+      include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomNumber: true, roomName: true } } },
       orderBy: [{ date: "asc" }, { startMin: "asc" }],
     }),
     prisma.activity.findMany({ where: { status: "APPROVED", OR: [{ departmentId: null }, ...(me.departmentId ? [{ departmentId: me.departmentId }] : [])], endDate: { gte: new Date(`${today}T00:00:00Z`) }, startDate: { lte: new Date(`${addDays(today, 21)}T00:00:00Z`) } }, orderBy: { startDate: "asc" }, take: 8 }),
@@ -84,7 +86,7 @@ export async function facultyAnalytics({ facultyId, userId, termId }: { facultyI
   const label = (scheduleId: string) => plan.label({ scheduleId });
   const byDay = HEATMAP_DAYS.map((d) => ({ day: DAY_LONG[d], hours: round1(classes.filter((c) => c.dayOfWeek === d).reduce((s, c) => s + c.endMin - c.startMin, 0) / 60) }));
   const roomHours = new Map<string, number>();
-  for (const c of classes) roomHours.set(c.room.roomName, (roomHours.get(c.room.roomName) ?? 0) + (c.endMin - c.startMin) / 60);
+  for (const c of classes) roomHours.set(roomLabel(c.room), (roomHours.get(roomLabel(c.room)) ?? 0) + (c.endMin - c.startMin) / 60);
 
   const unit = limits.measure === "HOURS" ? "hours" : "units";
   return {
@@ -99,7 +101,7 @@ export async function facultyAnalytics({ facultyId, userId, termId }: { facultyI
     maxHours: me.maxHours,
     today: mine.filter((s) => s.date === today).map((s) => ({ label: label(s.scheduleId), time: formatRange(s.startMin, s.endMin), room: plan.roomName.get(s.roomId) ?? "", changed: s.status !== "REGULAR" })),
     weekCount: mine.length,
-    bookings: bookings.map((b) => ({ id: b.id, date: isoDate(b.date), time: formatRange(b.startMin, b.endMin), room: b.room.roomName, purpose: b.purpose })),
+    bookings: bookings.map((b) => ({ id: b.id, date: isoDate(b.date), time: formatRange(b.startMin, b.endMin), room: roomLabel(b.room), purpose: b.purpose })),
     changes: {
       count: adjustments.length + fixes,
       recent: adjustments.slice(0, 5).map((a) => ({
@@ -113,7 +115,7 @@ export async function facultyAnalytics({ facultyId, userId, termId }: { facultyI
     byDay,
     timetable: classes.map((c) => ({
       id: c.id, dayOfWeek: c.dayOfWeek, startMin: c.startMin, endMin: c.endMin,
-      title: `${c.subject.code} ${c.section.name}`, detail: `${c.room.roomName} · ${c.component === "LABORATORY" ? "Laboratory" : "Lecture"}`,
+      title: `${c.subject.code} ${c.section.name}`, detail: `${roomLabel(c.room)} · ${c.component === "LABORATORY" ? "Laboratory" : "Lecture"}`,
     })),
     comparison: [
       { name: "My load", value: load },
@@ -134,7 +136,7 @@ export async function facultyAnalytics({ facultyId, userId, termId }: { facultyI
     upcoming: [
       ...exams.map((e) => ({
         id: `exam-${e.id}`, kind: e.proctorId === facultyId ? "Examination (proctor)" : "Examination (my class)", date: isoDate(e.date), endDate: isoDate(e.date),
-        startMin: e.startMin as number | null, endMin: e.endMin as number | null, title: `${e.subject.code} ${e.section.name}`, detail: e.room.roomName,
+        startMin: e.startMin as number | null, endMin: e.endMin as number | null, title: `${e.subject.code} ${e.section.name}`, detail: roomLabel(e.room),
       })),
       ...activities.map((a) => ({
         id: `activity-${a.id}`, kind: a.type === "HOLIDAY" ? "Holiday" : a.type === "CLASS_SUSPENSION" ? "Class suspension" : "School event",

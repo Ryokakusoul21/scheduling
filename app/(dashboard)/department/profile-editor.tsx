@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Buildings, UploadSimple, Trash } from "@phosphor-icons/react/ssr";
+import Link from "next/link";
+import { PencilSimple, UploadSimple, Trash } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { DepartmentLogo } from "@/components/departments/department-logo";
@@ -38,7 +39,7 @@ function DepartmentProfileEditor({ initial, onSavingChange }: { initial: Departm
   const [preview, setPreview] = useState<string | null>(null);
   const [removeLogo, setRemoveLogo] = useState(false);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
+  const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const input = useRef<HTMLInputElement>(null);
   const displayedLogo = preview ?? (removeLogo ? null : saved.logoUrl);
@@ -50,11 +51,13 @@ function DepartmentProfileEditor({ initial, onSavingChange }: { initial: Departm
     if (!next) return;
     if (!DEPARTMENT_LOGO_TYPES.includes(next.type)) { setError("Choose a PNG, JPG, or WebP image."); return; }
     if (next.size > DEPARTMENT_LOGO_MAX_BYTES) { setError("Choose a logo up to 2 MB."); return; }
-    setFile(next); setPreview(URL.createObjectURL(next)); setRemoveLogo(false); setError(""); setStatus("");
+    setFile(next); setPreview(URL.createObjectURL(next)); setRemoveLogo(false); setError("");
   }
 
+  function close() { reset(); setOpen(false); }
+
   function reset() {
-    setName(saved.name); setFile(null); setPreview(null); setRemoveLogo(false); setError(""); setStatus("");
+    setName(saved.name); setFile(null); setPreview(null); setRemoveLogo(false); setError("");
     if (input.current) input.current.value = "";
   }
 
@@ -64,7 +67,7 @@ function DepartmentProfileEditor({ initial, onSavingChange }: { initial: Departm
     const form = new FormData();
     form.set("name", name); form.set("updatedAt", saved.updatedAt); form.set("removeLogo", String(removeLogo));
     if (file) form.set("logo", file);
-    setError(""); setStatus(""); onSavingChange(true);
+    setError("");onSavingChange(true);
     startTransition(async () => {
       try {
         const result = await saveDepartmentProfileAction(saved.id, form);
@@ -72,7 +75,7 @@ function DepartmentProfileEditor({ initial, onSavingChange }: { initial: Departm
         setSaved((previous) => ({ ...previous, ...result.profile }));
         setName(result.profile.name); setFile(null); setPreview(null); setRemoveLogo(false);
         if (input.current) input.current.value = "";
-        setStatus("Department profile saved.");
+        setOpen(false);
         toast.success("Department profile saved.");
         router.refresh();
       } catch { setError("Could not save your profile. Your changes are still here; please retry."); }
@@ -80,61 +83,50 @@ function DepartmentProfileEditor({ initial, onSavingChange }: { initial: Departm
     });
   }
 
+  const shown = name.trim() || saved.name;
+  // Counts link to their pages; programs are listed right below, so they are not repeated.
+  const chips = [["faculty", "/faculty"], ["sections", "/sections"], ["rooms", "/rooms"]] as const;
   return (
-    <div className="space-y-5">
-      <Card className="overflow-hidden">
-        <CardContent className="flex flex-wrap items-center gap-5 bg-gradient-to-br from-primary/5 to-transparent p-5 sm:p-6">
-          <DepartmentLogo name={name.trim() || saved.name} logoUrl={displayedLogo} />
-          <div className="min-w-0 flex-1 space-y-2">
-            <Badge variant="secondary">{saved.code}</Badge>
-            <h2 className="text-xl font-bold break-words sm:text-2xl">{name.trim() || saved.name}</h2>
-            <p className="text-sm text-muted-foreground">Department profile</p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Department overview">
-        {Object.entries(saved.counts).map(([label, count]) => <Card key={label} className="gap-1 p-4">
-          <p className="text-2xl font-bold tabular-nums">{count}</p><p className="text-xs text-muted-foreground capitalize">{label}</p>
-        </Card>)}
+    <div className="flex flex-wrap items-center gap-4 rounded-xl border bg-card p-4">
+      <DepartmentLogo name={shown} logoUrl={saved.logoUrl} className="size-14" />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-bold break-words">{saved.name}</h2>
+          <Badge variant="secondary">{saved.code}</Badge>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {chips.map(([key, href]) => <Link key={key} href={href}><Badge variant="outline" className="hover:bg-muted">{saved.counts[key]} {key}</Badge></Link>)}
+          {!saved.logoUrl && <button type="button" onClick={() => setOpen(true)}><Badge variant="outline" className="border-dashed hover:bg-muted">Add logo</Badge></button>}
+        </div>
       </div>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}><PencilSimple className="size-4" /> Edit profile</Button>
 
-      <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2 text-base font-bold"><Buildings className="size-5 text-primary" /> Profile details</CardTitle></CardHeader>
-        <CardContent>
-          <form onSubmit={save} className="space-y-6" aria-busy={pending}>
-            <div className="max-w-xl space-y-2">
-              <label htmlFor={`department-name-${saved.id}`} className="text-sm font-medium">Department name</label>
-              <Input id={`department-name-${saved.id}`} value={name} onChange={(e) => { setName(e.target.value); setStatus(""); }} required minLength={2} maxLength={150} disabled={pending} />
+      <Dialog open={open} onOpenChange={(next) => { if (!pending) { if (!next) reset(); setOpen(next); } }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Edit profile</DialogTitle></DialogHeader>
+          <form onSubmit={save} className="space-y-5" aria-busy={pending}>
+            <div className="space-y-2">
+              <label htmlFor={`department-name-${saved.id}`} className="text-sm font-medium">Name</label>
+              <Input id={`department-name-${saved.id}`} value={name} onChange={(e) => setName(e.target.value)} required minLength={2} maxLength={150} disabled={pending} />
             </div>
-            <div className="space-y-3">
-              <p id={`logo-label-${saved.id}`} className="text-sm font-medium">Department logo</p>
-              <div className="flex flex-wrap items-center gap-4 rounded-xl border border-dashed p-4">
-                <DepartmentLogo name={name.trim() || saved.name} logoUrl={displayedLogo} className="size-20" />
-                <div className="min-w-0 space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" disabled={pending} onClick={() => input.current?.click()}><UploadSimple className="size-4" /> {displayedLogo ? "Replace logo" : "Upload logo"}</Button>
-                    {displayedLogo && <Button type="button" variant="ghost" disabled={pending} onClick={() => {
-                      setFile(null); setPreview(null); setRemoveLogo(true); setStatus(""); setError("");
-                      if (input.current) input.current.value = "";
-                    }}><Trash className="size-4" /> Remove</Button>}
-                  </div>
-                  <p id={`logo-help-${saved.id}`} className="text-xs text-muted-foreground">PNG, JPG, or WebP · Up to 2 MB. Your full logo stays visible.</p>
-                  {file && <p className="max-w-xs truncate text-xs text-muted-foreground">Selected: {file.name}</p>}
-                  {removeLogo && <p className="text-xs text-muted-foreground">The current logo will be removed when you save.</p>}
-                </div>
-                <input ref={input} type="file" accept={DEPARTMENT_LOGO_TYPES.join(",")} aria-labelledby={`logo-label-${saved.id}`} aria-describedby={`logo-help-${saved.id}`} className="sr-only" tabIndex={-1} disabled={pending} onChange={(e) => choose(e.target.files?.[0])} />
-              </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <DepartmentLogo name={shown} logoUrl={displayedLogo} className="size-16" />
+              <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => input.current?.click()}><UploadSimple className="size-4" /> {displayedLogo ? "Replace" : "Upload"}</Button>
+              {displayedLogo && <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => {
+                setFile(null); setPreview(null); setRemoveLogo(true); setError("");
+                if (input.current) input.current.value = "";
+              }}><Trash className="size-4" /> Remove</Button>}
+              <span className="text-xs text-muted-foreground">PNG, JPG, WebP · 2 MB</span>
+              <input ref={input} type="file" accept={DEPARTMENT_LOGO_TYPES.join(",")} aria-label="Department logo" className="sr-only" tabIndex={-1} disabled={pending} onChange={(e) => choose(e.target.files?.[0])} />
             </div>
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-            {status && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">{status}</p>}
-            <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
-              <Button type="button" variant="outline" disabled={pending || !dirty} onClick={reset}>Cancel</Button>
-              <Button type="submit" disabled={pending || !dirty}>{pending ? "Saving…" : "Save changes"}</Button>
-            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={pending} onClick={close}>Cancel</Button>
+              <Button type="submit" disabled={pending || !dirty}>{pending ? "Saving…" : "Save"}</Button>
+            </DialogFooter>
           </form>
-        </CardContent>
-      </Card>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

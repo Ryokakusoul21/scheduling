@@ -94,7 +94,7 @@ export async function UrgentMovesSection() {
   return (
     <Section id="urgent-moves" title="Moved by urgent bookings" count={m.classes} href="/bookings" linkLabel="Open Room Booking">
       {m.bookings === 0 ? (
-        <QuietState icon={CheckCircle} title="No classes moved">Urgent bookings have not moved any class in the last 7 days.</QuietState>
+        <QuietState icon={CheckCircle} title="No classes moved in 7 days" />
       ) : (
         <div className="space-y-3">
           <p>

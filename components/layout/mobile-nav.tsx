@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { SignOutConfirmation } from "@/components/auth/sign-out-confirmation";
 import { DotsThree, SignOut } from "@phosphor-icons/react/ssr";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { UserAvatar } from "@/components/ui/user-avatar";
@@ -16,8 +15,8 @@ const BAR_ITEMS = 4;
 
 /** Bottom navigation for phones: the first pages as icons, and every page in the "More pages" sheet. */
 export function MobileNav({ role, name, image, roleLabel }: { role: AppRole; name: string; image?: string | null; roleLabel: string }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const items = filterNavForRole(role).flatMap((g) => g.items);
   const activeHref = activeHrefFor(usePathname(), role);
   const bar = items.slice(0, BAR_ITEMS);
@@ -74,12 +73,13 @@ export function MobileNav({ role, name, image, roleLabel }: { role: AppRole; nam
                 <p className="truncate text-xs text-muted-foreground">{roleLabel}</p>
               </div>
               <button type="button" aria-label={student ? "Sign out" : "Log out"}
-                onClick={() => signOut({ callbackUrl: student ? "/student/login" : "/login" }).then(() => router.refresh())}
+                onClick={() => setConfirmLogout(true)}
                 className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground">
                 <SignOut className="size-5" />
               </button>
             </div>
           </div>
+          <SignOutConfirmation open={confirmLogout} onOpenChange={setConfirmLogout} callbackUrl={student ? "/student/login" : "/login"} />
         </SheetContent>
       </Sheet>
     </>

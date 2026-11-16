@@ -2,6 +2,7 @@
 import { dayOfWeek, eachDate } from "@/lib/occupancy/engine";
 
 export interface ReportClass {
+  id?: string;
   sectionId: string;
   departmentId: string | null;
   level: string;
@@ -25,6 +26,7 @@ export interface ReportActivity {
   level: string | null;
   /** Suspensions only; empty means every section. */
   sectionIds: string[];
+  scheduleIds?: string[];
 }
 
 export interface Affect {
@@ -36,9 +38,10 @@ export interface Affect {
 /** True when the activity concerns the class: holidays always, suspensions by section, events by department, level, and time. */
 export function activityApplies(a: ReportActivity, c: ReportClass) {
   if (a.type === "HOLIDAY") return true;
-  if (a.type === "CLASS_SUSPENSION") return a.sectionIds.length === 0 || a.sectionIds.includes(c.sectionId);
+  if (a.scheduleIds?.length && (!c.id || !a.scheduleIds.includes(c.id))) return false;
   if (a.departmentId && a.departmentId !== c.departmentId) return false;
   if (a.level && a.level !== c.level) return false;
+  if (a.sectionIds.length > 0 && !a.sectionIds.includes(c.sectionId)) return false;
   return a.startMin === null || a.endMin === null || (a.startMin < c.endMin && c.startMin < a.endMin);
 }
 

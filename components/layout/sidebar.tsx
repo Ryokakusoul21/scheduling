@@ -2,11 +2,9 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname, useRouter } from "next/navigation";
-import { signOut } from "next-auth/react";
-import { UserAvatar } from "@/components/ui/user-avatar";
+import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
-import { CaretDoubleLeft as ChevronsLeft, CaretDown, SidebarSimple, SignOut } from "@phosphor-icons/react/ssr";
+import { CaretDoubleLeft as ChevronsLeft, CaretDown, SidebarSimple } from "@phosphor-icons/react/ssr";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { activeHrefFor, filterNavForRole } from "./nav-config";
@@ -129,10 +127,8 @@ export function NavGroups({ role, collapsed = false, onNavigate }: { role: AppRo
   );
 }
 
-export function Sidebar({ role, name, image }: { role: AppRole; name: string; image?: string | null }) {
+export function Sidebar({ role }: { role: AppRole }) {
   const [collapsed, setCollapsed] = useState(false);
-  const router = useRouter();
-  const student = role === "STUDENT";
   const toggle = (
     <button
       type="button"
@@ -160,34 +156,11 @@ export function Sidebar({ role, name, image }: { role: AppRole; name: string; im
       <aside className="hidden w-[92px] shrink-0 p-2.5 md:flex print:hidden">
         <div className="flex w-full flex-col items-center gap-3 overflow-hidden rounded-[2.25rem] bg-gradient-to-b from-sidebar via-sidebar to-[oklch(0.12_0.05_264)] py-4 text-sidebar-foreground shadow-lg">
           {logo}
-          {toggle}
           <div className="sidebar-scroll min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto px-3 py-2">
             <NavGroups role={role} collapsed />
           </div>
           <div className="w-12 shrink-0 border-t border-white/15" />
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger render={<Link href={`${student ? "/student" : ""}/profile`} aria-label={`Profile of ${name}`} className="shrink-0 rounded-full ring-2 ring-white/30 outline-none focus-visible:ring-brand-gold" />}>
-                <UserAvatar name={name} image={image} small className="size-10" />
-              </TooltipTrigger>
-              <TooltipContent side="right">{name}</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label={student ? "Sign out" : "Log out"}
-                    onClick={() => signOut({ callbackUrl: student ? "/student/login" : "/login" }).then(() => router.refresh())}
-                    className="flex size-10 shrink-0 items-center justify-center rounded-full text-sidebar-foreground/80 outline-none hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-brand-gold"
-                  />
-                }
-              >
-                <SignOut className="size-5" />
-              </TooltipTrigger>
-              <TooltipContent side="right">{student ? "Sign out" : "Log out"}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          {toggle}
         </div>
       </aside>
     );

@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { requireScope } from "@/lib/permissions/scope";
+import { assertSingleDepartmentHead, lockDepartmentHeads } from "@/lib/departments/head-guard";
+import { DepartmentHeadConflictError } from "@/lib/departments/heads";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -58,38 +60,49 @@ export async function saveDepartmentAction(id: string | null, formData: FormData
 
 export async function assignDepartmentHeadAction(departmentId: string, userId: string): Promise<Result> {
   const scope = await requireScope("REGISTRAR");
-  const [department, user] = await Promise.all([
-    prisma.department.findUnique({ where: { id: departmentId }, select: { id: true, name: true } }),
-    prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, role: true, status: true, archivedAt: true } }),
-  ]);
-  if (!department) return { ok: false, error: "This department no longer exists." };
-  if (!user || user.role !== "HEAD_OF_DEPARTMENT" || user.status !== "ACTIVE" || user.archivedAt) {
-    return { ok: false, error: "Choose an active Head of Department account." };
+  if (!z.string().trim().min(1).safeParse(departmentId).success || !z.string().trim().min(1).safeParse(userId).success) {
+    return { ok: false, error: "Choose a department and an active Head of Department." };
   }
+  try {
+    await prisma.$transaction(async (tx) => {
+      await lockDepartmentHeads(tx);
+      const [department, user] = await Promise.all([
+        tx.department.findUnique({ where: { id: departmentId }, select: { id: true, name: true } }),
+        tx.user.findUnique({ where: { id: userId }, select: { id: true, name: true, role: true, status: true, archivedAt: true } }),
+      ]);
+      if (!department) throw new Error("This department no longer exists.");
+      if (!user || user.role !== "HEAD_OF_DEPARTMENT" || user.status !== "ACTIVE" || user.archivedAt) {
+        throw new Error("Choose an active Head of Department account.");
+      }
 
-  await prisma.$transaction(async (tx) => {
-    const previous = await tx.userDepartmentAssignment.findUnique({
-      where: { userId_departmentId: { userId, departmentId } },
-      select: { id: true, acting: true, startsAt: true, endsAt: true },
+      const previous = await tx.userDepartmentAssignment.findUnique({
+        where: { userId_departmentId: { userId, departmentId } },
+        select: { id: true, acting: true, startsAt: true, endsAt: true },
+      });
+      await tx.userDepartmentAssignment.upsert({
+        where: { userId_departmentId: { userId, departmentId } },
+        update: { acting: false, startsAt: null, endsAt: null },
+        create: { userId, departmentId, acting: false },
+      });
+      await assertSingleDepartmentHead(tx, userId);
+      await tx.auditLog.create({
+        data: {
+          userId: scope.userId,
+          role: scope.role,
+          departmentId,
+          action: previous ? "Updated department Head of Department assignment" : "Assigned Head of Department to department",
+          entity: "UserDepartmentAssignment",
+          entityId: previous?.id,
+          ...(previous ? { oldValue: { acting: previous.acting, startsAt: previous.startsAt?.toISOString() ?? null, endsAt: previous.endsAt?.toISOString() ?? null } } : {}),
+          newValue: { userId, userName: user.name, departmentId, acting: false },
+        },
+      });
     });
-    await tx.userDepartmentAssignment.upsert({
-      where: { userId_departmentId: { userId, departmentId } },
-      update: { acting: false, startsAt: null, endsAt: null },
-      create: { userId, departmentId, acting: false },
-    });
-    await tx.auditLog.create({
-      data: {
-        userId: scope.userId,
-        role: scope.role,
-        departmentId,
-        action: previous ? "Updated department Head of Department assignment" : "Assigned Head of Department to department",
-        entity: "UserDepartmentAssignment",
-        entityId: previous?.id,
-        ...(previous ? { oldValue: { acting: previous.acting, startsAt: previous.startsAt?.toISOString() ?? null, endsAt: previous.endsAt?.toISOString() ?? null } } : {}),
-        newValue: { userId, userName: user.name, departmentId, acting: false },
-      },
-    });
-  });
+  } catch (error) {
+    if (error instanceof DepartmentHeadConflictError) return { ok: false, error: error.message };
+    if (error instanceof Error && ["This department no longer exists.", "Choose an active Head of Department account."].includes(error.message)) return { ok: false, error: error.message };
+    throw error;
+  }
   refreshDepartments();
   return { ok: true };
 }
@@ -114,6 +127,7 @@ export async function removeDepartmentHeadAssignmentAction(departmentId: string,
   }
 
   await prisma.$transaction(async (tx) => {
+    await lockDepartmentHeads(tx);
     await tx.userDepartmentAssignment.delete({ where: { userId_departmentId: { userId, departmentId } } });
     await tx.auditLog.create({
       data: {

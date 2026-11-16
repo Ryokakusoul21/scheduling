@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { revokeSessionAction, signOutEverywhereAction } from "@/app/(dashboard)/profile/actions";
+import { SignOutConfirmation } from "@/components/auth/sign-out-confirmation";
 
 export interface SessionRow {
   id: string;
@@ -33,12 +34,12 @@ export function SessionList({ sessions }: { sessions: SessionRow[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [confirmAll, setConfirmAll] = useState(false);
+  const [confirmSession, setConfirmSession] = useState<SessionRow | null>(null);
 
   function revoke(s: SessionRow) {
     start(async () => {
       const res = await revokeSessionAction(s.id);
       if (!res.ok) return void toast.error(res.error);
-      if (s.current) return void (await signOut({ callbackUrl: "/login?notice=signedout" }));
       toast.success(`Signed out ${s.device}`);
       router.refresh();
     });
@@ -67,17 +68,17 @@ export function SessionList({ sessions }: { sessions: SessionRow[] }) {
             {sessions.map((s) => {
               const Icon = /iOS|Android/.test(s.device) ? DeviceMobile : DesktopTower;
               return (
-                <li key={s.id} className="flex flex-wrap items-center gap-3 p-3 sm:p-4">
+                <li key={s.id} className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:p-4">
                   <Icon className="size-7 shrink-0 text-muted-foreground" aria-hidden />
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-2 text-base font-medium">
-                      {s.device}
+                      <span className="min-w-0 [overflow-wrap:anywhere]">{s.device}</span>
                       {s.current && <Badge>This device</Badge>}
                     </p>
-                    <p className="text-sm text-muted-foreground">{s.location} · Active {s.lastActive}</p>
-                    <p className="text-sm text-muted-foreground">Signed in {s.signedIn}</p>
+                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">{s.location} · Active {s.lastActive}</p>
+                    <p className="text-sm leading-relaxed text-muted-foreground">Signed in {s.signedIn}</p>
                   </div>
-                  <Button variant="outline" size="sm" disabled={pending} onClick={() => revoke(s)}>
+                  <Button variant="outline" className="col-start-2 h-11 w-full sm:col-auto sm:w-auto sm:px-4" disabled={pending} onClick={() => s.current ? setConfirmSession(s) : revoke(s)}>
                     {s.current ? "Sign out" : "Revoke"}
                     <span className="sr-only"> {s.device}</span>
                   </Button>
@@ -87,7 +88,7 @@ export function SessionList({ sessions }: { sessions: SessionRow[] }) {
           </ul>
         )}
 
-        <Button variant="destructive" className="h-10" disabled={pending} onClick={() => setConfirmAll(true)}>
+        <Button variant="destructive" className="h-11 w-full sm:w-auto" disabled={pending} onClick={() => setConfirmAll(true)}>
           Sign out of all devices
         </Button>
 
@@ -100,13 +101,18 @@ export function SessionList({ sessions }: { sessions: SessionRow[] }) {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction variant="destructive" onClick={revokeAll} disabled={pending}>
+              <AlertDialogCancel className="h-11">Cancel</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" className="h-11" onClick={revokeAll} disabled={pending}>
                 {pending && <CircleNotch className="size-4 animate-spin" />} Sign out everywhere
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        <SignOutConfirmation open={!!confirmSession} onOpenChange={(open) => { if (!open) setConfirmSession(null); }} callbackUrl="/login?notice=signedout" beforeSignOut={async () => {
+          if (!confirmSession) throw new Error("No session selected.");
+          const result = await revokeSessionAction(confirmSession.id);
+          if (!result.ok) throw new Error(result.error);
+        }} />
       </CardContent>
     </Card>
   );

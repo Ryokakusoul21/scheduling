@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowUpRight, CalendarBlank } from "@phosphor-icons/react/ssr";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties } from "react";
 import { roleLabel, type AppRole } from "@/lib/permissions/roles";
 
 const BRAND_THEME = {
@@ -24,14 +24,13 @@ export function dashboardTheme(role: AppRole): CSSProperties {
 }
 
 /** The same photo-and-greeting composition, with an identity and actions for each role. */
-export function DashboardBanner({ role, name, date, context, action, href, status }: {
+export function DashboardBanner({ role, name, date, context, action, href }: {
   role: AppRole;
   name: string;
   date: Date;
   context: string;
   action: string;
   href: string;
-  status?: ReactNode;
 }) {
   const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Manila", hour: "2-digit", hourCycle: "h23" }).format(date));
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -56,7 +55,6 @@ export function DashboardBanner({ role, name, date, context, action, href, statu
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
-        {status}
         <Link href={calendar} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-white/30 bg-white/10 px-3 text-xs font-medium text-white outline-none hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white"><CalendarBlank className="size-3.5" aria-hidden />Calendar</Link>
         <Link href={href} className="inline-flex min-h-9 items-center gap-2 rounded-md bg-[var(--dashboard-accent)] px-3 text-xs font-medium text-white outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-white">{action}<ArrowUpRight className="size-3.5" aria-hidden /></Link>
       </div>

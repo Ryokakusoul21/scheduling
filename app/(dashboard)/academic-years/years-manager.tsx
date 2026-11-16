@@ -37,27 +37,25 @@ function fmt(date: string) {
   return new Date(date).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
-export function YearsManager({ years }: { years: Year[] }) {
+export function YearsManager({ years, embedded = false }: { years: Year[]; embedded?: boolean }) {
   const dialog = useDialogState<Year>();
   const del = useDialogState<Year>();
   const [, startTransition] = useTransition();
 
-  useShortcut({ keys: "n", description: "New academic year", group: "Academic years", handler: dialog.openCreate });
+  useShortcut(embedded ? null : { keys: "n", description: "New academic year", group: "Academic years", handler: dialog.openCreate });
 
   const editing = dialog.state?.mode === "edit" ? dialog.state.item : null;
   const deleting = del.state?.mode === "edit" ? del.state.item : null;
+  const description = "Manage academic years, then open a year to configure semesters or grading quarters.";
+  const createButton = <Button onClick={dialog.openCreate} aria-keyshortcuts={embedded ? undefined : "n"}><Plus className="size-4" />New academic year</Button>;
 
   return (
     <div className="space-y-4">
-      <PageHeader
+      {embedded ? <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-semibold tracking-tight">Academic Years and Terms</h1><p className="mt-1 text-sm text-muted-foreground">{description}</p></div>{createButton}</div> : <PageHeader
         title="Academic Years and Terms"
-        description="Create or select an academic year, then set up semesters per course (College) and quarters (Pre-elementary, Elementary, Junior High School, Senior High School)."
-        actions={
-          <Button onClick={dialog.openCreate} aria-keyshortcuts="n">
-            <Plus className="size-4" /> New academic year
-          </Button>
-        }
-      />
+        description={description}
+        actions={createButton}
+      />}
 
       {years.length === 0 ? (
         <EmptyState

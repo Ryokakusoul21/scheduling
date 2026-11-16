@@ -1,3 +1,4 @@
+import { roomLabel } from "@/lib/rooms/label";
 import "server-only";
 import type { Prisma } from "@prisma/client";
 import type { Scope } from "@/lib/permissions/scope";
@@ -6,10 +7,12 @@ import { departmentWhere, logBlocked } from "@/lib/permissions/department";
 import { getBookingSettings } from "@/lib/settings";
 import { notifyFacultyEach, notifyManagers, notifyUsers } from "@/lib/notify";
 import { sendMail } from "@/lib/email/mailer";
-import { loadPlan } from "@/lib/occupancy/load";
+import { loadPlan, type LoadedPlan } from "@/lib/occupancy/load";
+import { submittedTimetableFilter } from "@/lib/scheduler/visibility";
 import { addDays, findClashes, isoDate } from "@/lib/occupancy/engine";
 import { undoProblems, writePlan, type PlanItem } from "@/lib/occupancy/adjust";
 import { formatRange } from "@/lib/scheduler/timetable";
+import { publishedScheduleIds } from "@/lib/scheduler/published";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
 import {
   allowedPriorities, canManageBooking, canReviewOverride, capStatus, isOverride, lockKeys, planBooking, PLAN_WINDOW_DAYS, PRIORITY_LABEL, restorableAfterShortening, URGENT_REASONS,
@@ -51,6 +54,27 @@ function redact(items: PlanItem[], scope: Scope) {
   return scope.isAdmin ? items : items.map((i) => (i.departmentId && scope.departmentIds.includes(i.departmentId) ? i : { ...i, label: "A class of another department" }));
 }
 
+const PRIVATE_TIMETABLE_BLOCKER = "This room is unavailable for the requested time. Choose another room or time.";
+
+/** Drafts reserve resources, but a management booking preview cannot reveal or displace them. */
+async function privateOccupants(scope: Scope, loaded: LoadedPlan) {
+  if (!scope.isAdmin) return [];
+  const occupants = loaded.ctx.occupants.filter((row) => row.kind === "CLASS" || row.kind === "EXAMINATION");
+  if (!occupants.length) return [];
+  const ids = (kind: string) => [...new Set(occupants.filter((row) => row.kind === kind).map((row) => row.refId))];
+  const [classes, exams] = await Promise.all([
+    prisma.schedule.findMany({ where: { id: { in: ids("CLASS") }, ...submittedTimetableFilter(scope.role) }, select: { id: true } }),
+    prisma.examination.findMany({ where: { id: { in: ids("EXAMINATION") }, ...submittedTimetableFilter(scope.role) }, select: { id: true } }),
+  ]);
+  const visibleClasses = new Set(classes.map((row) => row.id));
+  const visibleExams = new Set(exams.map((row) => row.id));
+  return occupants.filter((row) => !(row.kind === "CLASS" ? visibleClasses : visibleExams).has(row.refId));
+}
+
+function overlapsPrivate(occupants: Awaited<ReturnType<typeof privateOccupants>>, input: SlotInput & { roomId: string }) {
+  return occupants.some((row) => row.roomId === input.roomId && row.date === input.date && row.startMin < input.endMin && row.endMin > input.startMin);
+}
+
 export interface RoomOption {
   roomId: string;
   name: string;
@@ -75,6 +99,7 @@ export interface RoomOption {
  * moves, own department first, then the closest capacity fit.
  */
 export async function searchRooms(scope: Scope, input: SlotInput & { roomType?: string; roomId?: string; priority: Priority }) {
+  if (!allowedPriorities(scope.role).includes(input.priority)) return { options: [] as RoomOption[], caps: null };
   const settings = await getBookingSettings();
   const override = isOverride(input.priority);
   const [loaded, rooms, departments] = await Promise.all([
@@ -85,22 +110,24 @@ export async function searchRooms(scope: Scope, input: SlotInput & { roomType?: 
     }),
     prisma.department.findMany({ select: { id: true, name: true } }),
   ]);
+  const hidden = await privateOccupants(scope, loaded);
   const options: RoomOption[] = rooms.map((r) => {
+    const privateSlot = overlapsPrivate(hidden, { ...input, roomId: r.id });
     const plan = planBooking(loaded, { ...input, roomId: r.id }, settings, { canMoveFixed: scope.isAdmin });
     const approval = r.departmentId ?? scope.departmentId;
     return {
       roomId: r.id,
-      name: r.roomName,
+      name: roomLabel(r),
       location: r.floor ? `${r.floor.building.name}, ${r.floor.name}` : "No building",
       capacity: r.capacity,
       roomType: r.roomType,
       equipment: r.equipment,
-      status: plan.blockers.length ? "BLOCKED" : plan.items.length || plan.displaced.length ? "MOVES" : "FREE",
-      items: redact(plan.items, scope),
-      displaced: plan.displaced,
-      blockers: plan.blockers,
-      notes: plan.notes,
-      overridable: plan.overridable,
+      status: privateSlot || plan.blockers.length ? "BLOCKED" : plan.items.length || plan.displaced.length ? "MOVES" : "FREE",
+      items: privateSlot ? [] : redact(plan.items, scope),
+      displaced: privateSlot ? [] : plan.displaced,
+      blockers: privateSlot ? [PRIVATE_TIMETABLE_BLOCKER] : plan.blockers,
+      notes: privateSlot ? [] : plan.notes,
+      overridable: !privateSlot && plan.overridable,
       needsApproval: approval ? (departments.find((d) => d.id === approval)?.name ?? "the owning department") : null,
       ownership: !r.departmentId ? "SHARED" : scope.departmentIds.includes(r.departmentId) ? "OWN" : "OTHER",
     };
@@ -113,11 +140,11 @@ export async function searchRooms(scope: Scope, input: SlotInput & { roomType?: 
 
 /** Checks the request itself: allowed priority, a reason for overrides, the room, and the monthly caps. */
 async function vet(scope: Scope, d: BookingInput) {
-  if (!["HEAD_OF_DEPARTMENT", "FACULTY"].includes(scope.role)) return { error: "Your role has view-only access to room bookings." } as const;
+  if (!["REGISTRAR", "HEAD_OF_DEPARTMENT", "FACULTY"].includes(scope.role)) return { error: "Your role cannot create room bookings." } as const;
   if (!allowedPriorities(scope.role).includes(d.priority)) return { error: `Your role can book up to ${PRIORITY_LABEL[allowedPriorities(scope.role).at(-1)!]} priority.` } as const;
   if (isOverride(d.priority) && !d.urgentReason) return { error: "Choose the reason for the urgent booking." } as const;
   if (d.urgentReason === "OTHER" && !d.reasonDetail?.trim()) return { error: "Describe the reason for the urgent booking." } as const;
-  const room = await prisma.room.findFirst({ where: { id: d.roomId, archivedAt: null, ...(isOverride(d.priority) ? {} : departmentWhere.room(scope)) }, select: { id: true, roomName: true, departmentId: true } });
+  const room = await prisma.room.findFirst({ where: { id: d.roomId, archivedAt: null, ...(isOverride(d.priority) ? {} : departmentWhere.room(scope)) }, select: { id: true, roomNumber: true, roomName: true, departmentId: true } });
   if (!room) {
     await logBlocked(scope, "book a room of another department", "RoomBooking", d.roomId);
     return { error: "That room is not available to your department." } as const;
@@ -143,14 +170,16 @@ export async function createBooking(scope: Scope, d: BookingInput) {
   if (approval) {
     // Nothing moves until the room's department approves; the plan is made again at that moment.
     const settings = await getBookingSettings();
-    const plan = planBooking(await loadPlan(d.date, addDays(d.date, PLAN_WINDOW_DAYS)), d, settings, { canMoveFixed: scope.isAdmin });
+    const loaded = await loadPlan(d.date, addDays(d.date, PLAN_WINDOW_DAYS));
+    if (overlapsPrivate(await privateOccupants(scope, loaded), d)) return { ok: false, error: PRIVATE_TIMETABLE_BLOCKER } satisfies Fail;
+    const plan = planBooking(loaded, d, settings, { canMoveFixed: scope.isAdmin });
     if (plan.blockers.length) return { ok: false, error: plan.blockers.join(" ") } satisfies Fail;
     const booking = await prisma.roomBooking.create({ data: { ...fields, status: "AWAITING_APPROVAL", approvalDepartmentId: approval } });
-    await audit(prisma, scope, booking.id, `Requested a booking of ${v.room.roomName}, awaiting the owning department's approval`, { ...d, displacedClasses: plan.items.length });
-    await notifyManagers(approval, { title: "Booking approval needed", message: `${scope.name}: ${v.room.roomName}, ${d.date}, ${formatRange(d.startMin, d.endMin)}. ${plan.items.length} class move(s).`, link: `/bookings?booking=${booking.id}`, type: "WARNING" });
+    await audit(prisma, scope, booking.id, `Requested a booking of ${roomLabel(v.room)}, awaiting the owning department's approval`, { ...d, displacedClasses: plan.items.length });
+    await notifyManagers(approval, { title: "Booking approval needed", message: `${scope.name}: ${roomLabel(v.room)}, ${d.date}, ${formatRange(d.startMin, d.endMin)}. ${plan.items.length} class move(s).`, link: `/bookings?booking=${booking.id}`, type: "WARNING" });
     return { ok: true as const, bookingId: booking.id, status: "AWAITING_APPROVAL" as const, items: redact(plan.items, scope), displaced: plan.displaced };
   }
-  return commit(scope, d, { fields, roomName: v.room.roomName });
+  return commit(scope, d, { fields, roomName: roomLabel(v.room) });
 }
 
 /**
@@ -161,6 +190,7 @@ async function commit(scope: Scope, d: BookingInput, ctx: { fields: Prisma.RoomB
   const settings = await getBookingSettings();
   const loadedAt = new Date();
   const loaded = await loadPlan(d.date, addDays(d.date, PLAN_WINDOW_DAYS));
+  if (overlapsPrivate(await privateOccupants(scope, loaded), d)) return { ok: false, error: PRIVATE_TIMETABLE_BLOCKER } satisfies Fail;
   const plan = planBooking(loaded, d, settings, { ignoreBookingId: ctx.existingId, choices: d.choices, canMoveFixed: scope.isAdmin });
   if (plan.blockers.length) return { ok: false, error: plan.blockers.join(" ") } satisfies Fail;
   const rooms = [d.roomId, ...plan.displaced.map((x) => x.toRoomId ?? ""), ...plan.items.map((i) => i.after?.roomId ?? "")];
@@ -215,19 +245,22 @@ const when = (p: { date: string; startMin: number; endMin: number; roomName: str
 /** Bell and email for affected faculty, the section's learners, the section's Head of Department, and owners of displaced bookings. */
 async function notifyDisplacement(bookingId: string, d: BookingInput, roomName: string, plan: BookingPlan, sectionOf: Map<string, string>) {
   if (!plan.items.length && !plan.displaced.length) return;
+  // Faculty and learners hear only about published classes; managers hear about every moved class.
+  const live = await publishedScheduleIds(plan.items.map((i) => i.scheduleId));
+  const items = plan.items.filter((i) => live.has(i.scheduleId));
   const why = `${roomName} was needed for "${d.purpose}"${d.urgentReason ? ` (${reasonLabel(d.urgentReason)})` : ""}.`;
   const line = (i: PlanItem) => `${i.label}: ${when(i.before)} now ${i.kind === "ONLINE" ? "meets online or asynchronously at the same time" : `meets ${when(i.after!)}`}.`;
   const summary = (i: PlanItem) => `${i.label}: ${i.kind === "ONLINE" ? "now online/asynchronous; same time" : `moved to ${when(i.after!)}`}.`;
-  await notifyFacultyEach(plan.items.map((i) => ({ facultyIds: [i.before.facultyId], msg: { title: "Class moved", message: summary(i), link: `/bookings?booking=${bookingId}`, type: "WARNING" as const } })));
+  await notifyFacultyEach(items.map((i) => ({ facultyIds: [i.before.facultyId], msg: { title: "Class moved", message: summary(i), link: `/bookings?booking=${bookingId}`, type: "WARNING" as const } })));
 
-  const sections = [...new Set(plan.items.map((i) => sectionOf.get(i.scheduleId)).filter((s): s is string => !!s))];
+  const sections = [...new Set(items.map((i) => sectionOf.get(i.scheduleId)).filter((s): s is string => !!s))];
   const [faculty, students, sectionRows, owners] = await Promise.all([
-    prisma.faculty.findMany({ where: { id: { in: plan.items.map((i) => i.before.facultyId) } }, select: { id: true, email: true } }),
+    prisma.faculty.findMany({ where: { id: { in: items.map((i) => i.before.facultyId) } }, select: { id: true, email: true } }),
     prisma.student.findMany({ where: { sectionId: { in: sections }, user: { status: "ACTIVE", archivedAt: null } }, select: { sectionId: true, userId: true, user: { select: { email: true } } } }),
     prisma.section.findMany({ where: { id: { in: sections } }, select: { id: true, departmentId: true } }),
     prisma.user.findMany({ where: { id: { in: plan.displaced.map((x) => x.bookedById) } }, select: { id: true, email: true } }),
   ]);
-  for (const i of plan.items) {
+  for (const i of items) {
     const section = sectionOf.get(i.scheduleId);
     const learners = students.filter((s) => s.sectionId === section);
     await notifyUsers(learners.map((s) => s.userId), { title: "Class moved", message: summary(i), link: "/student", type: "WARNING" });
@@ -254,7 +287,7 @@ const fromRow = (b: { roomId: string; date: Date; startMin: number; endMin: numb
 
 /** The responsible department head decides the booking; conflicts are checked again before confirmation. */
 export async function reviewOverride(scope: Scope, id: string, approve: boolean, note?: string) {
-  const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { roomName: true } }, bookedBy: { select: { id: true, name: true } } } });
+  const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { roomNumber: true, roomName: true } }, bookedBy: { select: { id: true, name: true } } } });
   if (!b || b.status !== "AWAITING_APPROVAL") return { ok: false, error: "This request was already decided." } satisfies Fail;
   if (!canReviewOverride(scope, b.approvalDepartmentId) || b.bookedById === scope.userId) {
     await logBlocked(scope, "decide an urgent override of another department's room", "RoomBooking", id);
@@ -263,15 +296,15 @@ export async function reviewOverride(scope: Scope, id: string, approve: boolean,
   if (!approve) {
     if (!note?.trim()) return { ok: false, error: "A rejection reason is required." } satisfies Fail;
     await prisma.roomBooking.update({ where: { id }, data: { status: "REJECTED", reviewedById: scope.userId, reviewedAt: new Date(), reviewNote: note?.trim() || null } });
-    await audit(prisma, scope, id, `Rejected the urgent override of ${b.room.roomName}${note ? `: ${note}` : ""}`, { note: note ?? null });
-    await notifyUsers([b.bookedById], { title: "Room booking rejected", message: `Your request for ${b.room.roomName} on ${isoDate(b.date)} was rejected${note ? `: ${note}` : "."}`, link: "/bookings", type: "WARNING" });
+    await audit(prisma, scope, id, `Rejected the urgent override of ${roomLabel(b.room)}${note ? `: ${note}` : ""}`, { note: note ?? null });
+    await notifyUsers([b.bookedById], { title: "Room booking rejected", message: `Your request for ${roomLabel(b.room)} on ${isoDate(b.date)} was rejected${note ? `: ${note}` : "."}`, link: "/bookings", type: "WARNING" });
     return { ok: true as const };
   }
   const bookerScope = { ...scope, userId: b.bookedById, name: b.bookedBy.name };
-  const result = await commit(bookerScope, fromRow(b), { fields: null, roomName: b.room.roomName, existingId: id, actorId: scope.userId });
+  const result = await commit(bookerScope, fromRow(b), { fields: null, roomName: roomLabel(b.room), existingId: id, actorId: scope.userId });
   if (!result.ok) return result;
-  await audit(prisma, scope, id, `Approved the urgent override of ${b.room.roomName}`, { note: note ?? null });
-  await notifyUsers([b.bookedById], { title: "Room booking approved", message: `${b.room.roomName} is yours on ${isoDate(b.date)}, ${formatRange(b.startMin, b.endMin)}.`, link: "/bookings" });
+  await audit(prisma, scope, id, `Approved the urgent override of ${roomLabel(b.room)}`, { note: note ?? null });
+  await notifyUsers([b.bookedById], { title: "Room booking approved", message: `${roomLabel(b.room)} is yours on ${isoDate(b.date)}, ${formatRange(b.startMin, b.endMin)}.`, link: "/bookings" });
   return { ok: true as const };
 }
 
@@ -304,9 +337,9 @@ export async function releaseDisplaced(scope: Scope, bookingId: string) {
 
 /** Cancels a booking; with `restore`, displaced classes and bookings go back when their original slots are still free. */
 export async function cancelBooking(scope: Scope, id: string, restore: boolean) {
-  const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { roomName: true } }, batch: { include: { adjustments: true } } } });
+  const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { roomNumber: true, roomName: true } }, batch: { include: { adjustments: true } } } });
   if (!b || ["CANCELLED", "REJECTED"].includes(b.status)) return { ok: false, error: "This booking is already cancelled." } satisfies Fail;
-  if (!canManageBooking(scope, b)) return { ok: false, error: "Only the booker or Registrar can cancel this booking. Administrators cannot change urgent overrides." } satisfies Fail;
+  if (!canManageBooking(scope, b)) return { ok: false, error: "Only the booker or responsible department head can cancel this booking." } satisfies Fail;
   const undo = restore && b.batch && !b.batch.undoneAt;
   if (undo) {
     const problems = await undoProblems(b.batch!.id, b.batch!.adjustments, [b.id]);
@@ -319,18 +352,18 @@ export async function cancelBooking(scope: Scope, id: string, restore: boolean) 
     const owners = restore ? await restoreDisplaced(tx, scope, b.id, null) : [];
     await tx.bookingAcknowledgement.deleteMany({ where: { bookingId: id, status: "PENDING" } });
     await tx.roomBooking.update({ where: { id }, data: { status: "CANCELLED" } });
-    await audit(tx, scope, id, `Cancelled the booking of ${b.room.roomName}${undo ? " and restored displaced classes" : ""}`, { restore });
+    await audit(tx, scope, id, `Cancelled the booking of ${roomLabel(b.room)}${undo ? " and restored displaced classes" : ""}`, { restore });
     return owners;
   }, { timeout: 30000 });
-  if (undo) await notifyRestored(b.batch!.adjustments.map((a) => a.scheduleId), b.room.roomName, b.purpose);
-  if (restoredOwners.length) await notifyUsers(restoredOwners, { title: "Booking restored", message: `Your booking in ${b.room.roomName} is restored.`, link: "/bookings" });
-  if (b.bookedById !== scope.userId) await notifyUsers([b.bookedById], { title: "Room booking cancelled", message: `Your booking of ${b.room.roomName} for "${b.purpose}" was cancelled by the responsible department head.`, link: "/bookings" });
+  if (undo) await notifyRestored(b.batch!.adjustments.map((a) => a.scheduleId), roomLabel(b.room), b.purpose);
+  if (restoredOwners.length) await notifyUsers(restoredOwners, { title: "Booking restored", message: `Your booking in ${roomLabel(b.room)} is restored.`, link: "/bookings" });
+  if (b.bookedById !== scope.userId) await notifyUsers([b.bookedById], { title: "Room booking cancelled", message: `Your booking of ${roomLabel(b.room)} for "${b.purpose}" was cancelled by the responsible department head.`, link: "/bookings" });
   queueWorkloadCheck("A room booking was cancelled", scope.userId);
   return { ok: true as const };
 }
 
 async function notifyRestored(scheduleIds: string[], roomName: string, purpose: string) {
-  const schedules = await prisma.schedule.findMany({ where: { id: { in: scheduleIds } }, select: { facultyId: true, sectionId: true, section: { select: { departmentId: true } } } });
+  const schedules = await prisma.schedule.findMany({ where: { id: { in: scheduleIds }, status: "PUBLISHED" }, select: { facultyId: true, sectionId: true, section: { select: { departmentId: true } } } });
   const message = `The urgent booking of ${roomName} for "${purpose}" was cancelled or shortened, so your class is back in its original room and time.`;
   await notifyFacultyEach([{ facultyIds: schedules.map((s) => s.facultyId), msg: { title: "Class restored", message, link: "/calendar" } }]);
   const students = await prisma.student.findMany({ where: { sectionId: { in: schedules.map((s) => s.sectionId) } }, select: { userId: true } });
@@ -340,7 +373,7 @@ async function notifyRestored(scheduleIds: string[], roomName: string, purpose: 
 
 /** Shortens a booking; displaced meetings that no longer overlap go back (when `restore`) if their slots are free. */
 export async function shortenBooking(scope: Scope, id: string, startMin: number, endMin: number, restore: boolean) {
-  const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { roomName: true } }, batch: { include: { adjustments: { include: { schedule: true } } } } } });
+  const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { roomNumber: true, roomName: true } }, batch: { include: { adjustments: { include: { schedule: true } } } } } });
   if (!b || b.status !== "CONFIRMED") return { ok: false, error: "Only confirmed bookings can be shortened." } satisfies Fail;
   if (!canManageBooking(scope, b)) return { ok: false, error: "Only the booker or responsible department head can change this booking." } satisfies Fail;
   if (startMin < b.startMin || endMin > b.endMin || endMin <= startMin || (startMin === b.startMin && endMin === b.endMin)) return { ok: false, error: "Choose a shorter time inside the current booking. To extend or move it, cancel and book again." } satisfies Fail;
@@ -359,17 +392,17 @@ export async function shortenBooking(scope: Scope, id: string, startMin: number,
     await audit(tx, scope, id, `Shortened the booking to ${formatRange(startMin, endMin)}${back.length ? ` and restored ${back.length} class(es)` : ""}`, { from: formatRange(b.startMin, b.endMin), to: formatRange(startMin, endMin) });
     return restored;
   });
-  if (back.length) await notifyRestored(back.map((x) => x.a.scheduleId), b.room.roomName, b.purpose);
-  if (owners.length) await notifyUsers(owners, { title: "Booking restored", message: `Your booking in ${b.room.roomName} is restored.`, link: "/bookings" });
+  if (back.length) await notifyRestored(back.map((x) => x.a.scheduleId), roomLabel(b.room), b.purpose);
+  if (owners.length) await notifyUsers(owners, { title: "Booking restored", message: `Your booking in ${roomLabel(b.room)} is restored.`, link: "/bookings" });
   return { ok: true as const, restored: back.length };
 }
 
 /** Purpose and attendee changes; the room must still seat everyone. */
 export async function editBookingDetails(scope: Scope, id: string, purpose: string, attendees: number) {
-  const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { capacity: true, roomName: true } } } });
+  const b = await prisma.roomBooking.findUnique({ where: { id }, include: { room: { select: { capacity: true, roomNumber: true, roomName: true } } } });
   if (!b || ["CANCELLED", "REJECTED"].includes(b.status)) return { ok: false, error: "This booking can no longer be changed." } satisfies Fail;
   if (!canManageBooking(scope, b)) return { ok: false, error: "Only the booker or responsible department head can change this booking." } satisfies Fail;
-  if (attendees > b.room.capacity) return { ok: false, error: `${b.room.roomName} seats only ${b.room.capacity}.` } satisfies Fail;
+  if (attendees > b.room.capacity) return { ok: false, error: `${roomLabel(b.room)} seats only ${b.room.capacity}.` } satisfies Fail;
   await prisma.roomBooking.update({ where: { id }, data: { purpose, attendees } });
   await audit(prisma, scope, id, "Changed the booking details", { purpose, attendees, before: { purpose: b.purpose, attendees: b.attendees } });
   return { ok: true as const };
@@ -378,7 +411,7 @@ export async function editBookingDetails(scope: Scope, id: string, purpose: stri
 /** A displaced class's faculty member acknowledges the change or asks for another option. */
 export async function respondAcknowledgement(scope: Scope, ackId: string, status: "ACKNOWLEDGED" | "ALTERNATIVE_REQUESTED", note?: string) {
   if (scope.isAdmin) return { ok: false, error: "Your role has view-only access to room bookings." } satisfies Fail;
-  const a = await prisma.bookingAcknowledgement.findUnique({ where: { id: ackId }, include: { booking: { select: { id: true, bookedById: true, purpose: true, room: { select: { roomName: true } } } } } });
+  const a = await prisma.bookingAcknowledgement.findUnique({ where: { id: ackId }, include: { booking: { select: { id: true, bookedById: true, purpose: true, room: { select: { roomNumber: true, roomName: true } } } } } });
   if (!a || !scope.facultyId || a.facultyId !== scope.facultyId) return { ok: false, error: "This acknowledgement is not yours." } satisfies Fail;
   if (status === "ALTERNATIVE_REQUESTED" && !note?.trim()) return { ok: false, error: "Say what alternative would work for you." } satisfies Fail;
   await prisma.bookingAcknowledgement.update({ where: { id: ackId }, data: { status, note: note?.trim() || null, respondedAt: new Date() } });

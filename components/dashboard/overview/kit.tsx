@@ -42,7 +42,7 @@ export function Section({
   return (
     <section id={id} aria-labelledby={`${id}-title`} className={cn("flex min-w-0 flex-col gap-4 rounded-xl border bg-card p-5 text-sm text-card-foreground", className)}>
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h2 id={`${id}-title`} className="text-base font-semibold">{title}</h2>
+        <h2 id={`${id}-title`} className="text-lg font-semibold tracking-tight">{title}</h2>
         {count !== undefined && <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">{count}</span>}
         {(actions || href) && (
           <div className="ml-auto flex flex-wrap items-center gap-3">

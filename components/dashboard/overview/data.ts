@@ -7,6 +7,7 @@ import { loadPlan } from "@/lib/occupancy/load";
 import { URGENT_REASONS } from "@/lib/bookings/plan";
 import { activeOverlapConflicts } from "@/lib/scheduler/term-conflicts";
 import { PRIVATE_APPROVAL_AUDIT } from "@/lib/permissions/notifications";
+import { submittedTimetableFilter } from "@/lib/scheduler/visibility";
 
 /** Request-scoped loaders so each dashboard widget can stream on its own without repeating queries. */
 
@@ -52,7 +53,7 @@ export const getToday = cache(async () => {
   const now = manilaNow();
   const iso = now.toLocaleDateString("en-CA");
   const nowMin = now.getHours() * 60 + now.getMinutes();
-  const plan = await loadPlan(iso, iso);
+  const plan = await loadPlan(iso, iso, { visibilityRole: "REGISTRAR" });
   const upcoming = plan.sessions
     .filter((s) => s.endMin >= nowMin)
     .sort((a, b) => a.startMin - b.startMin)
@@ -72,10 +73,10 @@ export const getToday = cache(async () => {
 /** School-wide counts behind the Registrar's key figures and Needs attention list. */
 export const getAdminCounts = cache(async () => {
   const termIds = (await getActiveTerms()).map((t) => t.id);
-  const inActiveTerms = { semesterId: { in: termIds }, status: { not: "ARCHIVED" as const } };
+  const inActiveTerms = { semesterId: { in: termIds }, status: { not: "ARCHIVED" as const }, ...submittedTimetableFilter("REGISTRAR") };
   const [conflicts, toPublish, pendingRequests, pendingAccounts, pendingReports, pendingProposals, totalSections, scheduled] = await Promise.all([
     activeOverlapConflicts(),
-    prisma.schedule.count({ where: { ...inActiveTerms, status: { in: ["DRAFT", "REVIEW"] } } }),
+    prisma.schedule.count({ where: { ...inActiveTerms, status: "REVIEW" } }),
     Promise.resolve(0),
     prisma.user.count({ where: { status: "PENDING", archivedAt: null, emailVerified: { not: null } } }),
     prisma.unavailability.count({ where: { status: "PENDING" } }),

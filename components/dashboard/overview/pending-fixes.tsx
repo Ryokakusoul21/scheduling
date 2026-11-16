@@ -28,8 +28,10 @@ export function PendingFixes({ proposals, unit }: { proposals: ProposalView[]; u
   }
 
   function approve(p: ProposalView) {
+    const itemIds = p.rows.filter((row) => row.canApprove && !row.problem && !p.needsRefresh).map((row) => row.id);
+    if (!itemIds.length) return;
     startTransition(async () => {
-      const res = await approveProposalAction({ proposalId: p.id, version: p.version });
+      const res = await approveProposalAction({ proposalId: p.id, version: p.version, itemIds });
       if (!res.ok) { report(false, res.error); return router.refresh(); }
       report(true, `${res.data.applied} reassignment(s) applied and faculty notified${res.data.awaiting ? `; ${res.data.awaiting} await the other department` : ""}.${res.data.summary ? ` Now: ${res.data.summary}.` : ""}`);
       router.refresh();
@@ -106,8 +108,8 @@ export function PendingFixes({ proposals, unit }: { proposals: ProposalView[]; u
 
                 {p.canReview && (
                   <div className="flex flex-wrap gap-2">
-                    <Button className="h-9 px-3" disabled={pending} onClick={() => approve(p)}>
-                      {pending ? <CircleNotch className="size-4 animate-spin" /> : <CheckCircle className="size-4" />} Approve and apply
+                    <Button className="h-9 px-3" disabled={pending || p.needsRefresh || !p.rows.some((row) => row.canApprove && !row.problem)} onClick={() => approve(p)}>
+                      {pending ? <CircleNotch className="size-4 animate-spin" /> : <CheckCircle className="size-4" />} Approve ready changes
                     </Button>
                     <Button variant="outline" className="h-9 border-danger/40 px-3 text-danger hover:bg-danger/10 hover:text-danger" disabled={pending} onClick={() => setRejecting(p.id)}>
                       Reject

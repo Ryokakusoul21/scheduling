@@ -64,8 +64,8 @@ export interface ActivityFormOptions {
 }
 
 /** Whether the person may edit or remove this activity: Registrar any, Head of Department their department's events. */
-export function canManageActivity(a: Pick<ActivityListItem, "type" | "departmentId">, isAdmin: boolean, ownDepartmentId: string | null) {
-  if (a.type === "CLASS_SUSPENSION") return false;
+export function canManageActivity(a: Pick<ActivityListItem, "type" | "departmentId" | "classChange">, isAdmin: boolean, ownDepartmentId: string | null) {
+  if (a.type === "CLASS_SUSPENSION" || a.classChange) return false;
   return isAdmin || (a.type === "SCHOOL_EVENT" && !!ownDepartmentId && a.departmentId === ownDepartmentId);
 }
 
@@ -361,7 +361,7 @@ function EventDialog({ event, conflict, onClose, canEdit, onEdit, onDeleted }: {
         </div>
         {(event.href || canChange) && (
           <DialogFooter className="m-0 rounded-none border-t bg-muted/30 p-3">
-            {event.href && <Button variant="outline" nativeButton={false} render={<Link href={event.href} />}>Open {event.type === "CLASS_SUSPENSION" ? "Schedule Adjustments" : EVENT_LABELS[event.type]}</Button>}
+            {event.href && <Button variant="outline" nativeButton={false} render={<Link href={event.href} />}>Open {event.href === "/suspensions" ? "class arrangements" : EVENT_LABELS[event.type]}</Button>}
             {canChange && (
               <>
                 <ActionButton

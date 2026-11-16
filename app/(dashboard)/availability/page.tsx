@@ -3,7 +3,9 @@ import { TEACHING_ROLES } from "@/lib/permissions/roles";
 import { requireScope } from "@/lib/permissions/scope";
 import { isoDate } from "@/lib/occupancy/engine";
 import { PageHeader } from "@/components/ux/states";
+import { availableDays } from "@/lib/faculty/available-days";
 import { AvailabilityForm, type ReportRow } from "./availability-form";
+import { AvailableDays } from "./available-days";
 
 export const metadata = { title: "Report Unavailability · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
@@ -12,6 +14,10 @@ export default async function AvailabilityPage() {
   const reports = scope.facultyId
     ? await prisma.unavailability.findMany({ where: { facultyId: scope.facultyId, kind: "FACULTY" }, orderBy: { startDate: "desc" }, take: 30 })
     : [];
+
+  const me = scope.facultyId
+    ? await prisma.faculty.findUnique({ where: { id: scope.facultyId }, select: { employmentType: true, dayOff: true, availability: { select: { dayOfWeek: true } } } })
+    : null;
 
   const rows: ReportRow[] = reports.map((r) => ({
     id: r.id,
@@ -30,6 +36,7 @@ export default async function AvailabilityPage() {
         title="Report Unavailability"
         description="Tell your Head of Department and the Registrar when you cannot teach. They review it, and your classes are reassigned to a substitute or cancelled with make-up options."
       />
+      {me?.employmentType === "PART_TIME" && <AvailableDays days={availableDays(me)} />}
       <AvailabilityForm reports={rows} linked={!!scope.facultyId} />
     </div>
   );

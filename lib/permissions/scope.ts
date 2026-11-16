@@ -47,8 +47,11 @@ async function loadScope(user: { id: string; name?: string | null; role: string 
   });
   const fallbackDepartmentId = me?.faculty?.departmentId ?? null;
   const assigned = me?.departmentAssignments ?? [];
-  const departmentIds = [...new Set([...assigned.map((item) => item.departmentId), ...(fallbackDepartmentId ? [fallbackDepartmentId] : [])])];
-  const actingDepartmentIds = assigned.filter((item) => item.acting).map((item) => item.departmentId);
+  // A linked faculty account follows the Registrar's current home department.
+  // Head accounts retain their explicitly administered permanent and acting authority.
+  const linkedFaculty = role === "FACULTY" && !!me?.facultyId;
+  const departmentIds = linkedFaculty ? (fallbackDepartmentId ? [fallbackDepartmentId] : []) : [...new Set([...assigned.map((item) => item.departmentId), ...(fallbackDepartmentId ? [fallbackDepartmentId] : [])])];
+  const actingDepartmentIds = linkedFaculty ? [] : assigned.filter((item) => item.acting).map((item) => item.departmentId);
   const departmentId = departmentIds[0] ?? null;
   const programIds = role === "HEAD_OF_DEPARTMENT"
     ? resolveProgramIds((me?.programAssignments ?? []).map((a) => ({ programId: a.programId, programDepartmentId: a.program.departmentId, startDate: a.startDate, endDate: a.endDate })), departmentIds, now)

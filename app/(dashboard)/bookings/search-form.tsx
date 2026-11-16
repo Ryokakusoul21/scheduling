@@ -8,7 +8,6 @@ import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ux/native-select";
 import { DEFAULT_GRID, formatTime, timeOptions } from "@/lib/scheduler/timetable";
-import { ROOM_TYPES } from "@/lib/rooms/rooms";
 import { isOverride, MAX_REPEATS, PRIORITY_LABEL, URGENT_REASONS, weeklyDates, type Priority } from "@/lib/bookings/plan";
 import { cn } from "@/lib/utils";
 import { manilaClock } from "./format";
@@ -19,7 +18,6 @@ export interface SearchRequest {
   endMin: number;
   attendees: number;
   purpose: string;
-  roomType: string;
   /** Empty means any room; otherwise only this room is checked. */
   roomId: string;
   priority: Priority;
@@ -30,12 +28,11 @@ export interface SearchRequest {
 }
 
 type Form = {
-  purpose: string; attendees: string; date: string; startMin: string; duration: string; roomType: string; roomId: string;
+  purpose: string; attendees: string; date: string; startMin: string; duration: string; roomId: string;
   priority: Priority; urgentReason: string; reasonDetail: string; repeat: boolean; repeatUntil: string;
 };
 type Clock = { today: string; nowMin: number };
 
-const TYPE_OPTIONS = [{ value: "", label: "Any room type" }, ...ROOM_TYPES];
 const REQUIRED: (keyof Form)[] = ["purpose", "attendees", "date", "startMin", "duration", "urgentReason", "reasonDetail", "repeatUntil"];
 const DURATIONS = [30, 60, 90, 120, 180, 240];
 const OVERRIDE_HELP = "An urgent booking can take a room used by a class or a lower-priority booking. Displaced classes move to another room or time, and everyone affected is notified.";
@@ -94,7 +91,6 @@ export function SearchForm({ defaults, initial, clock: initialClock, pending, on
     date: initial?.date ?? defaults.date,
     startMin: String(start),
     duration: String(initialDuration),
-    roomType: initial?.roomType ?? "",
     roomId: initial?.roomId ?? "",
     priority: initial?.priority && priorities.includes(initial.priority) ? initial.priority : "REGULAR",
     urgentReason: initial?.urgentReason ?? "",
@@ -124,7 +120,7 @@ export function SearchForm({ defaults, initial, clock: initialClock, pending, on
     if (invalid) return setTouched(Object.fromEntries(REQUIRED.map((k) => [k, true])));
     onSearch({
       date: form.date, startMin: Number(form.startMin), endMin, attendees: Number(form.attendees), purpose: form.purpose.trim(),
-      roomType: form.roomId ? "" : form.roomType, roomId: form.roomId, priority: form.priority,
+      roomId: form.roomId, priority: form.priority,
       urgentReason: urgent ? form.urgentReason : "", reasonDetail: urgent ? form.reasonDetail.trim() : "",
       repeatUntil: form.repeat && !urgent ? form.repeatUntil : "",
     });
@@ -182,15 +178,9 @@ export function SearchForm({ defaults, initial, clock: initialClock, pending, on
       </Field>
 
       <Field className="col-span-2">
-        <FieldLabel htmlFor="b-roomId">Room</FieldLabel>
+        <FieldLabel htmlFor="b-roomId">Room name</FieldLabel>
         <NativeSelect id="b-roomId" value={form.roomId} onChange={(e) => update("roomId", e.target.value)} options={[{ value: "", label: "Any available room" }, ...roomChoices]} className="h-10" />
       </Field>
-      {!form.roomId && (
-        <Field className="col-span-2">
-          <FieldLabel htmlFor="b-roomType">Room type</FieldLabel>
-          <NativeSelect id="b-roomType" value={form.roomType} onChange={(e) => update("roomType", e.target.value)} options={TYPE_OPTIONS} className="h-10" />
-        </Field>
-      )}
 
       {priorities.length > 1 && (
         <div className={cn("col-span-2 space-y-3 rounded-xl border bg-muted/30 p-3.5", urgent && "border-danger/40 bg-danger/5")}>

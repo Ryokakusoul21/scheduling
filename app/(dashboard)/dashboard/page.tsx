@@ -8,6 +8,7 @@ import { getActiveTerms } from "@/components/dashboard/overview/data";
 import { KpiSkeleton, SectionSkeleton } from "@/components/dashboard/overview/kit";
 import { LiveRefresh } from "@/components/ux/live-refresh";
 import { DashboardBanner, dashboardTheme } from "@/components/dashboard/reference-banner";
+import { DashboardActivities } from "@/components/dashboard/activities";
 
 export const metadata = { title: "Dashboard · GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" };
 
@@ -27,11 +28,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const role = scope.role;
   const landing = LANDING[role];
   const date = new Date();
+  const activities = <Suspense fallback={<SectionSkeleton rows={4} />}>
+    <DashboardActivities scope={scope} today={date.toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" })} />
+  </Suspense>;
 
   return <div data-dashboard-role={role} style={dashboardTheme(role)} className="mx-auto max-w-[1600px] space-y-5 pb-2">
-    <DashboardBanner role={role} name={scope.name} date={date} context={`${landing.title} · ${activeTerms.length} active ${activeTerms.length === 1 ? "term" : "terms"}`} action={landing.action} href={landing.href} status={scope.isAdmin ? <LiveRefresh className="text-white/70" /> : undefined} />
-    <Suspense fallback={<div className="space-y-5"><KpiSkeleton /><SectionSkeleton rows={5} /></div>}>
-      {role === "SUPER_ADMINISTRATOR" ? <AdministratorDashboard scope={scope} /> : role === "REGISTRAR" ? <RegistrarDashboard scope={scope} /> : role === "HEAD_OF_DEPARTMENT" ? <HeadDashboard scope={scope} params={params} /> : <FacultyDashboard scope={scope} params={params} />}
+    {scope.isAdmin && <LiveRefresh />}
+    <DashboardBanner role={role} name={scope.name} date={date} context={`${landing.title} · ${activeTerms.length} active ${activeTerms.length === 1 ? "term" : "terms"}`} action={landing.action} href={landing.href} />
+    <Suspense fallback={<div className="space-y-5"><div className="grid gap-5 xl:grid-cols-2"><KpiSkeleton /><SectionSkeleton rows={4} /></div><SectionSkeleton rows={5} /></div>}>
+      {role === "SUPER_ADMINISTRATOR" ? <AdministratorDashboard scope={scope} activities={activities} /> : role === "REGISTRAR" ? <RegistrarDashboard scope={scope} activities={activities} /> : role === "HEAD_OF_DEPARTMENT" ? <HeadDashboard scope={scope} params={params} activities={activities} /> : <FacultyDashboard scope={scope} params={params} activities={activities} />}
     </Suspense>
   </div>;
 }

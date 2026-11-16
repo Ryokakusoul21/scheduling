@@ -1,3 +1,4 @@
+import { roomLabel } from "@/lib/rooms/label";
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { notifyManagers, notifyUsers } from "@/lib/notify";
@@ -5,15 +6,20 @@ import type { AppRole } from "@/lib/permissions/roles";
 import type { Scope } from "@/lib/permissions/scope";
 import { checkClass, writeClass, type ClassData, type SaveResult } from "@/lib/scheduler/class-save";
 import { DAY_LONG, formatRange } from "@/lib/scheduler/timetable";
+import { can } from "@/lib/permissions/policy";
+import { policyUserFromScope } from "@/lib/permissions/scope";
+import { isForeign } from "@/lib/permissions/department";
 
 /** Other departments owning the chosen faculty member or room; shared rooms belong to everyone. */
-export async function foreignDepartments(scope: Scope, facultyId: string, roomId: string) {
+export async function foreignDepartments(scope: Scope, facultyId: string, roomId: string, slot?: Pick<ClassData, "subjectId" | "sectionId" | "semesterId">) {
   if (scope.isAdmin) return [];
   const [faculty, room] = await Promise.all([
     prisma.faculty.findUnique({ where: { id: facultyId }, select: { departmentId: true } }),
     prisma.room.findUnique({ where: { id: roomId }, select: { departmentId: true } }),
   ]);
-  return [...new Set([faculty?.departmentId, room?.departmentId].filter((d): d is string => !!d && d !== scope.departmentId))];
+  const assignment = slot ? await prisma.subjectAssignment.findFirst({ where: { ...slot, facultyId, status: "ACTIVE", faculty: { status: "ACTIVE", archivedAt: null } }, select: { section: { select: { id: true, departmentId: true, programId: true, archivedAt: true } } } }) : null;
+  const approved = assignment?.section && !assignment.section.archivedAt && can(policyUserFromScope(scope), "edit", { type: "section", ...assignment.section });
+  return [...new Set([approved ? null : faculty?.departmentId, room?.departmentId].filter((d): d is string => !!d && isForeign(scope, d)))];
 }
 
 export interface CrossDepartmentDetails {
@@ -36,9 +42,9 @@ export async function requestCrossDepartment(scope: Scope, input: ClassData, dep
     prisma.subject.findUnique({ where: { id: input.subjectId }, select: { code: true } }),
     prisma.section.findUnique({ where: { id: input.sectionId }, select: { name: true } }),
     prisma.faculty.findUnique({ where: { id: input.facultyId }, select: { fullName: true } }),
-    prisma.room.findUnique({ where: { id: input.roomId }, select: { roomName: true } }),
+    prisma.room.findUnique({ where: { id: input.roomId }, select: { roomNumber: true, roomName: true } }),
   ]);
-  const summary = `${subject?.code} ${section?.name}, ${DAY_LONG[input.dayOfWeek]} ${formatRange(input.startMin, input.endMin)}, ${room?.roomName}, ${faculty?.fullName}`;
+  const summary = `${subject?.code} ${section?.name}, ${DAY_LONG[input.dayOfWeek]} ${formatRange(input.startMin, input.endMin)}, ${roomLabel(room)}, ${faculty?.fullName}`;
   const target = departments.length === 1 ? departments[0] : null;
   const details: CrossDepartmentDetails = { kind: "CROSS_DEPARTMENT_CLASS", input, summary, requesterRole: scope.role, requiredDepartmentIds: [...new Set(departments)], approvedDepartmentIds: [] };
   const request = await prisma.scheduleRequest.create({

@@ -7,13 +7,11 @@ import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
 import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
 import { ConfirmDialog, FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
-import { EmptyState, PageHeader } from "@/components/ux/states";
-import { DragHandle, SortableList } from "@/components/ux/sortable-list";
+import { EmptyState } from "@/components/ux/states";
 import { useShortcut } from "@/components/ux/shortcuts";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
-import { reorderAction } from "@/actions/reorder";
-import { cn } from "@/lib/utils";
 import { deleteProgramAction, saveProgramAction } from "./actions";
+import type { AcademicLevel } from "@/lib/academics/levels";
 
 export interface ProgramRow {
   id: string;
@@ -36,15 +34,17 @@ export function programFields(level: "COLLEGE" | "SENIOR_HIGH", departments: { v
   ];
 }
 
-export function ProgramsManager({ programs, departments }: { programs: ProgramRow[]; departments: { value: string; label: string }[] }) {
+export function ProgramsManager({ programs, departments, activeLevel }: { programs: ProgramRow[]; departments: { value: string; label: string }[]; activeLevel: AcademicLevel }) {
   const dialog = useDialogState<ProgramRow | { level: ProgramRow["level"] }>();
   const del = useDialogState<ProgramRow>();
 
-  useShortcut({ keys: "n", description: "Add a college course", group: "Programs", handler: () => dialog.openEdit({ level: "COLLEGE" }) });
+  const catalogLevel = activeLevel === "COLLEGE" || activeLevel === "SENIOR_HIGH" ? activeLevel : null;
+  const visiblePrograms = programs.filter((program) => program.level === activeLevel);
+  useShortcut(catalogLevel ? { keys: "n", description: catalogLevel === "COLLEGE" ? "Add a college course" : "Add a Senior High strand", group: "Programs", handler: () => dialog.openEdit({ level: catalogLevel }) } : null);
 
   const target = dialog.state?.mode === "edit" ? dialog.state.item : null;
   const editing = target && "id" in target ? (target as ProgramRow) : null;
-  const level = target?.level ?? "COLLEGE";
+  const level = target?.level ?? catalogLevel ?? "COLLEGE";
   const deleting = del.state?.mode === "edit" ? del.state.item : null;
 
   const sections: { level: ProgramRow["level"]; title: string; description: string; icon: typeof GraduationCap }[] = [
@@ -54,23 +54,13 @@ export function ProgramsManager({ programs, departments }: { programs: ProgramRo
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Academic Programs"
-        description="Manage College courses and Senior High strands. Drag the handle (or focus it and press Space) to reorder."
-        actions={
-          <>
-            <Button variant="outline" onClick={() => dialog.openEdit({ level: "SENIOR_HIGH" })}>
-              <Plus className="size-4" /> Add strand
-            </Button>
-            <Button onClick={() => dialog.openEdit({ level: "COLLEGE" })} aria-keyshortcuts="n">
-              <Plus className="size-4" /> Add course
-            </Button>
-          </>
-        }
-      />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><h2 className="text-xl font-semibold tracking-tight">Academic Programs</h2><p className="mt-1 text-sm text-muted-foreground">{activeLevel === "COLLEGE" ? "Manage College courses and use the academic calendar above to configure terms." : activeLevel === "SENIOR_HIGH" ? "Manage Senior High School strands and use the academic calendar above to configure terms." : "Configure this level’s academic calendar above."}</p></div>
+        {catalogLevel && <Button onClick={() => dialog.openEdit({ level: catalogLevel })} aria-keyshortcuts="n"><Plus className="size-4" />{catalogLevel === "COLLEGE" ? "Add course" : "Add strand"}</Button>}
+      </div>
 
-      <CollectionView storageKey="programs:view" label="Programs" table={<RecordsTable label="Programs" columns={["Program", "Level", "Department", "Sections", "Subjects", "Semesters", "Actions"]} rows={programs.map((p) => ({ id: p.id, label: p.code, cells: [<Link key="name" href={`/programs/${p.id}`} className="font-medium text-primary hover:underline">{p.code}<span className="block text-xs text-muted-foreground">{p.name}</span></Link>, p.level === "COLLEGE" ? "College" : "Senior High", p.department ?? "—", p.sections, p.subjects, p.terms, <div key="actions" className="flex gap-1.5"><ActionButton kind="edit" onClick={() => dialog.openEdit(p)}>Edit</ActionButton><ActionButton kind="delete" onClick={() => del.openEdit(p)}>Delete</ActionButton></div>] }))} onReorder={(ids) => reorderAction("program", ids)} />}>
-      {sections.map((s) => (
+      {catalogLevel && <CollectionView storageKey="programs:view" label="Programs" table={<RecordsTable label="Programs" columns={["Program", "Level", "Department", "Sections", "Subjects", "Semesters", "Actions"]} rows={visiblePrograms.map((p) => ({ id: p.id, label: p.code, cells: [<Link key="name" href={`/programs/${p.id}`} className="font-medium text-primary hover:underline">{p.code}<span className="block text-xs text-muted-foreground">{p.name}</span></Link>, p.level === "COLLEGE" ? "College" : "Senior High", p.department ?? "—", p.sections, p.subjects, p.terms, <div key="actions" className="flex gap-1.5"><ActionButton kind="edit" onClick={() => dialog.openEdit(p)}>Edit</ActionButton><ActionButton kind="delete" onClick={() => del.openEdit(p)}>Delete</ActionButton></div>] }))} />}>
+      {sections.filter((s) => s.level === activeLevel).map((s) => (
         <ProgramSection
           key={s.level}
           title={s.title}
@@ -82,7 +72,7 @@ export function ProgramsManager({ programs, departments }: { programs: ProgramRo
           onAdd={() => dialog.openEdit({ level: s.level })}
         />
       ))}
-      </CollectionView>
+      </CollectionView>}
 
       <FormDialog
         open={!!dialog.state}
@@ -138,19 +128,12 @@ function ProgramSection({
         <EmptyState title={`No ${title.toLowerCase()} yet`} action={<Button onClick={onAdd}>Add one</Button>} />
       ) : (
         <div ref={ref} onKeyDown={onKeyDown} onFocus={onFocus} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <SortableList
-            items={programs}
-            layout="grid"
-            getLabel={(p) => p.code}
-            onReorder={(ids) => reorderAction("program", ids)}
-            renderItem={(p, { setNodeRef, style, isDragging, handleProps }) => (
+          {programs.map((p) => (
               <div
-                ref={setNodeRef}
-                style={style}
-                className={cn("group relative rounded-xl border bg-card p-4 shadow-xs transition-shadow hover:shadow-md", isDragging && "shadow-lg ring-2 ring-primary")}
+                key={p.id}
+                className="group relative rounded-xl border bg-card p-4 shadow-xs transition-shadow hover:shadow-md"
               >
                 <div className="flex items-start gap-2">
-                  <DragHandle {...handleProps} className="-ml-1" />
                   <Link
                     href={`/programs/${p.id}`}
                     data-roving=""
@@ -174,12 +157,11 @@ function ProgramSection({
                 <div className="mt-3 flex flex-wrap items-center gap-1.5">
                   <Badge variant="secondary">{p.sections} sections</Badge>
                   <Badge variant="secondary">{p.subjects} subjects</Badge>
-                  {p.level === "COLLEGE" && <Badge variant="outline">{p.terms} own semesters</Badge>}
+                  {p.level === "COLLEGE" && p.terms > 0 && <Badge variant="outline">{p.terms} own semesters</Badge>}
                   <ArrowRight className="ml-auto size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
                 </div>
               </div>
-            )}
-          />
+          ))}
         </div>
       )}
     </section>

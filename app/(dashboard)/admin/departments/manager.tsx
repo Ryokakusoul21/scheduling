@@ -21,9 +21,11 @@ type Department = {
   logoUrl: string | null;
   counts: { programs: number; faculty: number; sections: number; rooms: number };
   heads: { id: string; name: string; email: string; acting: boolean; linkedThroughFaculty: boolean }[];
+  headOptions: { id: string; label: string }[];
+  facultyCandidates: { id: string; name: string; detail: string }[];
 };
 
-export function DepartmentManager({ departments, headOptions }: { departments: Department[]; headOptions: { id: string; label: string }[] }) {
+export function DepartmentManager({ departments }: { departments: Department[] }) {
   const [pending, startTransition] = useTransition();
   const [managing, setManaging] = useState<string | null>(null);
   const [selectedHeads, setSelectedHeads] = useState<Record<string, string>>({});
@@ -94,6 +96,8 @@ export function DepartmentManager({ departments, headOptions }: { departments: D
 
               <div className="space-y-3 rounded-lg border p-3">
                 <div className="flex items-center gap-2 font-medium"><Buildings className="size-4 text-primary" /> Head of Department</div>
+                <p className="text-xs text-muted-foreground">One active head per department, including acting appointments and linked faculty accounts.</p>
+                {department.heads.length > 1 && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Multiple heads have authority. Remove the extra assignments.</p>}
                 {department.heads.length ? (
                   <ul className="space-y-2">
                     {department.heads.map((head) => (
@@ -112,19 +116,31 @@ export function DepartmentManager({ departments, headOptions }: { departments: D
                   </ul>
                 ) : <p className="text-sm text-muted-foreground">No active Head of Department is assigned.</p>}
 
+                {department.heads.length === 0 ? <>
+                <div className="rounded-md bg-muted/50 p-3 text-sm">
+                  <p className="font-medium">Recommended next step</p>
+                  <p className="mt-1 text-muted-foreground">Appoint an active faculty member from this department.</p>
+                  {department.facultyCandidates.length > 0 && <>
+                    <p className="mt-3 text-xs font-medium">Department faculty to consider</p>
+                    <ul className="mt-1 space-y-1">{department.facultyCandidates.slice(0, 3).map((faculty) => <li key={faculty.id}>{faculty.name}<span className="block text-xs text-muted-foreground">{faculty.detail}</span></li>)}</ul>
+                    {department.facultyCandidates.length > 3 && <p className="mt-1 text-xs text-muted-foreground">{department.facultyCandidates.length - 3} more active faculty in this department.</p>}
+                    <p className="mt-2 text-xs text-muted-foreground">These accounts need the Head of Department role enabled.</p>
+                  </>}
+                </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <select
                     aria-label={`Select Head of Department for ${department.name}`}
                     className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm"
                     value={selectedHeads[department.id] ?? ""}
                     onChange={(event) => setSelectedHeads((current) => ({ ...current, [department.id]: event.target.value }))}
-                    disabled={pending || headOptions.length === 0}
+                    disabled={pending || department.headOptions.length === 0}
                   >
-                    <option value="">{headOptions.length ? "Choose an active Head of Department" : "No active Head of Department accounts"}</option>
-                    {headOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                    <option value="">{department.headOptions.length ? "Choose an eligible Head of Department" : "No eligible Head of Department accounts"}</option>
+                    {department.headOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                   </select>
-                  <Button type="button" variant="outline" disabled={pending || !selectedHeads[department.id]} onClick={() => assign(department.id)}>Assign</Button>
+                  <Button type="button" variant="outline" disabled={pending || !department.headOptions.some((option) => option.id === selectedHeads[department.id])} onClick={() => assign(department.id)}>Assign head</Button>
                 </div>
+                </> : <p className="text-xs text-muted-foreground">A head is already assigned. End the existing authority before appointing a replacement.{department.heads.some((head) => head.linkedThroughFaculty) ? " For a faculty-linked head, ask the Super Administrator to update the account role or faculty link." : ""}</p>}
               </div>
             </CardContent>
           </Card>
@@ -158,7 +174,7 @@ export function DepartmentManager({ departments, headOptions }: { departments: D
         ) : <CollectionView storageKey="departments:view" label="Departments" table={<RecordsTable label="Departments" columns={["Department", "Head of Department", "Programs", "Faculty", "Sections", "Rooms", "Actions"]} rows={departments.map((d) => ({ id: d.id, cells: [<div key="department" className="flex items-center gap-2"><DepartmentLogo name={d.name} logoUrl={d.logoUrl} className="size-9 shrink-0" /><span><b>{d.code}</b><span className="block">{d.name}</span></span></div>, d.heads.map((h) => `${h.name}${h.acting ? " (Acting)" : ""}`).join(", ") || "Unassigned", d.counts.programs, d.counts.faculty, d.counts.sections, d.counts.rooms, <div key="actions" className="flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" onClick={() => setManaging(d.id)}>Manage department</Button><Link href={`/department?department=${encodeURIComponent(d.id)}`} className="text-primary hover:underline">Profile</Link><Link href={`/analytics?department=${encodeURIComponent(d.id)}`} className="text-primary hover:underline">Analytics</Link></div>] }))} />}>{departments.map(renderDepartment)}</CollectionView>}
       </section>
       <Dialog open={!!managing} onOpenChange={(on) => !on && !pending && setManaging(null)}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle>Manage department</DialogTitle><DialogDescription>Update details and available settings.</DialogDescription></DialogHeader>{departments.filter((item) => item.id === managing).map(renderDepartment)}</DialogContent></Dialog>
-      <p className="text-xs text-muted-foreground">Departments with linked academic records cannot be deleted here. Only existing active Head of Department accounts can be assigned; all assignment changes are audited.</p>
+      <p className="text-xs text-muted-foreground">One active Head of Department per department. Changes are audited.</p>
     </div>
   );
 }

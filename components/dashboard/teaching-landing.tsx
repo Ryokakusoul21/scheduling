@@ -4,28 +4,34 @@ import { facultyLanding, headLanding } from "@/lib/dashboard/landing";
 import type { Scope } from "@/lib/permissions/scope";
 import { formatRange } from "@/lib/scheduler/timetable";
 import { SUBMISSION_LABEL } from "@/lib/scheduler/submissions";
-import { isPeriodOpenNow } from "@/lib/scheduler/period-rules";
 import { longDate } from "@/lib/student/format";
 import { Badge } from "@/components/ui/badge";
 import { Section, QuietState } from "./overview/kit";
 import { PendingFixesSection } from "./overview/sections";
-import { ClassFocus, LandingMetrics, dashboardLink } from "./landing-kit";
+import { ClassFocus, DashboardOverview, dashboardLink } from "./landing-kit";
+import { MovedList } from "@/components/student/moves";
 import { NotificationMessage } from "@/components/notifications/notification-message";
 
 const stamp = (date: Date) => date.toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
-export async function FacultyLanding({ scope }: { scope: Scope }) {
-  const data = await facultyLanding(scope);
-  const focus = data.current ?? data.next;
-  return <div className="space-y-5">
-    <LandingMetrics items={[
+export function FacultyOverview({ data, activities }: { data: Awaited<ReturnType<typeof facultyLanding>>; activities: React.ReactNode }) {
+  return <DashboardOverview activities={activities} items={[
       { label: "Classes today", value: data.today.length, hint: `${data.remaining} remaining or in progress`, href: "#teaching-today" },
       { label: "Planned teaching load", value: data.load.value, hint: `${data.load.unit} · maximum ${data.load.maximum}`, href: "/workload", attention: data.load.value > data.load.maximum },
       { label: "My pending requests", value: data.requests, hint: "Schedule requests awaiting a decision", href: "/requests" },
       { label: "My pending bookings", value: data.bookings, hint: "Room bookings awaiting approval", href: "/bookings" },
-      { label: "Classes remaining", value: data.remaining, hint: "Today, including classes in progress", href: "#teaching-today" },
+      { label: "Class changes", value: data.moves.length, hint: "Moved and online meetings in the next two weeks", href: "#class-changes", attention: data.moves.length > 0 },
       { label: "Next 7 days", value: data.weekCount, hint: "Upcoming published class meetings", href: "/scheduler" },
-    ]} />
+  ]} />;
+}
+
+export async function FacultyLanding({ scope, activities, controls }: { scope: Scope; activities: React.ReactNode; controls?: React.ReactNode }) {
+  const data = await facultyLanding(scope);
+  const focus = data.current ?? data.next;
+  return <div className="space-y-5">
+    <FacultyOverview data={data} activities={activities} />
+    {controls}
+    {data.moves.length > 0 && <Section id="class-changes" title="Changes to your classes" count={data.moves.length} href="/scheduler" linkLabel="Full timetable"><MovedList moves={data.moves} showSection /></Section>}
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <ClassFocus eyebrow={data.current ? "Teaching now" : "Your next class"} title={focus?.title ?? "No upcoming classes"} description={focus ? focus.changed ? "This meeting reflects a schedule change." : "Your published teaching schedule" : "No published meetings in the next seven days."} when={focus ? `${focus.date === data.date ? "Today" : longDate(focus.date)} · ${formatRange(focus.startMin, focus.endMin)}` : undefined} location={focus?.room} href="/scheduler" />
       <Section id="teaching-actions" title="Manage your teaching day"><div className="grid gap-2"><Link href="/availability" className={dashboardLink}>Report unavailability</Link><Link href="/requests" className={dashboardLink}>Track schedule requests</Link><Link href="/bookings" className={dashboardLink}>Book a room</Link></div><p className="text-xs text-muted-foreground">Requests go to the responsible department for a decision.</p></Section>
@@ -43,21 +49,15 @@ export async function FacultyLanding({ scope }: { scope: Scope }) {
   </div>;
 }
 
-export async function HeadLanding({ scope, termId, controls }: { scope: Scope; termId: string; controls?: React.ReactNode }) {
+export async function HeadLanding({ scope, termId, controls, activities }: { scope: Scope; termId: string; controls?: React.ReactNode; activities: React.ReactNode }) {
   const data = await headLanding(scope, termId);
   const scheduled = data.sections.filter((section) => section.scheduled > 0).length;
   const missing = data.sections.reduce((sum, section) => sum + section.missing, 0);
-  const period = data.periods.find((row) => row.kind === "CLASS_TIMETABLE");
-  const open = period ? isPeriodOpenNow(period) : false;
-  const upcoming = period?.status === "OPEN" && period.startsAt > new Date();
-  const windowDescription = !period ? "The Registrar has not opened a submission period for this term."
-    : period.status !== "OPEN" ? "Contact the Registrar about the next submission period."
-    : `${open ? "Closes" : upcoming ? "Opens" : "Last deadline"} ${stamp(upcoming ? period.startsAt : period.endsAt)}`;
   const scheduler = `/scheduler?termId=${encodeURIComponent(termId)}`;
   const pending = data.submissions.some((row) => row.kind === "CLASS" && (row.status === "SUBMITTED" || row.status === "APPROVED"));
   const sections = [...data.sections].sort((a, b) => Number(b.scheduled === 0) - Number(a.scheduled === 0) || b.missing - a.missing);
   return <div className="space-y-5">
-    <LandingMetrics items={[
+    <DashboardOverview activities={activities} items={[
       { label: "Sections with classes", value: `${scheduled}/${data.sections.length}`, hint: "Sections with at least one scheduled class", href: "#section-readiness" },
       { label: "Unscheduled components", value: missing, hint: "Planned subject components still unplaced", href: scheduler, attention: missing > 0 },
       { label: "Draft class meetings", value: data.drafts, hint: "Continue preparing your timetable", href: scheduler },
@@ -67,16 +67,16 @@ export async function HeadLanding({ scope, termId, controls }: { scope: Scope; t
     ]} />
     {controls}
     <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card p-5">
-      <div className="space-y-1"><p className="text-sm font-semibold">{open ? "Class timetable submissions are open" : upcoming ? "Class timetable submissions open soon" : "Class timetable submissions are closed"}</p><p className="text-sm text-muted-foreground">{windowDescription}</p></div>
+      <div className="space-y-1"><p className="text-sm font-semibold">Class timetable</p><p className="text-sm text-muted-foreground">Complete your timetable, run its checks, then submit it to the Registrar for review.</p></div>
       <Link href={scheduler} className={`${dashboardLink} bg-primary text-primary-foreground hover:bg-primary/90`}>{pending ? "View submission" : "Continue timetable"}<ArrowRight className="size-4" aria-hidden /></Link>
     </div>
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <Section id="section-readiness" title="Section scheduling progress" href={scheduler} linkLabel="Open timetable">
-        <p className="text-xs text-muted-foreground">Unstarted sections and unplaced components appear first. Final workload and conflict checks run in the Scheduler before submission.</p>
+        <p className="text-xs text-muted-foreground">Unstarted sections and unplaced components come first.</p>
         {!sections.length ? <QuietState icon={Clock} title="No sections in this term"><Link href="/sections" className="text-primary hover:underline">Manage department sections</Link></QuietState> : <ul className="divide-y">{sections.slice(0, 6).map((section) => <li key={section.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0"><div className="min-w-0 flex-1"><p className="font-medium">{section.name}</p><p className="mt-1 text-xs text-muted-foreground">{section.scheduled} scheduled subject components{section.planned ? ` of ${section.planned} planned` : " · curriculum not placed yet"}</p></div><Badge variant={section.missing || !section.scheduled ? "outline" : "secondary"}>{!section.scheduled ? "Not started" : section.missing ? `${section.missing} unplaced` : "Components placed"}</Badge><Link href={`${scheduler}&sectionId=${encodeURIComponent(section.id)}`} className="text-sm font-medium text-primary hover:underline">Open<span className="sr-only"> {section.name}</span></Link></li>)}</ul>}
       </Section>
       <Section id="submission-progress" title="Submission status" href={scheduler} linkLabel="View timetables">
-        {!data.submissions.length ? <QuietState icon={Clock} title="No submissions yet">Complete your timetable, run its checks, and submit during an open period.</QuietState> : <ul className="space-y-3">{data.submissions.map((submission) => <li key={submission.id} className="space-y-2 rounded-lg border p-3"><div className="flex flex-wrap items-start justify-between gap-2"><p className="font-medium">{submission.kind === "CLASS" ? "Class timetable" : `${submission.examType?.toLowerCase().replaceAll("_", " ") ?? ""} examinations`} · v{submission.version}</p><Badge variant={submission.status === "RETURNED" || submission.status === "REJECTED" ? "destructive" : "secondary"}>{SUBMISSION_LABEL[submission.status]}</Badge></div><p className="text-xs text-muted-foreground">{submission.department.name} · {stamp(submission.decidedAt ?? submission.submittedAt)}</p>{submission.reason && <p className="text-sm">{submission.reason}</p>}</li>)}</ul>}
+        {!data.submissions.length ? <QuietState icon={Clock} title="No submissions yet">Complete your timetable, run its checks, and submit it for review.</QuietState> : <ul className="space-y-3">{data.submissions.map((submission) => <li key={submission.id} className="space-y-2 rounded-lg border p-3"><div className="flex flex-wrap items-start justify-between gap-2"><p className="font-medium">{submission.kind === "CLASS" ? "Class timetable" : `${submission.examType?.toLowerCase().replaceAll("_", " ") ?? ""} examinations`} · v{submission.version}</p><Badge variant={submission.status === "RETURNED" || submission.status === "REJECTED" ? "destructive" : "secondary"}>{SUBMISSION_LABEL[submission.status]}</Badge></div><p className="text-xs text-muted-foreground">{submission.department.name} · {stamp(submission.decidedAt ?? submission.submittedAt)}</p>{submission.reason && <p className="text-sm">{submission.reason}</p>}</li>)}</ul>}
         <p className="text-xs text-muted-foreground">The Registrar reviews and publishes submitted timetables.</p>
       </Section>
     </div>

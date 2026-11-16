@@ -18,6 +18,7 @@ export const ACTIVITY_STATUS_COLORS: Record<ActivityStatus, string> = {
 
 /** One activity as listed in the table view and the approvals board. */
 export interface ActivityListItem {
+  classChange?: boolean;
   id: string;
   type: string;
   title: string;

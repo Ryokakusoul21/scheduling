@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { CalendarBlank, CaretDown, ListBullets, MagnifyingGlass, Rows, SquaresFour } from "@phosphor-icons/react/ssr";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
+import { BookOpen, CalendarBlank, CaretDown, Clock, ListBullets, MagnifyingGlass, Rows, SlidersHorizontal, SquaresFour } from "@phosphor-icons/react/ssr";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ux/native-select";
 import { EmptyState } from "@/components/ux/states";
 import { formatRange, formatTime, layoutLanes } from "@/lib/scheduler/timetable";
-import { activitiesOn, manilaNow, NO_CLASS_TYPES } from "@/lib/student/format";
-import { DAY_ENUMS, shiftDate } from "@/lib/student/schedule";
+import { activitiesOn, manilaNow } from "@/lib/student/format";
+import { DAY_ENUMS, shiftDate, wholeDayClosure } from "@/lib/student/schedule";
 import { subjectColors } from "@/lib/student/colors";
 import { useNow } from "@/lib/student/use-now";
 import type { PortalActivity, PortalClass, PortalMove } from "@/lib/student/portal";
@@ -23,10 +24,19 @@ const HOUR_PX = 72;
 const titleCase = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
 const shortDay = (s: string) => s.charAt(0) + s.slice(1, 3).toLowerCase();
 const options = (values: string[]) => [...new Set(values)].sort().map((v) => ({ value: v, label: v }));
+const subscribeWide = (onChange: () => void) => {
+  const query = window.matchMedia("(min-width: 1024px)");
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+};
+const isWide = () => window.matchMedia("(min-width: 1024px)").matches;
 
 /** Student timetable with weekly grid, day agenda, and grouped list views, shared filters, and a details drawer. */
 export function StudentTimetable({ classes, activities, moves }: { classes: PortalClass[]; activities: PortalActivity[]; moves: PortalMove[] }) {
-  const [view, setView] = useState<View>("week");
+  const [pickedView, setView] = useState<View | null>(null);
+  const wide = useSyncExternalStore(subscribeWide, isWide, () => false);
+  const view = !wide && pickedView === "week" ? "day" : pickedView ?? (wide ? "week" : "day");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [subject, setSubject] = useState("");
   const [faculty, setFaculty] = useState("");
   const [room, setRoom] = useState("");
@@ -49,7 +59,7 @@ export function StudentTimetable({ classes, activities, moves }: { classes: Port
   const now = at ? manilaNow(at) : null;
   const week = now ? DAY_ENUMS.map((_, i) => shiftDate(now.date, i - DAY_ENUMS.indexOf(now.day))) : [];
   const dayOff = new Map(
-    week.map(({ date, day }) => [day, activitiesOn(activities, date).find((a) => NO_CLASS_TYPES.has(a.type) && a.startMin == null)?.title ?? null])
+    week.map(({ date, day }) => [day, wholeDayClosure(classes.filter((cls) => cls.dayOfWeek === day), activitiesOn(activities, date))?.title ?? null])
   );
   const days = DAY_ENUMS.filter((d) => d !== "SUNDAY" || classes.some((c) => c.dayOfWeek === "SUNDAY"));
   const moved = new Set(moves.map((m) => m.subjectCode));
@@ -60,11 +70,16 @@ export function StudentTimetable({ classes, activities, moves }: { classes: Port
   }
 
   return (
-    <div className="space-y-3">
-      <MovedList moves={moves} />
-      <Card>
-        <CardContent className="flex flex-wrap items-end gap-3">
-          <div role="tablist" aria-label="Timetable view" className="flex rounded-lg border p-0.5">
+    <div className="space-y-5">
+      {moves.length > 0 && <details className="rounded-xl border border-amber-500/30 bg-card px-4 py-3"><summary className="cursor-pointer text-sm font-medium">{moves.length} change{moves.length === 1 ? "" : "s"} to your regular timetable</summary><div className="mt-4"><MovedList moves={moves} /></div></details>}
+      <Card className="gap-0 overflow-hidden rounded-2xl py-0 shadow-none">
+        <CardContent className="space-y-4 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><BookOpen aria-hidden className="size-4 text-brand-link" />{new Set(classes.map((c) => c.subjectCode)).size} subjects</span><span className="flex items-center gap-1.5"><Clock aria-hidden className="size-4 text-brand-link" />{Math.round(classes.reduce((total, c) => total + c.endMin - c.startMin, 0) / 6) / 10} hours / week</span></div>
+            <Link href="/student/subjects" className="rounded-md text-xs font-semibold text-brand-link hover:underline">Explore my subjects</Link>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+          <div role="group" aria-label="Timetable view" className="flex rounded-xl bg-muted/70 p-1">
             {(
               [
                 ["week", "Week", SquaresFour],
@@ -74,24 +89,28 @@ export function StudentTimetable({ classes, activities, moves }: { classes: Port
             ).map(([v, label, Icon]) => (
               <button
                 key={v}
-                role="tab"
                 type="button"
-                aria-selected={view === v}
+                aria-pressed={view === v}
                 onClick={() => setView(v)}
                 className={cn(
-                  "flex min-h-11 items-center gap-1.5 rounded-md px-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9",
-                  view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                  "min-h-10 items-center gap-1.5 rounded-lg px-3 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  v === "week" ? "hidden lg:flex" : "flex",
+                  view === v ? "bg-card text-brand-link shadow-xs" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Icon className="size-4" aria-hidden /> {label}
               </button>
             ))}
           </div>
-          <label className="relative min-w-48 flex-1">
+          <label className="relative min-w-0 basis-48 flex-1">
             <span className="sr-only">Search classes</span>
             <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search subject, faculty, or room" className="h-11 pl-8 sm:h-9" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a subject, teacher, or room" className="h-11 rounded-lg bg-card pl-8" />
           </label>
+          <Button type="button" variant="outline" className="min-h-11 rounded-lg" aria-expanded={filtersOpen} aria-controls="timetable-filters" onClick={() => setFiltersOpen((value) => !value)}><SlidersHorizontal aria-hidden className="size-4" />Filters{(subject || faculty || room) && <span className="size-1.5 rounded-full bg-brand-blue" />}</Button>
+          </div>
+          <div id="timetable-filters" hidden={!filtersOpen}>
+          <div className="flex flex-wrap items-center gap-3 border-t pt-4">
           <NativeSelect aria-label="Filter by subject" placeholder="All subjects" value={subject} onChange={(e) => setSubject(e.target.value)} options={options(classes.map((c) => c.subjectCode))} className="w-40" />
           <NativeSelect aria-label="Filter by faculty" placeholder="All faculty" value={faculty} onChange={(e) => setFaculty(e.target.value)} options={options(classes.map((c) => c.faculty))} className="w-44" />
           <NativeSelect aria-label="Filter by room" placeholder="All rooms" value={room} onChange={(e) => setRoom(e.target.value)} options={options(classes.map((c) => c.room ?? "To be announced"))} className="w-44" />
@@ -100,7 +119,10 @@ export function StudentTimetable({ classes, activities, moves }: { classes: Port
               Clear filters
             </Button>
           )}
+          </div>
+          </div>
         </CardContent>
+        <div className="flex flex-wrap justify-between gap-2 border-t bg-muted/30 px-4 py-3 text-[11px] leading-5 text-muted-foreground sm:px-5"><p>Regular weekly timetable. Check class changes for moved or online meetings.</p><p aria-live="polite">{shown.length} of {classes.length} meetings shown</p></div>
       </Card>
 
       {shown.length === 0 ? (
@@ -110,15 +132,7 @@ export function StudentTimetable({ classes, activities, moves }: { classes: Port
       ) : view === "day" ? (
         <DayAgenda {...ctx} />
       ) : (
-        <>
-          {/* The grid needs width; smaller screens get the day agenda instead. */}
-          <div className="hidden lg:block">
-            <WeekGrid {...ctx} />
-          </div>
-          <div className="lg:hidden">
-            <DayAgenda {...ctx} />
-          </div>
-        </>
+        <WeekGrid {...ctx} />
       )}
 
       <ClassDetailsDrawer subjectCode={open} classes={classes} onClose={() => setOpen(null)} />
@@ -230,15 +244,14 @@ function DayAgenda({ shown, colors, now, dayOff, days, moved, onOpen }: ViewProp
 
   return (
     <div className="space-y-3">
-      <div role="tablist" aria-label="Day" className="grid gap-1 rounded-xl border bg-card p-1" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
+      <div role="group" aria-label="Day" className="grid gap-1 rounded-xl border bg-card p-1" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
         {days.map((d) => {
           const count = shown.filter((c) => c.dayOfWeek === d).length;
           return (
             <button
               key={d}
-              role="tab"
               type="button"
-              aria-selected={d === day}
+              aria-pressed={d === day}
               onClick={() => setPicked(d)}
               className={cn(
                 "flex min-h-12 flex-col items-center justify-center rounded-lg text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -247,7 +260,7 @@ function DayAgenda({ shown, colors, now, dayOff, days, moved, onOpen }: ViewProp
               )}
             >
               {shortDay(d)}
-              <span className="text-xs opacity-80">{count ? `${count} class${count > 1 ? "es" : ""}` : "Free"}</span>
+              <span className="mt-1 text-[10px] opacity-80">{count || "Free"}</span>
             </button>
           );
         })}

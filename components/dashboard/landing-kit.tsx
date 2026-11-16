@@ -13,27 +13,41 @@ const METRIC_ICONS: Record<string, typeof ChartBar> = {
   "Department requests": ArrowsClockwise, "Published timetables": CalendarCheck, "Revisions needed": ClipboardText,
   "Classes today": CalendarCheck, "Classes remaining": Clock, "Planned teaching load": Gauge,
   "My pending requests": ClipboardText, "My pending bookings": CalendarBlank, "Next 7 days": CalendarBlank,
-  "My subjects": BookOpen, "Weekly class hours": Gauge, "Class changes": ArrowsClockwise,
+  "My subjects": BookOpen, "Enrolled subjects": BookOpen, "Weekly class hours": Gauge, "Class changes": ArrowsClockwise,
   "Upcoming activities": CalendarBlank,
 };
 
 const ICON_TONES = ["bg-rose-500/10 text-rose-700 dark:text-rose-300", "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300", "bg-amber-500/10 text-amber-700 dark:text-amber-300", "bg-teal-500/10 text-teal-700 dark:text-teal-300", "bg-orange-500/10 text-orange-700 dark:text-orange-300", "bg-violet-500/10 text-violet-700 dark:text-violet-300"];
 
-export function LandingMetrics({ items }: { items: { label: string; value: React.ReactNode; hint: string; href: string; attention?: boolean }[] }) {
+export interface LandingMetric { label: string; value: React.ReactNode; hint?: string; href: string; attention?: boolean }
+
+/** The first dashboard section pairs its summary cards with the campus calendar. */
+export function DashboardOverview({ items, activities }: { items: LandingMetric[]; activities: React.ReactNode }) {
+  return <div className="@container/overview">
+    <div className="grid items-stretch gap-5 @[960px]/overview:grid-cols-[minmax(0,1fr)_minmax(512px,1.15fr)]">
+      <LandingMetrics items={items} />
+      <div className="min-w-0">{activities}</div>
+    </div>
+  </div>;
+}
+
+export function LandingMetrics({ items }: { items: LandingMetric[] }) {
+  const columns = items.length > 4 ? "@2xl/metrics:grid-cols-3" : "";
   return (
-    <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6" aria-label="At a glance">
+    <div className="@container/metrics min-w-0">
+    <ul className={cn("grid h-full auto-rows-fr grid-cols-2 gap-4", columns)} aria-label="At a glance">
       {items.map((item, index) => {
         const Icon = METRIC_ICONS[item.label] ?? ChartBar;
         return <li key={item.label} className="min-w-0">
-          <Link href={item.href} className="relative flex h-full min-h-[132px] flex-col rounded-[10px] border border-border/80 bg-card p-4 outline-none transition-colors hover:border-[var(--dashboard-accent)] focus-visible:ring-2 focus-visible:ring-ring">
-            <span className={cn("absolute top-4 right-4 flex size-7 items-center justify-center rounded-md", ICON_TONES[index % ICON_TONES.length])}><Icon className="size-3.5" aria-hidden /></span>
-            <p className="min-h-8 pr-8 text-[10px] leading-4 font-medium tracking-[0.07em] text-muted-foreground uppercase">{item.label}</p>
-            <p className={cn("mt-2 text-[26px] leading-8 font-semibold tracking-tight tabular-nums", item.attention && "text-warning")}>{item.value}</p>
-            <p className="mt-auto flex items-start gap-1 pt-1 text-[10px] leading-4 text-muted-foreground"><span className="min-w-0">{item.hint}</span><ArrowUpRight className="mt-0.5 size-3 shrink-0 opacity-50" aria-hidden /></p>
+          <Link href={item.href} className="flex h-full min-h-36 flex-col gap-3 rounded-xl border border-border/80 bg-card p-4 outline-none transition-colors hover:border-primary/50 hover:bg-accent/20 focus-visible:ring-2 focus-visible:ring-ring sm:p-5">
+            <div className="flex items-start justify-between gap-2"><p className="text-sm leading-5 font-medium text-muted-foreground">{item.label}</p><span className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", ICON_TONES[index % ICON_TONES.length])}><Icon className="size-5" aria-hidden /></span></div>
+            <p className={cn("text-[32px] leading-9 font-semibold tracking-tight tabular-nums", item.attention && "text-warning")}>{item.value}</p>
+            {item.hint ? <p className="mt-auto flex items-start gap-2 text-xs leading-5 text-muted-foreground"><span className="min-w-0 flex-1">{item.hint}</span><ArrowUpRight className="mt-1 size-3.5 shrink-0 opacity-60" aria-hidden /></p> : <ArrowUpRight className="mt-auto size-3.5 shrink-0 self-end opacity-60" aria-hidden />}
           </Link>
         </li>;
       })}
     </ul>
+    </div>
   );
 }
 

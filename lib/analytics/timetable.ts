@@ -67,7 +67,7 @@ export function overall(rows: RateRow[]) {
   return { usedHours: round1(used), capacityHours: round1(cap), rate: pct(used, cap) };
 }
 
-export const HEATMAP_DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+export const HEATMAP_DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 export const HEATMAP_HOURS = Array.from({ length: 14 }, (_, i) => 7 + i);
 
 /** Number of class meetings in session during each day-and-hour cell. */

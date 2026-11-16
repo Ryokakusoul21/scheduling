@@ -1,0 +1,75 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { ArrowUpRight, ArrowsLeftRight, Buildings, ChartBar, CheckCircle, Clock, DoorOpen, Lightning, MagnifyingGlass, Users, WarningCircle } from "@phosphor-icons/react/ssr";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ux/native-select";
+import { Pagination, usePagination } from "@/components/ux/pagination";
+import { ReportButtons } from "@/components/ux/export-buttons";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { reportSection, type ReportDoc } from "@/lib/export/report";
+import { overrideMetrics, OVERRIDE_RESPONSE_LABELS, responseDuration } from "@/lib/bookings/override-metrics";
+import type { OverrideReportData } from "@/lib/bookings/report";
+import { cn } from "@/lib/utils";
+
+const dateLabel = (date: string) => new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Taipei" }).format(new Date(date.length === 10 ? `${date}T00:00:00Z` : date));
+
+function Ranking({ title, description, rows, unit, icon: Icon }: { title: string; description: string; rows: { id: string; label: string; count: number }[]; unit: string; icon: typeof Buildings }) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? rows : rows.slice(0, 5);
+  const max = Math.max(1, ...rows.map((row) => row.count));
+  return <Card className="min-w-0"><CardHeader><CardTitle className="flex items-center gap-2 text-sm"><Icon className="size-4 text-primary" aria-hidden />{title}</CardTitle><p className="text-xs text-muted-foreground">{description}</p></CardHeader><CardContent className="space-y-4">
+    {!rows.length ? <p className="rounded-lg bg-muted/40 p-4 text-xs text-muted-foreground">No {unit.toLowerCase()} recorded in this period.</p> : <ol className="space-y-4">{shown.map((row, index) => <li key={row.id}><div className="mb-1.5 flex items-start justify-between gap-3 text-xs"><span className="flex min-w-0 items-start gap-2"><span className="w-4 shrink-0 pt-px text-[10px] tabular-nums text-muted-foreground">{index + 1}</span><span className="break-words font-medium leading-relaxed">{row.label}</span></span><span className="shrink-0 rounded-md bg-muted px-2 py-0.5 font-semibold tabular-nums" aria-label={`${row.count} ${unit}`}>{row.count}</span></div><div className="ml-6 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden><div className="h-full rounded-full bg-primary/70" style={{ width: `${row.count / max * 100}%` }} /></div></li>)}</ol>}
+    {rows.length > 5 && <Button type="button" variant="ghost" size="sm" className="w-full" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "Show top 5" : `Show all ${rows.length}`}</Button>}
+  </CardContent></Card>;
+}
+
+export function OverrideReportView({ data }: { data: OverrideReportData }) {
+  const [days, setDays] = useState(90);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("ALL");
+  const report = useMemo(() => overrideMetrics(data.entries, days, data.generatedAt), [data, days]);
+  const rows = report.rows.filter((row) => {
+    const matchesStatus = status === "ALL" || (status === "ATTENTION" ? row.pending > 0 || row.alternatives > 0 : status === "WAITING" ? row.pending > 0 : status === row.state);
+    return matchesStatus && `${row.purpose} ${row.room} ${row.department}`.toLowerCase().includes(query.trim().toLowerCase());
+  });
+  const paging = usePagination(rows, 5, `${days}|${query}|${status}`);
+  const since = new Date(Date.parse(data.generatedAt) - days * 86_400_000).toISOString();
+  const tiles = [
+    { label: "Urgent overrides", value: report.total, hint: "Executed Urgent & Critical bookings", icon: Lightning },
+    { label: "Class meetings displaced", value: report.displacedMeetings, hint: "Dated meetings; excludes make-up sessions", icon: ArrowsLeftRight },
+    { label: "Faculty replies pending", value: report.pendingResponses, hint: `${report.awaitingBookings} overrides awaiting a reply`, icon: Users },
+    { label: "Avg. faculty response time", value: responseDuration(report.averageResponseHours), hint: report.fullyResponded ? `Based on ${report.fullyResponded} fully responded overrides` : "Available when all requested faculty have replied", icon: Clock },
+  ];
+  const doc: ReportDoc<(typeof rows)[number]> = {
+    title: "Urgent Room Overrides", filename: `urgent-overrides-${days}-days`, landscape: true,
+    term: `${data.scopeName} · ${dateLabel(since)} to ${dateLabel(data.generatedAt)} · List: ${status}${query ? ` · Search: ${query}` : ""}`,
+    rows, columns: [
+      { header: "Booking", value: (row) => row.purpose }, { header: "Booking date", value: (row) => row.bookingDate },
+      { header: "Override recorded", value: (row) => row.occurredAt }, { header: "Room", value: (row) => row.room },
+      { header: "Requesting department", value: (row) => row.department }, { header: "Priority", value: (row) => row.priority },
+      { header: "Displaced meetings", value: (row) => row.adjustments.length }, { header: "Faculty replies pending", value: (row) => row.pending },
+      { header: "Alternatives requested", value: (row) => row.alternatives }, { header: "Response status", value: (row) => OVERRIDE_RESPONSE_LABELS[row.state] },
+    ], extra: [
+      reportSection("Overview for the Selected Period (Before List Filters)", [{ header: "Metric", value: (row: { metric: string; value: number | string }) => row.metric }, { header: "Value", value: (row) => row.value }], tiles.map((tile) => ({ metric: tile.label, value: tile.value }))),
+      ...([{ heading: "Requesting Departments", rows: report.byDepartment }, { heading: "Rooms Used", rows: report.byRoom }, { heading: "Most Displaced Classes", rows: report.mostDisplaced }]).map((group) => reportSection(group.heading, [{ header: "Name", value: (row: { label: string; count: number }) => row.label }, { header: "Count", value: (row) => row.count }], group.rows)),
+    ],
+  };
+  return <section aria-labelledby="override-report-heading" className="space-y-5 rounded-2xl border bg-muted/25 p-4 sm:p-5">
+    <header className="flex flex-wrap items-start justify-between gap-4"><div className="flex min-w-0 items-start gap-3"><span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Lightning className="size-6" weight="duotone" aria-hidden /></span><div className="min-w-0"><p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Room booking impact</p><h2 id="override-report-heading" className="text-lg font-semibold tracking-tight">Urgent room overrides</h2><p className="mt-1 text-xs leading-relaxed text-muted-foreground">{data.scopeName} · {dateLabel(since)} – {dateLabel(data.generatedAt)}</p></div></div><div role="group" aria-label="Override reporting period" className="flex gap-1 rounded-lg border bg-card p-1">{[30, 90, 180].map((range) => <button key={range} type="button" aria-pressed={days === range} onClick={() => { setDays(range); setQuery(""); setStatus("ALL"); }} className={cn("rounded-md px-3 py-2 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring", days === range ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted")}>{range} days</button>)}</div></header>
+
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{tiles.map(({ label, value, hint, icon: Icon }) => <Card key={label} className={cn(label === "Faculty replies pending" && report.pendingResponses > 0 && "ring-amber-500/40")}><CardContent className="space-y-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-medium text-muted-foreground">{label}</p><Icon className="size-4 text-primary" aria-hidden /></div><p className="text-3xl font-semibold tracking-tight tabular-nums">{value}</p><p className="text-[11px] leading-relaxed text-muted-foreground">{hint}</p></CardContent></Card>)}</div>
+
+    <div className={cn("flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3", report.attentionBookings ? "border-amber-500/25 bg-amber-500/5" : "bg-card")}><div className="flex items-start gap-2.5">{report.attentionBookings ? <WarningCircle className="mt-0.5 size-5 shrink-0 text-amber-600" /> : <CheckCircle className="mt-0.5 size-5 shrink-0 text-emerald-600" />}<div><p className="text-sm font-medium">{report.attentionBookings ? `${report.attentionBookings} overrides need follow-up` : report.total ? "No faculty follow-up is pending" : "No urgent overrides in this period"}</p><p className="mt-1 text-xs text-muted-foreground">{report.attentionBookings ? `${report.pendingResponses} replies pending · ${report.alternativeRequests} alternative requests. Review alternatives before treating the disruption as resolved.` : "Bookings without acknowledgement requests are not counted as waiting for faculty."}</p></div></div>{report.attentionBookings > 0 && <Button type="button" size="sm" variant="outline" onClick={() => { setStatus("ATTENTION"); setQuery(""); }}>Review follow-up</Button>}</div>
+
+    <div className="grid gap-4 lg:grid-cols-2"><Card><CardHeader><CardTitle className="text-sm">Faculty response progress</CardTitle><p className="text-xs text-muted-foreground">Current acknowledgement requests for overrides still in effect.</p></CardHeader><CardContent className="space-y-3"><div className="flex items-end justify-between gap-3"><p className="text-2xl font-semibold tabular-nums">{report.responseRate === null ? "—" : `${report.responseRate}%`}</p><p className="text-xs text-muted-foreground">{report.receivedResponses} of {report.requiredResponses} requested replies received</p></div><div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Requested faculty replies received" aria-valuemin={0} aria-valuemax={100} aria-valuenow={report.responseRate ?? 0}><div className="h-full rounded-full bg-primary" style={{ width: `${report.responseRate ?? 0}%` }} /></div><p className="text-[11px] leading-relaxed text-muted-foreground">Response time runs from the override to the final faculty reply.</p></CardContent></Card><Card><CardHeader><CardTitle className="flex items-center gap-2 text-sm"><ChartBar className="size-4 text-primary" />What happened to the classes</CardTitle><p className="text-xs text-muted-foreground">Historical meeting impact, including orders later restored.</p></CardHeader><CardContent className="space-y-3">{report.impact.map((impact) => <div key={impact.label} className="flex items-center justify-between gap-3 text-xs"><span className="text-muted-foreground">{impact.label}</span><span className="font-semibold tabular-nums">{impact.count}</span></div>)}<p className="border-t pt-3 text-[11px] text-muted-foreground">{report.restored} overrides restored or cancelled. Make-up meetings are excluded from displacement totals.</p></CardContent></Card></div>
+
+    <div className="grid gap-4 lg:grid-cols-3"><Ranking title="By requesting department" description="Departments that submitted the bookings" rows={report.byDepartment} unit="Overrides" icon={Buildings} /><Ranking title="Rooms used most often" description="Rooms taken by urgent overrides" rows={report.byRoom} unit="Overrides" icon={DoorOpen} /><Ranking title="Most displaced classes" description="Dated meetings affected by an override" rows={report.mostDisplaced} unit="Displaced meetings" icon={ArrowsLeftRight} /></div>
+
+    <Card><CardHeader className="flex-row flex-wrap items-start justify-between gap-3"><div><CardTitle className="text-sm">Override activity & follow-up</CardTitle><p className="mt-1 text-xs text-muted-foreground">Search and response filters apply to this list and its export. Overview cards use the selected period.</p></div><ReportButtons doc={doc} /></CardHeader><CardContent className="space-y-4"><div className="flex flex-wrap gap-3"><label className="relative min-w-48 flex-1"><MagnifyingGlass className="absolute left-3 top-2.5 size-4 text-muted-foreground" aria-hidden /><Input aria-label="Search override activity" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search rooms, purposes, or departments…" className="pl-9" /></label><NativeSelect aria-label="Filter override responses" value={status} onChange={(event) => setStatus(event.target.value)} options={[{ value: "ALL", label: "All overrides" }, { value: "ATTENTION", label: "Needs follow-up" }, { value: "WAITING", label: "Awaiting faculty replies" }, ...Object.entries(OVERRIDE_RESPONSE_LABELS).filter(([key]) => key !== "WAITING").map(([value, label]) => ({ value, label }))]} className="w-full sm:w-56" /></div><div className="overflow-x-auto rounded-lg border"><Table><TableHeader><TableRow><TableHead>Booking & room</TableHead><TableHead>Priority</TableHead><TableHead className="text-right">Meetings displaced</TableHead><TableHead>Faculty response</TableHead><TableHead><span className="sr-only">Open booking</span></TableHead></TableRow></TableHeader><TableBody>{paging.visible.map((row) => <TableRow key={row.id}><TableCell className="min-w-56"><p className="font-medium">{row.purpose}</p><p className="mt-1 text-xs text-muted-foreground">{row.room} · {dateLabel(row.bookingDate)}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{row.department}</p></TableCell><TableCell><Badge variant={row.priority === "CRITICAL" ? "destructive" : "secondary"}>{row.priority === "CRITICAL" ? "Critical" : "Urgent"}</Badge></TableCell><TableCell className="text-right font-medium tabular-nums">{row.adjustments.length}</TableCell><TableCell><Badge variant="outline" className={cn((row.pending || row.alternatives) && "border-amber-500/40 text-amber-800 dark:text-amber-200")}>{OVERRIDE_RESPONSE_LABELS[row.state]}</Badge>{(row.pending > 0 || row.alternatives > 0) && <p className="mt-1 text-[11px] text-muted-foreground">{row.pending} pending · {row.alternatives} alternatives</p>}</TableCell><TableCell><Link href={`/bookings?booking=${encodeURIComponent(row.id)}`} aria-label={`Open booking: ${row.purpose}`} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-2 text-xs font-medium text-primary hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-ring">View <ArrowUpRight className="size-3.5" aria-hidden /></Link></TableCell></TableRow>)}{!rows.length && <TableRow><TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">{report.total ? "No overrides match these filters. Try another response status or search." : "No executed urgent overrides in this period. Try a longer reporting window."}</TableCell></TableRow>}</TableBody></Table></div><Pagination {...paging} /><p className="text-[11px] text-muted-foreground">{data.scopeNote}</p></CardContent></Card>
+  </section>;
+}

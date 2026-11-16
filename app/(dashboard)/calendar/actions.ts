@@ -47,8 +47,8 @@ export async function saveActivityAction(input: ActivityInput, id?: string): Pro
   if (d.type === "HOLIDAY" && !scope.isAdmin) return { ok: false, error: "Only the Registrar can declare holidays." };
   if (!scope.isAdmin && !scope.departmentId) return { ok: false, error: "Your account is not linked to a department." };
   if (id) {
-    const existing = await prisma.activity.findUnique({ where: { id } });
-    if (!existing || existing.type === "CLASS_SUSPENSION") return { ok: false, error: "Edit class suspensions in Schedule Adjustments." };
+    const existing = await prisma.activity.findUnique({ where: { id }, include: { batch: { select: { suspension: { select: { id: true } } } } } });
+    if (!existing || existing.type === "CLASS_SUSPENSION" || existing.batch?.suspension) return { ok: false, error: "Manage suspensions and virtual-class arrangements in Class Suspensions." };
     if (!scope.isAdmin && (existing.type === "HOLIDAY" || existing.departmentId !== scope.departmentId)) return { ok: false, error: "You can only edit your own department's activities." };
   }
   if (d.roomId && !(await prisma.room.findFirst({ where: { id: d.roomId, archivedAt: null, ...departmentWhere.room(scope) }, select: { id: true } }))) return { ok: false, error: "That room is not available." };
@@ -89,9 +89,9 @@ export async function saveActivityAction(input: ActivityInput, id?: string): Pro
 
 export async function deleteActivityAction(id: string): Promise<Result> {
   const scope = await requireScope("REGISTRAR", "HEAD_OF_DEPARTMENT");
-  const existing = await prisma.activity.findUnique({ where: { id } });
+  const existing = await prisma.activity.findUnique({ where: { id }, include: { batch: { select: { suspension: { select: { id: true } } } } } });
   if (!existing) return { ok: true };
-  if (existing.type === "CLASS_SUSPENSION") return { ok: false, error: "Lift class suspensions in Schedule Adjustments so cancelled classes are restored." };
+  if (existing.type === "CLASS_SUSPENSION" || existing.batch?.suspension) return { ok: false, error: "Lift this arrangement in Class Suspensions so the original classes are restored." };
   if (!scope.isAdmin && (existing.type === "HOLIDAY" || existing.departmentId !== scope.departmentId)) return { ok: false, error: "You can only remove your own department's activities." };
   await prisma.activity.delete({ where: { id } });
   await prisma.auditLog.create({ data: { userId: scope.userId, action: `Deleted calendar activity "${existing.title}"`, entity: "Activity", entityId: id, oldValue: existing } });
@@ -116,7 +116,7 @@ export async function reviewActivitiesAction(input: z.input<typeof reviewSchema>
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid review." };
   const { ids, decision, note } = parsed.data;
 
-  const targets = await prisma.activity.findMany({ where: { id: { in: ids }, type: { not: "CLASS_SUSPENSION" } } });
+  const targets = await prisma.activity.findMany({ where: { id: { in: ids }, type: { not: "CLASS_SUSPENSION" }, OR: [{ batchId: null }, { batch: { suspension: { is: null } } }] } });
   if (targets.length === 0) return { ok: false, error: "Those activities no longer exist." };
   await prisma.activity.updateMany({
     where: { id: { in: targets.map((t) => t.id) } },

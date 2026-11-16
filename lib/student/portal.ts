@@ -1,9 +1,10 @@
+import { roomLabel } from "@/lib/rooms/label";
 import "server-only";
 import { cache } from "react";
 import { prisma } from "@/lib/db/prisma";
 import { requireStudent } from "@/lib/auth/session";
-import { addDays, isoDate } from "@/lib/occupancy/engine";
-import { manilaNow } from "./format";
+import { isoDate } from "@/lib/occupancy/engine";
+import { upcomingClassMoves, type ClassMove } from "@/lib/scheduler/class-moves";
 import { stageLabel } from "@/lib/academics/levels";
 import { activeTermLabel } from "@/lib/academics/term-label";
 
@@ -35,33 +36,7 @@ export interface PortalClass {
 }
 
 /** A class meeting of the student's section that was moved or taken online, within the next two weeks. */
-export interface PortalMove {
-  id: string;
-  scheduleId?: string;
-  subjectCode: string;
-  subjectName: string;
-  /** The regular meeting date that changed. */
-  date: string;
-  /** The new date when the class moved to another day. */
-  newDate: string | null;
-  kind: "MOVED" | "ONLINE";
-  /** Where it meets now; null when held online. */
-  room: string | null;
-  startMin: number;
-  endMin: number;
-  fromRoom: string | null;
-  fromStartMin: number;
-  fromEndMin: number;
-  /** A general reason; internal details such as why a room was needed are not shown to students. */
-  reason: string;
-}
-
-const MOVE_REASONS: Record<string, string> = {
-  ROOM_BOOKING: "The room was needed for an urgent activity.",
-  FACULTY_UNAVAILABLE: "Your teacher is unavailable at the usual time.",
-  ROOM_UNAVAILABLE: "The room is not available.",
-  CLASS_SUSPENSION: "Classes were suspended.",
-};
+export type PortalMove = ClassMove;
 
 export interface PortalActivity {
   id: string;
@@ -72,6 +47,7 @@ export interface PortalActivity {
   endDate: string;
   startMin: number | null;
   endMin: number | null;
+  scheduleIds?: string[];
 }
 
 /** The signed-in student's own portal data; every query is scoped through the student's record, never by a client-supplied id. */
@@ -94,7 +70,7 @@ export const loadStudentPortal = cache(async () => {
       },
     },
   });
-  const base = { user: { name: user.name ?? "", email: user.email ?? "" }, studentNumber: student?.studentNumber ?? "" };
+  const base = { user: { name: user.name ?? "", email: user.email ?? "", image: user.image ?? null }, studentNumber: student?.studentNumber ?? "" };
   const section = student?.section;
   if (!section) return { ...base, section: null };
 
@@ -117,7 +93,7 @@ export const loadStudentPortal = cache(async () => {
         component: true,
         subject: { select: { code: true, name: true, units: true } },
         faculty: { select: { fullName: true, email: true } },
-        room: { select: { roomName: true, roomType: true, floor: { select: { name: true, building: { select: { name: true, location: true } } } } } },
+        room: { select: { roomNumber: true, roomName: true, roomType: true, floor: { select: { name: true, building: { select: { name: true, location: true } } } } } },
       },
     }),
     levelTerms.length === 0
@@ -129,52 +105,14 @@ export const loadStudentPortal = cache(async () => {
             startDate: { lte: to },
             endDate: { gte: from },
             // Suspensions for other sections are not shown.
-            OR: [{ type: { not: "CLASS_SUSPENSION" } }, { sectionIds: { isEmpty: true } }, { sectionIds: { has: section.id } }],
+            OR: [{ sectionIds: { isEmpty: true } }, { sectionIds: { has: section.id } }],
           },
           orderBy: { startDate: "asc" },
-          select: { id: true, type: true, title: true, description: true, startDate: true, endDate: true, startMin: true, endMin: true },
+          select: { id: true, type: true, title: true, description: true, startDate: true, endDate: true, startMin: true, endMin: true, batch: { select: { adjustments: { select: { scheduleId: true } } } } },
         }),
   ]);
 
-  // Moves and online meetings in the next two weeks; undone changes are left out, and the reason is a general one.
-  const today = manilaNow().date;
-  const horizon = addDays(today, 14);
-  const adjustments = await prisma.scheduleAdjustment.findMany({
-    where: {
-      schedule: { sectionId: section.id, status: "PUBLISHED" },
-      kind: { in: ["MOVED", "ONLINE"] },
-      batch: { undoneAt: null },
-      OR: [
-        { date: { gte: new Date(`${today}T00:00:00Z`), lte: new Date(`${horizon}T00:00:00Z`) } },
-        { newDate: { gte: new Date(`${today}T00:00:00Z`), lte: new Date(`${horizon}T00:00:00Z`) } },
-      ],
-    },
-    orderBy: { date: "asc" },
-    select: {
-      id: true, scheduleId: true, kind: true, date: true, newDate: true, roomId: true, startMin: true, endMin: true,
-      batch: { select: { cause: true } },
-      schedule: { select: { startMin: true, endMin: true, subject: { select: { code: true, name: true } }, room: { select: { roomName: true } } } },
-    },
-  });
-  const movedRooms = new Map(
-    (await prisma.room.findMany({ where: { id: { in: adjustments.map((a) => a.roomId).filter((id): id is string => !!id) } }, select: { id: true, roomName: true } })).map((r) => [r.id, r.roomName])
-  );
-  const moves: PortalMove[] = adjustments.map((a) => ({
-    id: a.id,
-    scheduleId: a.scheduleId,
-    subjectCode: a.schedule.subject.code,
-    subjectName: a.schedule.subject.name,
-    date: isoDate(a.date),
-    newDate: a.newDate ? isoDate(a.newDate) : null,
-    kind: a.kind as PortalMove["kind"],
-    room: a.kind === "ONLINE" ? null : (a.roomId ? movedRooms.get(a.roomId) : a.schedule.room?.roomName) ?? null,
-    startMin: a.startMin ?? a.schedule.startMin,
-    endMin: a.endMin ?? a.schedule.endMin,
-    fromRoom: a.schedule.room?.roomName ?? null,
-    fromStartMin: a.schedule.startMin,
-    fromEndMin: a.schedule.endMin,
-    reason: MOVE_REASONS[a.batch.cause] ?? "The schedule was adjusted.",
-  }));
+  const moves = await upcomingClassMoves({ sectionId: section.id });
 
   const classes: PortalClass[] = schedules.map((c) => ({
     id: c.id,
@@ -187,14 +125,15 @@ export const loadStudentPortal = cache(async () => {
     units: c.subject.units,
     faculty: c.faculty.fullName,
     facultyEmail: c.faculty.email,
-    room: c.room?.roomName ?? null,
+    room: roomLabel(c.room) || null,
     roomType: c.room ? (ROOM_TYPES[c.room.roomType] ?? c.room.roomType) : null,
     building: c.room?.floor?.building.name ?? null,
     buildingLocation: c.room?.floor?.building.location ?? null,
     floor: c.room?.floor?.name ?? null,
   }));
-  const portalActivities: PortalActivity[] = activities.map((a) => ({
+  const portalActivities: PortalActivity[] = activities.map(({ batch, ...a }) => ({
     ...a,
+    scheduleIds: [...new Set(batch?.adjustments.map((item) => item.scheduleId) ?? [])],
     description: a.description ?? "",
     startDate: isoDate(a.startDate),
     endDate: isoDate(a.endDate),

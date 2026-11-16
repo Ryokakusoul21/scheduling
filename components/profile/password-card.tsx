@@ -54,7 +54,7 @@ export function PasswordCard() {
           <Warning className="size-4" />
           <AlertDescription className="text-sm">Changing your password signs you out of every device, including this one.</AlertDescription>
         </Alert>
-        <form onSubmit={handleSubmit(onSubmit)} noValidate className="max-w-[420px]">
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="w-full min-w-0 max-w-[420px]">
           <FieldGroup>
             <Field data-invalid={!!errors.currentPassword}>
               <FieldLabel htmlFor="currentPassword" className="text-sm">Current password</FieldLabel>
@@ -69,7 +69,7 @@ export function PasswordCard() {
                   const ok = test(password);
                   return (
                     <li key={label} className={cn("flex items-center gap-1.5", ok ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground")}>
-                      {ok ? <CheckCircle className="size-4" weight="fill" /> : <Circle className="size-4" />}
+                      {ok ? <CheckCircle className="size-4 shrink-0" weight="fill" /> : <Circle className="size-4 shrink-0" />}
                       {label}
                       <span className="sr-only">{ok ? " met" : " not met"}</span>
                     </li>
@@ -85,7 +85,7 @@ export function PasswordCard() {
               </p>
               <FieldError errors={[errors.confirmPassword]} />
             </Field>
-            <Button type="submit" disabled={!isValid || isSubmitting} className="h-10 w-fit px-5">
+            <Button type="submit" disabled={!isValid || isSubmitting} className="h-11 w-full px-5 sm:w-fit">
               {isSubmitting && <CircleNotch className="size-4 animate-spin" />} Update password
             </Button>
           </FieldGroup>

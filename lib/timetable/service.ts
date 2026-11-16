@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import type { Scope } from "@/lib/permissions/scope";
 import { z } from "zod";
 import { DEFAULT_TIMETABLE, effectiveTimetable, timetableConfigSchema, timetableScopeKey, timetableTimeError, withinSchool, type TimetableBundle } from "./config";
+import { submittedTimetableFilter } from "@/lib/scheduler/visibility";
 
 export const timetableChoiceSchema = z.object({ departmentId: z.string().min(1).nullable(), termId: z.string().min(1).nullable() })
   .refine((s) => !s.departmentId || !!s.termId, "Choose an academic term for a department configuration.");
@@ -18,7 +19,10 @@ function bundleFrom(rows: { key: string; value: unknown }[]): TimetableBundle {
     overrides: Object.fromEntries(parsed.filter((r) => r.key !== "timetable:default" && r.config.success).map((r) => [r.key, r.config.data!])),
   };
 }
-export const loadTimetableBundle = cache(async () => bundleFrom(await prisma.systemSetting.findMany({ where: { key: { startsWith: "timetable:" } }, select: { key: true, value: true } })));
+export async function readTimetableBundle(db: Db = prisma) {
+  return bundleFrom(await db.systemSetting.findMany({ where: { key: { startsWith: "timetable:" } }, select: { key: true, value: true } }));
+}
+export const loadTimetableBundle = cache(() => readTimetableBundle());
 export async function getTimetableConfig(termId: string, departmentId: string | null) {
   return effectiveTimetable(await loadTimetableBundle(), departmentId, termId);
 }
@@ -60,7 +64,7 @@ async function proposed(db: Db, scope: Scope, change: z.infer<typeof changeSchem
   if (!change.termId) after.school = change.config;
   else if (change.inherit) delete after.overrides[data.key];
   else after.overrides[data.key] = change.config;
-  const where = { status: { not: "ARCHIVED" as const }, ...(change.termId ? { semesterId: change.termId } : {}),
+  const where = { status: { not: "ARCHIVED" as const }, ...submittedTimetableFilter(scope.role), ...(change.termId ? { semesterId: change.termId } : {}),
     ...(change.departmentId ? { section: { departmentId: change.departmentId, ...(scope.role === "HEAD_OF_DEPARTMENT" && scope.programIds.length ? { programId: { in: scope.programIds } } : {}) } } : {}),
   };
   const [classes, exams] = await Promise.all([

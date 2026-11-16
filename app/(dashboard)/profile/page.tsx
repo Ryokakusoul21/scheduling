@@ -79,7 +79,7 @@ export default async function ProfilePage() {
     : "Not available";
 
   return (
-    <div className="mx-auto w-full max-w-[1150px] space-y-4">
+    <div className="mx-auto w-full min-w-0 max-w-[1150px] space-y-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
           Profile and Security
@@ -89,8 +89,8 @@ export default async function ProfilePage() {
         </p>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start">
-        <div className="space-y-4 lg:sticky lg:top-0">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start">
+        <div className="min-w-0 space-y-4 lg:sticky lg:top-0">
           <ProfileHero
             name={user.name}
             email={user.email}
@@ -101,7 +101,7 @@ export default async function ProfilePage() {
           />
           <SectionNav items={SECTIONS} />
         </div>
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <section id="account" aria-label="Account" className="scroll-mt-16">
             <AccountCard
               name={user.name}

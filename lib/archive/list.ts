@@ -1,3 +1,4 @@
+import { roomLabel } from "@/lib/rooms/label";
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { ROLE_LABELS } from "@/lib/permissions/roles";
@@ -65,7 +66,7 @@ export async function listArchived(): Promise<ArchivedRow[]> {
     })),
     ...faculty.map((f) => ({ ...base(f), kind: "FACULTY" as const, name: `${f.fullName} (${f.employeeId})`, detail: "Faculty record", department: f.department?.name ?? NONE })),
     ...subjects.map((s) => ({ ...base(s), kind: "SUBJECT" as const, name: `${s.code} ${s.name}`, detail: "Subject", department: s.program?.department?.name ?? NONE })),
-    ...rooms.map((r) => ({ ...base(r), kind: "ROOM" as const, name: `${r.roomNumber} ${r.roomName}`, detail: "Room", department: r.department?.name ?? "Shared" })),
+    ...rooms.map((r) => ({ ...base(r), kind: "ROOM" as const, name: roomLabel(r), detail: "Room", department: r.department?.name ?? "Shared" })),
     ...sections.map((s) => ({ ...base(s), kind: "SECTION" as const, name: s.name, detail: "Section", department: s.program?.department?.name ?? NONE })),
   ];
   return rows.sort((a, b) => b.archivedAt.localeCompare(a.archivedAt));

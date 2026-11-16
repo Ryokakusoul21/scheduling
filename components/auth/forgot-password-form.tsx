@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CircleNotch as Loader2, EnvelopeSimple } from "@phosphor-icons/react/ssr";
+import { ArrowLeft, ArrowRight, CircleNotch as Loader2, EnvelopeSimple, Clock } from "@phosphor-icons/react/ssr";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,25 +35,34 @@ export function ForgotPasswordForm({ audience = "staff" }: { audience?: Audience
       setFormError("Please complete the CAPTCHA check.");
       return;
     }
-    const result = await forgotPasswordAction({ ...values, captchaToken: captchaToken ?? undefined, audience });
-    setCaptchaReset((n) => n + 1);
-    if (result.ok) setSentTo(values.email);
-    else setFormError(result.error ?? result.fieldErrors?.email ?? "Something went wrong.");
+    try {
+      const result = await forgotPasswordAction({ ...values, captchaToken: captchaToken ?? undefined, audience });
+      if (result.ok) setSentTo(values.email.trim().toLowerCase());
+      else setFormError(result.error ?? result.fieldErrors?.email ?? "Something went wrong.");
+    } catch {
+      setFormError("We couldn’t request a reset link. Please try again in a moment.");
+    } finally {
+      setCaptchaReset((n) => n + 1);
+      setCaptchaToken(null);
+    }
   }
 
   if (sentTo) {
     return (
-      <div className="space-y-4 text-sm">
-        <div className="flex items-start gap-3 rounded-lg border bg-muted/40 p-4">
-          <EnvelopeSimple className="mt-0.5 size-5 shrink-0 text-primary" />
-          <p className="text-muted-foreground">
-            If an account exists for <span className="font-medium text-foreground">{sentTo}</span>, we&apos;ve sent a
-            link to reset your password. The link expires in 30 minutes and can only be used once.
+      <div className="space-y-5 text-sm">
+        <div role="status" className="rounded-xl border border-brand-blue/20 bg-brand-blue/5 p-5">
+          <EnvelopeSimple aria-hidden className="mb-3 size-8 text-brand-link" />
+          <h2 className="text-lg font-semibold">Check your inbox</h2>
+          <p className="mt-2 leading-6 text-muted-foreground">
+            If an account exists for <span className="font-medium break-all text-foreground">{sentTo}</span>, we&apos;ve sent a
+            link to reset your password.
           </p>
+          <p className="mt-4 flex items-center gap-2 text-xs text-muted-foreground"><Clock aria-hidden className="size-4 shrink-0" /> The link expires in 30 minutes and can be used once.</p>
         </div>
+        <Button type="button" variant="outline" className="min-h-11 w-full" onClick={() => { setSentTo(null); setFormError(null); }}>Try another email address</Button>
         <p className="text-center">
-          <Link href={loginHref} className="font-medium text-primary hover:underline">
-            Back to sign in
+          <Link href={loginHref} className="inline-flex items-center gap-2 rounded-sm font-medium text-brand-link hover:underline">
+            <ArrowLeft aria-hidden className="size-4" /> Back to sign in
           </Link>
         </p>
       </div>
@@ -61,19 +70,25 @@ export function ForgotPasswordForm({ audience = "staff" }: { audience?: Audience
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate>
-      <FieldGroup>
+    <form onSubmit={handleSubmit(onSubmit)} noValidate aria-busy={isSubmitting}>
+      <FieldGroup className="gap-5">
         <Field data-invalid={!!errors.email}>
-          <FieldLabel htmlFor="email">Email</FieldLabel>
-          <Input
+          <FieldLabel htmlFor="email">Email address</FieldLabel>
+          <div className="relative">
+            <EnvelopeSimple aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-muted-foreground" />
+            <Input
             id="email"
             type="email"
             autoComplete="email"
-            placeholder="you@granby.edu.ph"
+            placeholder="you@example.com"
+            autoFocus
+            className="pl-11"
             aria-invalid={!!errors.email}
+            aria-describedby="email-error"
             {...register("email")}
-          />
-          <FieldError errors={[errors.email]} />
+            />
+          </div>
+          <FieldError id="email-error" errors={[errors.email]} />
         </Field>
         <Captcha onToken={setCaptchaToken} resetKey={captchaReset} />
         {formError && (
@@ -82,13 +97,12 @@ export function ForgotPasswordForm({ audience = "staff" }: { audience?: Audience
           </p>
         )}
         <Button type="submit" className="w-full" disabled={isSubmitting}>
-          {isSubmitting && <Loader2 className="size-4 animate-spin" />}
-          Send reset link
+          {isSubmitting ? <Loader2 aria-hidden className="size-4 animate-spin" /> : <ArrowRight aria-hidden className="size-4" />}
+          {isSubmitting ? "Sending…" : "Send reset link"}
         </Button>
         <p className="text-center text-sm text-muted-foreground">
-          Remembered it?{" "}
-          <Link href={loginHref} className="font-medium text-primary hover:underline">
-            Back to sign in
+          <Link href={loginHref} className="inline-flex items-center gap-2 rounded-sm font-medium text-brand-link hover:underline">
+            <ArrowLeft aria-hidden className="size-4" /> Back to sign in
           </Link>
         </p>
       </FieldGroup>

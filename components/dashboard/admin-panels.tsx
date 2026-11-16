@@ -5,6 +5,7 @@ import { CardGrid } from "@/components/ux/card-grid";
 import { LEVEL_ACCENTS, LEVEL_ICONS } from "@/components/ux/level-icons";
 import { SelectCard } from "@/components/ux/states";
 import { AdminAnalytics } from "./admin-analytics";
+import { submittedTimetableFilter } from "@/lib/scheduler/visibility";
 
 /** Sections, subjects, and timetable coverage per academic level in the active terms. */
 async function LevelCards() {
@@ -12,7 +13,7 @@ async function LevelCards() {
   const [sectionsByLevel, subjectsByLevel, activeClasses] = await Promise.all([
     prisma.section.groupBy({ by: ["level"], _count: true }),
     prisma.subject.groupBy({ by: ["level"], _count: true }),
-    prisma.schedule.findMany({ where: { semesterId: { in: termIds }, status: { not: "ARCHIVED" } }, select: { sectionId: true, section: { select: { level: true } } } }),
+    prisma.schedule.findMany({ where: { semesterId: { in: termIds }, ...submittedTimetableFilter("REGISTRAR") }, select: { sectionId: true, section: { select: { level: true } } } }),
   ]);
   const countFor = (rows: { level: string; _count: number }[], level: string) => rows.find((r) => r.level === level)?._count ?? 0;
 

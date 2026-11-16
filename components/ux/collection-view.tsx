@@ -5,7 +5,6 @@ import { Rows, SquaresFour } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { usePersisted } from "@/hooks/use-persisted";
-import { DragHandle, SortableList, type SortableRenderProps } from "./sortable-list";
 
 export type CollectionLayout = "cards" | "table";
 
@@ -34,18 +33,17 @@ export function CollectionView({ storageKey, label, table, children, defaultView
   </div>;
 }
 
-export interface RecordViewRow { id: string; label?: string; cells: ReactNode[]; draggable?: boolean }
+export interface RecordViewRow { id: string; label?: string; cells: ReactNode[] }
 
-/** A horizontally scrollable semantic table, including optional keyboard/mouse reordering. */
-export function RecordsTable({ label, columns, rows, onReorder }: {
-  label: string; columns: string[]; rows: RecordViewRow[]; onReorder?: (ids: string[]) => Promise<{ ok: boolean; error?: string }>;
+/** A horizontally scrollable semantic table. */
+export function RecordsTable({ label, columns, rows }: {
+  label: string; columns: string[]; rows: RecordViewRow[];
 }) {
-  const renderRow = (row: RecordViewRow, props?: SortableRenderProps) => <TableRow key={row.id} ref={props?.setNodeRef} style={props?.style} className={props?.isDragging ? "bg-card shadow-lg" : undefined}>
-    {onReorder && <TableCell>{props && row.draggable !== false && <DragHandle {...props.handleProps} />}</TableCell>}
+  const renderRow = (row: RecordViewRow) => <TableRow key={row.id}>
     {row.cells.map((cell, i) => <TableCell key={i} className="max-w-lg align-top whitespace-normal">{cell}</TableCell>)}
   </TableRow>;
   return <div className="min-w-0 overflow-hidden rounded-xl border bg-card"><Table aria-label={label} className="min-w-[640px]">
-    <TableHeader><TableRow>{onReorder && <TableHead><span className="sr-only">Reorder</span></TableHead>}{columns.map((column) => <TableHead key={column} scope="col">{column}</TableHead>)}</TableRow></TableHeader>
-    {onReorder ? <SortableList items={rows} getLabel={(row) => row.label ?? row.id} onReorder={onReorder} renderItem={renderRow}>{(items) => <TableBody>{items}</TableBody>}</SortableList> : <TableBody>{rows.map((row) => renderRow(row))}</TableBody>}
+    <TableHeader><TableRow>{columns.map((column) => <TableHead key={column} scope="col">{column}</TableHead>)}</TableRow></TableHeader>
+    <TableBody>{rows.map(renderRow)}</TableBody>
   </Table></div>;
 }

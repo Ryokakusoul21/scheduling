@@ -13,6 +13,7 @@ const NOTICES: Record<string, string> = {
   reset: "Your password has been reset. Sign in with your new password.",
   changed: "Password changed. Please sign in again.",
   signedout: "You've been signed out of all devices.",
+  idle: "You were signed out after being inactive. Please sign in again.",
 };
 
 export default async function LoginPage({
@@ -27,7 +28,7 @@ export default async function LoginPage({
   const message = notice ? NOTICES[notice] : undefined;
 
   return (
-    <AuthShell title="Welcome back" description="Sign in to manage schedules, rooms, and faculty loads.">
+    <AuthShell title="Sign in">
       {message && (
         <div role="status" className="mb-4 flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm">
           <CheckCircle className="mt-0.5 size-4 shrink-0 text-emerald-600" />

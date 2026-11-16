@@ -1,5 +1,7 @@
 "use server";
 
+import { roomLabel } from "@/lib/rooms/label";
+
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
@@ -29,7 +31,7 @@ async function prepare(scope: Scope, d: RequestFormData): Promise<{ error: strin
     });
     if (!row) return { error: "Choose one of your own classes." };
     departmentId = row.section.departmentId;
-    current = { room: `${row.room.roomNumber} ${row.room.roomName}`, day: day(row.dayOfWeek), time: formatRange(row.startMin, row.endMin), faculty: row.faculty.fullName };
+    current = { room: roomLabel(row.room), day: day(row.dayOfWeek), time: formatRange(row.startMin, row.endMin), faculty: row.faculty.fullName };
   }
   const [room, faculty] = await Promise.all([
     d.type === "CHANGE_ROOM" && d.requestedRoomId ? prisma.room.findFirst({ where: { id: d.requestedRoomId }, select: { roomNumber: true, roomName: true } }) : null,
@@ -48,7 +50,7 @@ async function prepare(scope: Scope, d: RequestFormData): Promise<{ error: strin
     requestedEnd: d.type === "CHANGE_TIME" ? d.requestedEnd : null,
   };
   const requested: RequestSummary | undefined =
-    d.type === "CHANGE_ROOM" ? { room: `${room!.roomNumber} ${room!.roomName}` }
+    d.type === "CHANGE_ROOM" ? { room: roomLabel(room) }
     : d.type === "CHANGE_FACULTY" ? { faculty: faculty!.fullName }
     : d.type === "CHANGE_TIME" ? { day: day(d.requestedDay!), time: formatRange(minutes(d.requestedStart!), minutes(d.requestedEnd!)) }
     : undefined;

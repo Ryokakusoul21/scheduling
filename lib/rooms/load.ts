@@ -1,4 +1,3 @@
-import { PROGRAM_CATALOG_FILTER } from "@/lib/academics/levels";
 import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
@@ -6,6 +5,7 @@ import { departmentWhere } from "@/lib/permissions/department";
 import type { Scope } from "@/lib/permissions/scope";
 import { photoUrl, type BuildingPurpose } from "./buildings";
 import type { Building } from "./rooms";
+import { submittedTimetableFilter } from "@/lib/scheduler/visibility";
 
 /** Mon to Sat, 7 AM to 7 PM, the week a room's "use this term" is measured against. */
 const AVAILABLE_MIN_PER_WEEK = 6 * 12 * 60;
@@ -36,8 +36,8 @@ export async function loadBuildings(scope: Scope, where: Prisma.BuildingWhereInp
             where: visibleRooms,
             orderBy: [{ sortOrder: "asc" }, { roomNumber: "asc" }],
             include: {
-              programs: { select: { id: true } },
-              schedules: { where: { status: { not: "ARCHIVED" }, semester: { isActive: true } }, select: { startMin: true, endMin: true } },
+              department: { select: { name: true } },
+              schedules: { where: { status: { not: "ARCHIVED" }, semester: { isActive: true }, ...submittedTimetableFilter(scope.role) }, select: { startMin: true, endMin: true } },
             },
           },
         },
@@ -72,7 +72,8 @@ export async function loadBuildings(scope: Scope, where: Prisma.BuildingWhereInp
           status: r.status,
           equipment: r.equipment.join(", "),
           departmentId: r.departmentId ?? "",
-          programIds: r.isGeneralShared ? [] : r.programs.map((p) => p.id),
+          departmentName: r.department?.name ?? "",
+          isGeneralShared: r.isGeneralShared,
           utilization: Math.min(Math.round((booked / AVAILABLE_MIN_PER_WEEK) * 100), 100),
         };
       }),
@@ -80,14 +81,16 @@ export async function loadBuildings(scope: Scope, where: Prisma.BuildingWhereInp
   }));
 }
 
-/** Departments and programs for the room form, limited to the Head of Department's own department. */
+/** Individual college and school departments for the unified room designation. */
 export async function roomFormOptions(scope: Scope) {
-  const [departments, programs] = await Promise.all([
-    prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.program.findMany({ where: { AND: [PROGRAM_CATALOG_FILTER, departmentWhere.program(scope)] }, orderBy: [{ level: "desc" }, { sortOrder: "asc" }], select: { id: true, code: true, name: true } }),
-  ]);
+  const departments = await prisma.department.findMany({
+    where: { code: { notIn: ["BED", "GENED"] } },
+    orderBy: { name: "asc" }, select: { id: true, name: true, code: true },
+  });
+  const schoolOrder = ["SHS", "JHS", "ELEM", "PRE-ELEM"];
+  const rank = (code: string) => schoolOrder.includes(code) ? schoolOrder.indexOf(code) + 1 : 0;
+  departments.sort((a, b) => rank(a.code) - rank(b.code));
   return {
     departments: (scope.isAdmin ? departments : departments.filter((d) => d.id === scope.departmentId)).map((d) => ({ value: d.id, label: d.name })),
-    programs: programs.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` })),
   };
 }

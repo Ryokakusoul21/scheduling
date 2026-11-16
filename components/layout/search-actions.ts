@@ -1,5 +1,7 @@
 "use server";
 
+import { roomLabel } from "@/lib/rooms/label";
+
 import { getScope } from "@/lib/permissions/scope";
 import { departmentWhere } from "@/lib/permissions/department";
 import { prisma } from "@/lib/db/prisma";
@@ -75,7 +77,7 @@ export async function globalSearchAction(query: string): Promise<SearchResult[]>
     })),
     ...rooms.map((r) => ({
       id: r.id,
-      label: `${r.roomName} (${r.roomNumber})`,
+      label: roomLabel(r),
       sublabel: r.roomType.replace(/_/g, " "),
       href: r.floor ? `/rooms/${r.floor.buildingId}?q=${encodeURIComponent(r.roomNumber)}` : `/rooms?q=${encodeURIComponent(r.roomNumber)}`,
       group: "Rooms" as const,

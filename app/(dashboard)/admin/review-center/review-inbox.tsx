@@ -16,7 +16,7 @@ export type ReviewKind = "CLASS_SCHEDULE" | "EXAMINATION" | "SCHEDULE_REQUEST" |
 export interface ReviewRow { id: string; kind: ReviewKind; title: string; detail: string; department: string; level: string; requester: string; date: string; status: string; href: string; }
 export interface ReviewTab { key: string; label: string; count: number; }
 
-export function ReviewInbox({ rows, tabs, active }: { rows: ReviewRow[]; tabs: ReviewTab[]; active: string }) {
+export function ReviewInbox({ rows, active }: { rows: ReviewRow[]; active: string }) {
   const router = useRouter();
   const [selected, setSelected] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
@@ -38,11 +38,6 @@ export function ReviewInbox({ rows, tabs, active }: { rows: ReviewRow[]; tabs: R
   }
 
   return <div className="space-y-4">
-    <div className="flex gap-2 overflow-x-auto pb-1">
-      {tabs.map((tab) => <Button key={tab.key} size="sm" variant={active === tab.key ? "default" : "outline"} nativeButton={false} render={<Link href={`/admin/review-center?queue=${tab.key}`} />}>
-        {tab.label} <Badge variant={active === tab.key ? "secondary" : "outline"}>{tab.count}</Badge>
-      </Button>)}
-    </div>
     <Card>
       <CardContent className="space-y-3 p-3">
         <div className="flex flex-wrap items-center gap-2">

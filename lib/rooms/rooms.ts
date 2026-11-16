@@ -11,8 +11,8 @@ export interface Room {
   equipment: string;
   utilization: number;
   departmentId: string;
-  /** Designated programs and strands; empty means General / Shared. */
-  programIds: string[];
+  departmentName: string;
+  isGeneralShared: boolean;
 }
 export interface Floor {
   id: string;
@@ -44,11 +44,12 @@ export const STATUSES = [
 
 export type Option = { value: string; label: string };
 
-/** Filter and checkbox value meaning "General / Shared". */
+/** Filter value meaning "General / Shared". */
 export const GENERAL = "GENERAL";
+export const UNASSIGNED = "UNASSIGNED";
 
-/** Short program codes a room is designated for, or "General / Shared". */
-export function designation(r: Room, programs: Option[]) {
-  if (!r.programIds.length) return "General / Shared";
-  return r.programIds.map((id) => programs.find((p) => p.value === id)?.label.split(" - ")[0] ?? "Unknown").join(", ");
+/** Department designation used by the room form, cards, and reports. */
+export function designation(r: Pick<Room, "departmentId" | "departmentName"> & { isGeneralShared?: boolean }) {
+  if (r.departmentId) return r.departmentName || "Unknown department";
+  return r.isGeneralShared === false ? "Unassigned" : "General / Shared";
 }

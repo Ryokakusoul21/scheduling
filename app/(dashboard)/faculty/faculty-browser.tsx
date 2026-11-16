@@ -18,9 +18,10 @@ import { EmptyState, PageHeader } from "@/components/ux/states";
 import { useShortcut } from "@/components/ux/shortcuts";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { ACADEMIC_LEVELS, LEVELS, levelLabel } from "@/lib/academics/levels";
-import { cn } from "@/lib/utils";
 import { LoadBar, LoadStatusLabel } from "@/components/workload/load-bar";
 import { createFacultyAction, updateFacultyAction } from "./actions";
+import { RoomPreferences } from "./room-preferences";
+import { FacultyDetails } from "./faculty-details";
 
 export interface FacultyRow {
   id: string;
@@ -35,12 +36,16 @@ export interface FacultyRow {
   maxHours: number;
   employmentType: "FULL_TIME" | "PART_TIME";
   dayOff: string;
+  /** Days a part-time faculty member can teach; empty for full-time faculty. */
+  availableDays: string[];
   status: string;
   teachingLevels: string[];
   /** Workload engine row for active faculty (null for inactive ones). */
   load: { load: number; minimum: number; maximum: number; status: "UNDERLOADED" | "BALANCED" | "OVERLOADED" } | null;
   loadUnit: string;
   classes: number;
+  /** Preferred rooms, best first; empty for anyone who cannot see them. */
+  preferredRoomIds: string[];
 }
 
 const STATUS = [
@@ -53,8 +58,13 @@ export function FacultyBrowser({
   faculty,
   departments,
   initialQuery,
+  rooms,
+  canManage,
 }: {
+  canManage: boolean;
   faculty: FacultyRow[];
+  /** Rooms a Head of Department or Registrar may prefer; null hides room preferences. */
+  rooms: { id: string; label: string }[] | null;
   departments: { value: string; label: string }[];
   initialQuery: string;
 }) {
@@ -69,7 +79,7 @@ export function FacultyBrowser({
   const { ref: gridRef, onKeyDown: onGridKeyDown, onFocus: onGridFocus } = useRovingFocus({ orientation: "grid" });
   const { ref: rowsRef, onKeyDown: onRowsKeyDown, onFocus: onRowsFocus } = useRovingFocus<HTMLTableSectionElement>();
 
-  useShortcut({ keys: "n", description: "Add faculty member", group: "Faculty", handler: dialog.openCreate });
+  useShortcut(canManage ? { keys: "n", description: "Add faculty member", group: "Faculty", handler: dialog.openCreate } : null);
   useShortcut({ keys: "s", description: "Search faculty", group: "Faculty", handler: () => searchRef.current?.focus() });
   useShortcut({ keys: "t", description: "Switch cards / table", group: "Faculty", handler: () => setView(view === "cards" ? "table" : "cards") });
 
@@ -88,7 +98,7 @@ export function FacultyBrowser({
   const filtersOn = !!(query || department || status);
 
   const fields: FormField[] = [
-    { name: "employeeId", label: "Employee ID", type: "text", required: true, placeholder: "F-019" },
+    { name: "employeeId", label: "Employee ID", type: "text", required: true, placeholder: "GC-019", help: "Starts with GC-" },
     { name: "fullName", label: "Full name", type: "text", required: true, placeholder: "Juan Dela Cruz" },
     { name: "email", label: "Email", type: "email", required: true },
     { name: "departmentId", label: "Department", type: "select", options: [{ value: "", label: "No department" }, ...departments] },
@@ -110,13 +120,14 @@ export function FacultyBrowser({
 
   const menu = (f: FacultyRow) => (
     <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
-      <ActionButton kind="edit" onClick={() => dialog.openEdit(f)}>
-        Edit
+      <ActionButton kind={canManage ? "edit" : "view"} onClick={() => dialog.openEdit(f)}>
+        {canManage ? "Edit" : "Details"}
       </ActionButton>
+      {rooms && <RoomPreferences key={f.preferredRoomIds.join()} facultyId={f.id} name={f.fullName} selected={f.preferredRoomIds} rooms={rooms} />}
       <ActionButton kind="view" nativeButton={false} render={<Link href={`/scheduler?facultyId=${f.id}`} />}>
         Timetable
       </ActionButton>
-      <ArchiveButton kind="FACULTY" id={f.id} name={f.fullName} />
+      {canManage && <ArchiveButton kind="FACULTY" id={f.id} name={f.fullName} />}
     </div>
   );
 
@@ -138,7 +149,7 @@ export function FacultyBrowser({
         title="Faculty"
         description={`${faculty.filter((f) => f.teachingLevels.includes(level)).length} faculty members teaching ${levelLabel(level)}`}
         actions={
-          <Button onClick={dialog.openCreate} aria-keyshortcuts="n">
+          canManage && <Button onClick={dialog.openCreate} aria-keyshortcuts="n">
             <Plus className="size-4" /> Add faculty
           </Button>
         }
@@ -189,7 +200,7 @@ export function FacultyBrowser({
         <EmptyState
           icon={UserSquare}
           title={faculty.length ? "No faculty match these filters" : "No faculty yet"}
-          action={faculty.length ? undefined : <Button onClick={dialog.openCreate}>Add faculty</Button>}
+          action={faculty.length || !canManage ? undefined : <Button onClick={dialog.openCreate}>Add faculty</Button>}
         />
       ) : view === "cards" ? (
         <div ref={gridRef} onKeyDown={onGridKeyDown} onFocus={onGridFocus} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -203,7 +214,7 @@ export function FacultyBrowser({
                   tabIndex={-1}
                   onClick={() => dialog.openEdit(f)}
                   className="min-w-0 flex-1 rounded text-left outline-none"
-                  aria-label={`${f.fullName}, ${f.position || "faculty"}. Press Enter to edit.`}
+                  aria-label={`${f.fullName}, ${f.position || "faculty"}. Press Enter to ${canManage ? "edit" : "view details"}.`}
                 >
                   <p className="truncate font-semibold">{f.fullName}</p>
                   <p className="truncate text-xs text-muted-foreground">{f.position || f.employeeId}</p>
@@ -247,8 +258,8 @@ export function FacultyBrowser({
                   data-roving=""
                   tabIndex={-1}
                   className="cursor-pointer"
-                  onClick={(e) => !(e.target as HTMLElement).closest("button") && dialog.openEdit(f)}
-                  aria-label={`${f.fullName}. Press Enter to edit.`}
+                  onClick={(e) => !(e.target as HTMLElement).closest("button, a") && dialog.openEdit(f)}
+                  aria-label={`${f.fullName}. Press Enter to ${canManage ? "edit" : "view details"}.`}
                 >
                   <TableCell className="font-medium">{f.fullName}</TableCell>
                   <TableCell>{f.employeeId}</TableCell>
@@ -272,7 +283,7 @@ export function FacultyBrowser({
         </Card>
       )}
 
-      <FormDialog
+      {canManage ? <FormDialog
         open={!!dialog.state}
         onOpenChange={(o) => !o && dialog.close()}
         title={editing ? `Edit ${editing.fullName}` : "Add faculty member"}
@@ -281,7 +292,7 @@ export function FacultyBrowser({
         submitLabel={editing ? "Save changes" : "Add faculty"}
         successMessage={editing ? "Faculty updated" : "Faculty added"}
         onSubmit={(fd) => (editing ? updateFacultyAction(editing.id, fd) : createFacultyAction(fd))}
-      />
+      /> : <FacultyDetails faculty={editing} onClose={dialog.close} />}
     </div>
   );
 }

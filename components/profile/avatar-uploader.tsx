@@ -138,7 +138,7 @@ export function AvatarDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !uploading && change(o)}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="min-w-0 sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Profile photo</DialogTitle>
           <DialogDescription>JPG, PNG, or WebP, up to 5 MB. Everyone you work with will see this photo.</DialogDescription>
@@ -151,18 +151,18 @@ export function AvatarDialog({
               onDragLeave={() => setDragging(false)}
               onDrop={(e) => (e.preventDefault(), setDragging(false), choose(e.dataTransfer.files[0]))}
               className={cn(
-                "flex flex-col items-center gap-3 rounded-xl border-2 border-dashed p-6 text-center transition-colors",
+                "flex min-w-0 flex-col items-center gap-3 rounded-xl border-2 border-dashed p-4 text-center transition-colors sm:p-6",
                 dragging ? "border-primary bg-primary/5" : "border-border",
               )}
             >
               <UserAvatar name={name} image={image} className="size-24" />
               <p className="text-sm text-muted-foreground">Drag a photo here, or choose one.</p>
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button onClick={() => fileInput.current?.click()}>
+              <div className="grid w-full gap-2 sm:flex sm:flex-wrap sm:justify-center">
+                <Button className="h-11" onClick={() => fileInput.current?.click()}>
                   <UploadSimple className="size-4" /> Upload photo
                 </Button>
                 {canCamera && (
-                  <Button variant="outline" onClick={startCamera}>
+                  <Button variant="outline" className="h-11" onClick={startCamera}>
                     <Camera className="size-4" /> Take photo
                   </Button>
                 )}
@@ -170,7 +170,7 @@ export function AvatarDialog({
               <input ref={fileInput} type="file" accept={AVATAR_TYPES.join(",")} className="sr-only" tabIndex={-1} onChange={(e) => choose(e.target.files?.[0])} />
             </div>
             {image && (
-              <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={remove}>
+              <Button variant="ghost" className="h-11 w-full text-destructive hover:text-destructive sm:w-auto" onClick={remove}>
                 <Trash className="size-4" /> Remove photo
               </Button>
             )}
@@ -180,9 +180,9 @@ export function AvatarDialog({
         {step === "camera" && (
           <div className="space-y-4">
             <video ref={video} autoPlay playsInline muted className="mx-auto aspect-square w-full max-w-xs rounded-xl bg-black object-cover [transform:scaleX(-1)]" />
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => (stopCamera(), setStep("pick"))}>Back</Button>
-              <Button onClick={capture}>Capture</Button>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+              <Button variant="outline" className="h-11" onClick={() => (stopCamera(), setStep("pick"))}>Back</Button>
+              <Button className="h-11" onClick={capture}>Capture</Button>
             </div>
           </div>
         )}

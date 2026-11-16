@@ -1,12 +1,12 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signIn } from "next-auth/react";
-import { CircleNotch as Loader2, Envelope, Eye, EyeSlash, Lock, ShieldCheck, Warning, WarningCircle, X } from "@phosphor-icons/react/ssr";
+import { ArrowRight, CircleNotch as Loader2, Envelope, Eye, EyeSlash, Lock, ShieldCheck, Warning, WarningCircle, X } from "@phosphor-icons/react/ssr";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,15 +14,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel, FieldError } from "@/components/ui/field";
 import { Captcha, captchaEnabled } from "@/components/auth/captcha";
 import { resendVerificationAction, type Audience } from "@/actions/auth";
-import { DEMO_STAFF, DEMO_STUDENTS } from "@/lib/auth/demo-accounts";
 import { loginSchema, type LoginInput } from "@/lib/validation/auth";
 import type { LoginErrorCode } from "@/lib/auth/errors";
-
-// Demo shortcuts are a development aid only and never ship to production.
-const SHOW_DEMO = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_SHOW_DEMO === "true";
-const DEMO_PASSWORD = "Passw0rd!";
-
-const DEMO_ACCOUNTS: Record<Audience, { label: string; email: string }[]> = { staff: DEMO_STAFF, student: DEMO_STUDENTS };
 
 const ERROR_MESSAGES: Record<LoginErrorCode, string> = {
   invalid: "Incorrect email or password.",
@@ -38,8 +31,8 @@ const ERROR_MESSAGES: Record<LoginErrorCode, string> = {
 
 // Taller inputs with a leading icon and a brand-blue focus ring.
 const INPUT_CLASS =
-  "h-12 rounded-xl bg-card pl-11 text-base shadow-xs transition-[border-color,box-shadow] duration-150 focus-visible:border-brand-blue focus-visible:ring-3 focus-visible:ring-brand-blue/25 md:text-sm dark:bg-input/30";
-const ICON_CLASS = "pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-muted-foreground";
+  "h-14 rounded-lg border-transparent bg-muted/60 pl-12 text-base transition-[border-color,box-shadow] duration-150 focus-visible:border-brand-blue focus-visible:ring-3 focus-visible:bg-card focus-visible:ring-brand-blue/25 dark:bg-input/30";
+const ICON_CLASS = "pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-muted-foreground";
 const LINK_CLASS = "rounded-sm font-medium text-brand-link underline-offset-4 hover:underline";
 
 /** Only allow same-origin relative redirects to avoid open-redirects. */
@@ -68,8 +61,6 @@ export function LoginForm({ callbackUrl, audience = "staff" }: { callbackUrl?: s
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle");
   const [showPassword, setShowPassword] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
-  const [demoExpanded, setDemoExpanded] = useState(false);
-  const demoAccountsId = useId();
 
   const {
     register,
@@ -90,16 +81,25 @@ export function LoginForm({ callbackUrl, audience = "staff" }: { callbackUrl?: s
       return;
     }
 
-    const result = await signIn("credentials", {
-      email: values.email,
-      password: values.password,
-      code: needsCode ? values.code ?? "" : "",
-      remember: remember ? "true" : "false",
-      captchaToken: captchaToken ?? "",
-      portal: audience,
-      redirect: false,
-    });
+    let result;
+    try {
+      result = await signIn("credentials", {
+        email: values.email,
+        password: values.password,
+        code: needsCode ? values.code ?? "" : "",
+        remember: remember ? "true" : "false",
+        captchaToken: captchaToken ?? "",
+        portal: audience,
+        redirect: false,
+      });
+    } catch {
+      setFormError("We couldn’t sign you in. Please check your connection and try again.");
+      setCaptchaReset((n) => n + 1);
+      setCaptchaToken(null);
+      return;
+    }
     setCaptchaReset((n) => n + 1);
+    setCaptchaToken(null);
 
     if (result?.error) {
       const code = (result.code ?? "invalid") as LoginErrorCode;
@@ -161,7 +161,7 @@ export function LoginForm({ callbackUrl, audience = "staff" }: { callbackUrl?: s
 
           <div className={needsCode ? "hidden" : "contents"}>
             <Field data-invalid={!!errors.email}>
-              <FieldLabel htmlFor="email">Email</FieldLabel>
+              <FieldLabel htmlFor="email">Email address</FieldLabel>
               <div className="relative">
                 <Envelope className={ICON_CLASS} aria-hidden />
                 <Input
@@ -169,7 +169,7 @@ export function LoginForm({ callbackUrl, audience = "staff" }: { callbackUrl?: s
                   type="email"
                   autoComplete="email"
                   autoFocus
-                  placeholder="you@granby.edu.ph"
+                  placeholder="you@example.com"
                   aria-invalid={!!errors.email}
                   aria-describedby={errors.email ? "email-error" : undefined}
                   className={INPUT_CLASS}
@@ -202,8 +202,9 @@ export function LoginForm({ callbackUrl, audience = "staff" }: { callbackUrl?: s
                   type="button"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                   aria-controls="password"
+                  aria-pressed={showPassword}
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute top-1/2 right-1.5 flex size-9 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+                  className="absolute top-1/2 right-1.5 flex size-10 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {showPassword ? <EyeSlash className="size-5" /> : <Eye className="size-5" />}
                 </button>
@@ -216,12 +217,12 @@ export function LoginForm({ callbackUrl, audience = "staff" }: { callbackUrl?: s
               )}
               <FieldError id="password-error" errors={[errors.password]} />
             </Field>
-            <div className="flex items-center justify-between gap-3">
-              <label className="flex w-fit cursor-pointer items-center gap-2.5 text-sm select-none">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-4">
+              <label className="flex w-fit cursor-pointer items-center gap-2 text-xs select-none">
                 <Checkbox checked={remember} onCheckedChange={(v) => setRemember(!!v)} className="size-[18px] rounded-[5px]" />
-                Remember me for 30 days
+                Remember me
               </label>
-              <Link href={`${base}/forgot-password`} className={`text-sm ${LINK_CLASS}`}>
+              <Link href={`${base}/forgot-password`} className={`text-xs ${LINK_CLASS}`}>
                 Forgot password?
               </Link>
             </div>
@@ -231,7 +232,7 @@ export function LoginForm({ callbackUrl, audience = "staff" }: { callbackUrl?: s
             <Field>
               <div className="flex items-start gap-2 rounded-xl border bg-muted/40 p-3 text-sm">
                 <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
-                <p>Two-factor authentication is on. Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
+                <p>Enter your 6-digit authenticator code or a recovery code.</p>
               </div>
               <FieldLabel htmlFor="code">Verification code</FieldLabel>
               <Input
@@ -253,8 +254,8 @@ export function LoginForm({ callbackUrl, audience = "staff" }: { callbackUrl?: s
             disabled={isSubmitting}
             className="h-12 w-full gap-2 rounded-xl bg-brand-blue text-base font-semibold text-white transition-colors duration-150 hover:bg-brand-blue/90 focus-visible:border-brand-blue focus-visible:ring-brand-blue/40 active:bg-brand-navy disabled:opacity-80"
           >
-            {isSubmitting && <Loader2 className="size-5 animate-spin" />}
-            {isSubmitting ? "Signing in…" : needsCode ? "Verify and sign in" : "Sign In"}
+            {isSubmitting ? <Loader2 className="size-5 animate-spin" /> : <ArrowRight aria-hidden className="order-last size-5" />}
+            {isSubmitting ? "Signing in…" : needsCode ? "Verify and sign in" : "Sign in"}
           </Button>
 
           {needsCode ? (
@@ -270,51 +271,16 @@ export function LoginForm({ callbackUrl, audience = "staff" }: { callbackUrl?: s
               Back to sign in
             </button>
           ) : (
-            <p className="text-center text-sm text-muted-foreground">
-              Don&apos;t have an account?{" "}
-              <Link href={`${base}/register`} className={LINK_CLASS}>
-                Create one
+            <>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border" />New here?<span className="h-px flex-1 bg-border" /></div>
+              <Link href={`${base}/register`} className="flex h-14 items-center justify-center rounded-lg border border-brand-blue/30 text-base font-semibold text-brand-link transition-colors hover:bg-brand-blue/5 focus-visible:ring-3 focus-visible:ring-brand-blue/25">
+                Create account
               </Link>
-            </p>
+            </>
           )}
         </FieldGroup>
       </form>
 
-      {SHOW_DEMO && !needsCode && (
-        <div className="rounded-xl border border-dashed p-3 text-sm">
-          <button
-            type="button"
-            aria-expanded={demoExpanded}
-            aria-controls={demoAccountsId}
-            onClick={() => setDemoExpanded((expanded) => !expanded)}
-            className="flex w-full cursor-pointer items-center gap-2 rounded-sm text-left text-xs font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
-          >
-            <span className="rounded bg-brand-gold/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-amber-800 dark:text-brand-gold">DEV</span>
-            Demo accounts
-            <span className={`ml-auto transition-transform duration-150 ${demoExpanded ? "rotate-180" : ""}`} aria-hidden>
-              &#9662;
-            </span>
-          </button>
-          <div id={demoAccountsId} hidden={!demoExpanded}>
-            <p className="mt-3 mb-2 text-xs text-muted-foreground">Click a role to autofill.</p>
-            <div className="flex flex-wrap gap-1.5">
-              {DEMO_ACCOUNTS[audience].map((a) => (
-                <button
-                  key={a.email}
-                  type="button"
-                  onClick={() => {
-                    setValue("email", a.email, { shouldValidate: !!errors.email });
-                    setValue("password", DEMO_PASSWORD, { shouldValidate: !!errors.password });
-                  }}
-                  className="rounded-full border bg-background px-3 py-1.5 text-xs font-medium transition-colors duration-150 hover:bg-accent"
-                >
-                  {a.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

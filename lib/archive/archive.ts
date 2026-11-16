@@ -1,7 +1,9 @@
+import { roomLabel } from "@/lib/rooms/label";
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { formatRange } from "@/lib/scheduler/timetable";
 import { ARCHIVE_LABELS, type ArchiveKind } from "./kinds";
+import { assertSingleDepartmentHead, lockDepartmentHeads } from "@/lib/departments/head-guard";
 
 /** Prisma filter for records still in use; spread into every choice list and new-scheduling query. */
 export const NOT_ARCHIVED = { archivedAt: null } as const;
@@ -18,10 +20,10 @@ export async function activeClassesOf(kind: ArchiveKind, id: string) {
   if (!value) return [];
   const rows = await prisma.schedule.findMany({
     where: { [field]: value, status: { not: "ARCHIVED" }, semester: { isActive: true } },
-    include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomName: true } } },
+    include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomNumber: true, roomName: true } } },
     orderBy: [{ dayOfWeek: "asc" }, { startMin: "asc" }],
   });
-  return rows.map((s) => `${s.subject.code} ${s.section.name}, ${DAY_LABEL[s.dayOfWeek]} ${formatRange(s.startMin, s.endMin)}, ${s.room.roomName}`);
+  return rows.map((s) => `${s.subject.code} ${s.section.name}, ${DAY_LABEL[s.dayOfWeek]} ${formatRange(s.startMin, s.endMin)}, ${roomLabel(s.room)}`);
 }
 
 /**
@@ -34,22 +36,28 @@ export async function setArchived(kind: ArchiveKind, id: string, actorId: string
     : { archivedAt: null, archivedById: null, archiveReason: null };
 
   const name = await prisma.$transaction(async (tx) => {
+    if (kind === "USER" || kind === "FACULTY") await lockDepartmentHeads(tx);
     switch (kind) {
       case "USER": {
         // Bumping sessionVersion ends every open session of an archived account.
         const user = await tx.user.update({ where: { id }, data: { ...data, ...(archive ? { sessionVersion: { increment: 1 } } : {}) } });
         if (user.facultyId) await tx.faculty.update({ where: { id: user.facultyId }, data });
+        if (!archive) await assertSingleDepartmentHead(tx, user.id);
         return user.name;
       }
       case "FACULTY": {
         const faculty = await tx.faculty.update({ where: { id }, data });
         await tx.user.updateMany({ where: { facultyId: id }, data: { ...data, ...(archive ? { sessionVersion: { increment: 1 } } : {}) } });
+        if (!archive) {
+          const user = await tx.user.findUnique({ where: { facultyId: id }, select: { id: true } });
+          if (user) await assertSingleDepartmentHead(tx, user.id);
+        }
         return faculty.fullName;
       }
       case "SUBJECT":
         return (await tx.subject.update({ where: { id }, data })).code;
       case "ROOM":
-        return (await tx.room.update({ where: { id }, data })).roomName;
+        return roomLabel(await tx.room.update({ where: { id }, data }));
       case "SECTION":
         return (await tx.section.update({ where: { id }, data })).name;
     }

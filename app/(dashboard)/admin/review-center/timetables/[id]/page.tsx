@@ -1,4 +1,6 @@
+import { roomLabel } from "@/lib/rooms/label";
 import { effectiveTimetable } from "@/lib/timetable/config";
+import { submittedTimetableFilter } from "@/lib/scheduler/visibility";
 import { loadTimetableBundle } from "@/lib/timetable/service";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -34,25 +36,23 @@ async function examConflicts(submissionId: string, type: Parameters<typeof loadE
 }
 
 /** The department's whole term timetable for every section in the submission, as the Head of Department sees it in the Scheduler. */
-async function classSheets(s: { id: string; departmentId: string; semesterId: string; snapshot: unknown }, open: boolean) {
+async function classSheets(s: { id: string; departmentId: string; semesterId: string }) {
   // The package holds the whole timetable; drafts sent with it (new or changed classes) are the ones outlined.
-  const linked = open
-    ? await prisma.schedule.findMany({ where: { submissionId: s.id }, select: { id: true, status: true } })
-    : ((s.snapshot ?? []) as SnapshotRow[]).map((r) => ({ id: r.id, status: "PUBLISHED" }));
+  const linked = await prisma.schedule.findMany({ where: { submissionId: s.id }, select: { id: true, status: true } });
   const submitted = linked.filter((x) => x.status === "REVIEW").map((x) => x.id);
   const packaged = linked.map((x) => x.id);
   const sections = await prisma.section.findMany({
-    where: { OR: [{ departmentId: s.departmentId }, { schedules: { some: { id: { in: packaged } } } }], schedules: { some: { semesterId: s.semesterId, status: { not: "ARCHIVED" } } } },
+    where: { OR: [{ departmentId: s.departmentId }, { schedules: { some: { id: { in: packaged } } } }], schedules: { some: { semesterId: s.semesterId, ...submittedTimetableFilter("REGISTRAR") } } },
     include: { program: { select: { code: true, name: true } } },
     orderBy: { name: "asc" },
   });
-  const rows = await prisma.schedule.findMany({ where: { semesterId: s.semesterId, sectionId: { in: sections.map((x) => x.id) }, status: { not: "ARCHIVED" } } });
+  const rows = await prisma.schedule.findMany({ where: { semesterId: s.semesterId, sectionId: { in: sections.map((x) => x.id) }, ...submittedTimetableFilter("REGISTRAR") } });
   const ids = <K extends "subjectId" | "facultyId" | "roomId">(k: K) => [...new Set(rows.map((r) => r[k]))];
   const [subjects, faculty, rooms, conflicts] = await Promise.all([
     prisma.subject.findMany({ where: { id: { in: ids("subjectId") } }, select: { id: true, code: true, name: true, units: true } }),
     prisma.faculty.findMany({ where: { id: { in: ids("facultyId") } }, select: { id: true, fullName: true } }),
-    prisma.room.findMany({ where: { id: { in: ids("roomId") } }, select: { id: true, roomName: true } }),
-    open ? detectConflictsForTerms(await concurrentTermIds(s.semesterId)) : Promise.resolve([]),
+    prisma.room.findMany({ where: { id: { in: ids("roomId") } }, select: { id: true, roomNumber: true, roomName: true } }),
+    detectConflictsForTerms(await concurrentTermIds(s.semesterId)),
   ]);
   const timetable = await loadTimetableBundle();
   const inScope = new Set(rows.map((r) => r.id));
@@ -67,7 +67,7 @@ async function classSheets(s: { id: string; departmentId: string; semesterId: st
     entries: rows.map((r) => ({ ...r, notes: r.notes ?? null })) as unknown as SchedulerEntry[],
     subjects: subjects as unknown as SchedulerData["subjects"],
     faculty: faculty as unknown as SchedulerData["faculty"],
-    rooms: rooms as unknown as SchedulerData["rooms"],
+    rooms: rooms.map((r) => ({ ...r, roomName: roomLabel(r) })) as unknown as SchedulerData["rooms"],
   };
 }
 
@@ -85,15 +85,15 @@ export default async function TimetableReviewPage({ params }: { params: Promise<
   const exam = s.kind === "EXAMINATION";
   const term = `${termLabel(s.semester.type)} ${s.semester.academicYear.name}`;
   const changes = await submissionChanges(s);
-  const sheets = exam ? null : await classSheets(s, open);
-  const examRows: SnapshotRow[] = exam ? (open ? await submissionRows(s.id, s.kind) : ((s.snapshot ?? []) as unknown as SnapshotRow[])) : [];
+  const sheets = exam || !open ? null : await classSheets(s);
+  const snapshotRows: SnapshotRow[] = sheets ? [] : (open ? await submissionRows(s.id, s.kind) : ((s.snapshot ?? []) as unknown as SnapshotRow[]));
   const examFlagged = exam && open && s.examType ? await examConflicts(s.id, s.examType) : new Set<string>();
   const conflictCount = sheets ? sheets.flagged.length : examFlagged.size;
-  const submittedCount = sheets ? sheets.submitted.length : examRows.length;
+  const submittedCount = sheets ? sheets.submitted.length : snapshotRows.length;
 
   const stats: [string, number | string][] = sheets
     ? [["Classes in timetable", sheets.entries.length], ["New or changed", submittedCount], ["Sections", sheets.sections.length], ["Faculty", new Set(sheets.entries.map((e) => e.facultyId)).size], ["Rooms", new Set(sheets.entries.map((e) => e.roomId)).size]]
-    : [["Examinations", submittedCount], ["Sections", new Set(examRows.map((r) => r.section)).size], ["Proctors", new Set(examRows.map((r) => r.person)).size], ["Rooms", new Set(examRows.map((r) => r.room)).size]];
+    : [[exam ? "Examinations" : "Classes in submitted snapshot", submittedCount], ["Sections", new Set(snapshotRows.map((r) => r.section)).size], [exam ? "Proctors" : "Faculty", new Set(snapshotRows.map((r) => r.person)).size], ["Rooms", new Set(snapshotRows.map((r) => r.room)).size]];
 
   return (
     <div className="space-y-5">
@@ -129,6 +129,7 @@ export default async function TimetableReviewPage({ params }: { params: Promise<
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
         <div className="min-w-0 space-y-5">
+          {!open && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">This is the submitted snapshot. Unsubmitted draft revisions remain private to the department.</p>}
           {changes && (
             <Card>
               <CardHeader><CardTitle className="text-base">Changes since version {changes.previousVersion}</CardTitle></CardHeader>
@@ -147,7 +148,7 @@ export default async function TimetableReviewPage({ params }: { params: Promise<
               comments: s.comments.filter((c) => c.rowId).map((c) => ({ id: c.id, rowId: c.rowId!, author: c.author.name ?? "Reviewer", body: c.body })),
             }} />
           ) : (
-            <ExamTable rows={examRows} flagged={examFlagged} submissionId={s.id} canComment={decides} comments={s.comments.filter((c) => c.rowId).map((c) => ({ id: c.id, rowId: c.rowId!, text: `${c.author.name}: ${c.body}` }))} />
+            <SnapshotTable exam={exam} rows={snapshotRows} flagged={examFlagged} submissionId={s.id} canComment={decides} comments={s.comments.filter((c) => c.rowId).map((c) => ({ id: c.id, rowId: c.rowId!, text: `${c.author.name}: ${c.body}` }))} />
           )}
         </div>
 
@@ -179,14 +180,14 @@ export default async function TimetableReviewPage({ params }: { params: Promise<
   );
 }
 
-function ExamTable({ rows, flagged, submissionId, canComment, comments }: { rows: SnapshotRow[]; flagged: Set<string>; submissionId: string; canComment: boolean; comments: { id: string; rowId: string; text: string }[] }) {
-  if (!rows.length) return <p className="text-sm text-muted-foreground">This timetable has no examinations.</p>;
+function SnapshotTable({ exam, rows, flagged, submissionId, canComment, comments }: { exam: boolean; rows: SnapshotRow[]; flagged: Set<string>; submissionId: string; canComment: boolean; comments: { id: string; rowId: string; text: string }[] }) {
+  if (!rows.length) return <p className="text-sm text-muted-foreground">This timetable has no {exam ? "examinations" : "classes"}.</p>;
   return (
     <Card>
       <CardContent className="overflow-x-auto p-0">
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
-            <tr><th className="px-4 py-2 font-medium">Section</th><th className="px-4 py-2 font-medium">Subject</th><th className="px-4 py-2 font-medium">Date and time</th><th className="px-4 py-2 font-medium">Room</th><th className="px-4 py-2 font-medium">Proctor</th>{canComment && <th className="w-10" />}</tr>
+            <tr><th className="px-4 py-2 font-medium">Section</th><th className="px-4 py-2 font-medium">Subject</th><th className="px-4 py-2 font-medium">{exam ? "Date and time" : "Day and time"}</th><th className="px-4 py-2 font-medium">Room</th><th className="px-4 py-2 font-medium">{exam ? "Proctor" : "Faculty"}</th>{canComment && <th className="w-10" />}</tr>
           </thead>
           <tbody>
             {rows.map((r) => (

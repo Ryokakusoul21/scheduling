@@ -35,7 +35,6 @@ const STATIC_HELP: { group: string; items: { keys: string; description: string }
       { keys: "← →", description: "Move between cards in a grid" },
       { keys: "Home End", description: "Jump to first / last item" },
       { keys: "Enter", description: "Open the focused item" },
-      { keys: "Space", description: "Pick up / drop a draggable row (then ↑ ↓ to move)" },
     ],
   },
   {
@@ -55,7 +54,7 @@ const NAV_SHORTCUTS: { keys: string; href: string; description: string }[] = [
   { keys: "g c", href: "/calendar", description: "Go to Calendar of Activities" },
   { keys: "g x", href: "/scheduler?mode=examinations", description: "Go to Examination Schedule" },
   { keys: "g b", href: "/bookings", description: "Go to Room Booking" },
-  { keys: "g y", href: "/academic-years", description: "Go to Academic Years and Terms" },
+  { keys: "g y", href: "/academic-years", description: "Go to the academic calendar" },
   { keys: "g p", href: "/programs", description: "Go to Programs and Strands" },
   { keys: "g u", href: "/subjects", description: "Go to Subjects" },
   { keys: "g e", href: "/sections", description: "Go to Sections" },

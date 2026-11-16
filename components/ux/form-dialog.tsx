@@ -18,7 +18,7 @@ export interface FormField {
   name: string;
   label: string;
   type: "text" | "number" | "email" | "date" | "select" | "textarea" | "checkboxes" | "checkbox" | "hidden";
-  options?: { value: string; label: string }[];
+  options?: { value: string; label: string; disabled?: boolean }[];
   required?: boolean;
   step?: string;
   min?: number;
@@ -44,6 +44,7 @@ export function FormDialog({
   submitLabel = "Save",
   onSubmit,
   successMessage,
+  onFieldChange,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -55,6 +56,7 @@ export function FormDialog({
   submitLabel?: string;
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   successMessage?: string;
+  onFieldChange?: (name: string, value: string) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -85,7 +87,12 @@ export function FormDialog({
     >
       <DialogContent className={cn("max-h-[90vh] overflow-y-auto", twoColumns ? "sm:max-w-2xl" : "sm:max-w-md")}>
         {/* Inputs are uncontrolled; remount when switching items so defaults reset cleanly. */}
-        <form action={submit} key={JSON.stringify(values)}>
+        <form action={submit} key={JSON.stringify(values)} onChange={(e) => {
+          const target = e.target;
+          if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
+            onFieldChange?.(target.name, target.value);
+          }
+        }}>
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             {description && <DialogDescription>{description}</DialogDescription>}

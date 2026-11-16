@@ -30,9 +30,9 @@ export default async function ActivityProposalsPage({ searchParams }: { searchPa
       time: r.startMin === null || r.endMin === null ? "" : formatRange(r.startMin, r.endMin), location: r.location ?? "",
       level: r.level ?? "", category: r.category ?? "", status: r.status, reviewNote: r.reviewNote ?? "", activityId: r.activityId })),
   }));
-  return <div className="space-y-4"><PageHeader title="School Activity Proposals" description="Prepare, validate, and publish department activities without a separate approval step." />
+  return <div className="space-y-4"><PageHeader title="School Activity Proposals" description="Prepare and publish department activities." />
     <CalendarTabs active="proposals" isAdmin={scope.isAdmin} showProposals />
-    <ProposalWorkspace isAdmin={scope.isAdmin} ownDepartmentId={scope.departmentId} selectedId={params.proposal} proposals={items}
+    <ProposalWorkspace viewerName={scope.name} isAdmin={scope.isAdmin} ownDepartmentId={scope.departmentId} selectedId={params.proposal} proposals={items}
       terms={terms.map((t) => ({ id: t.id, label: `${t.academicYear.name} · ${t.name}`, level: t.level }))}
       departments={departments.map((d) => ({ id: d.id, name: d.name }))} />
   </div>;

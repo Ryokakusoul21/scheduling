@@ -15,6 +15,10 @@ export const AUTH = {
   rememberMeMaxAgeSeconds: 30 * 24 * 60 * 60,
   shortSessionMaxAgeSeconds: 8 * 60 * 60,
 
+  /** Ask an inactive user to continue, then sign out after a one-minute grace period. */
+  idleWarningAfterMs: 5 * 60_000,
+  idleSignOutGraceMs: 60_000,
+
   emailVerificationTtlMinutes: 24 * 60,
   passwordResetTtlMinutes: 30,
   /** Minimum gap between verification/reset emails for one account. */

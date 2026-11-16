@@ -21,12 +21,12 @@ export default async function MySubjectsPage() {
       semester: { select: { name: true, isActive: true, academicYear: { select: { name: true } } } },
     },
   }) : [];
-  // Marks an assignment as scheduled once at least one of its classes is on the timetable.
+  // Track published hours per section offering, including partially scheduled subjects.
   const scheduled = rows.length ? await prisma.schedule.findMany({
-    where: { facultyId: scope.facultyId!, status: { not: "ARCHIVED" }, semesterId: { in: [...new Set(rows.map((r) => r.semesterId))] } },
-    select: { subjectId: true, sectionId: true, semesterId: true },
+    where: { facultyId: scope.facultyId!, status: "PUBLISHED", semesterId: { in: [...new Set(rows.map((r) => r.semesterId))] } },
+    select: { subjectId: true, sectionId: true, semesterId: true, startMin: true, endMin: true },
   }) : [];
-  const isScheduled = (r: (typeof rows)[number]) => scheduled.some((s) => s.semesterId === r.semesterId && s.subjectId === r.subjectId && (!r.sectionId || s.sectionId === r.sectionId));
+  const scheduledHours = (r: (typeof rows)[number]) => scheduled.filter((s) => s.semesterId === r.semesterId && s.subjectId === r.subjectId && s.sectionId === r.sectionId).reduce((sum, s) => sum + Math.max(0, s.endMin - s.startMin) / 60, 0);
   const units = rows.filter((r) => r.semester.isActive).reduce((n, r) => n + r.subject.units, 0);
 
   return <div className="space-y-4">
@@ -40,7 +40,7 @@ export default async function MySubjectsPage() {
         <TableCell>{r.section?.name ?? "All sections"}</TableCell>
         <TableCell className="text-right">{r.subject.units}</TableCell>
         <TableCell className="text-right">{r.subject.lectureHours + r.subject.labHours}</TableCell>
-        <TableCell>{isScheduled(r) ? <Badge variant="outline">Scheduled</Badge> : <Badge variant="outline" className="border-warning/40 bg-warning/10 text-warning">Not yet scheduled</Badge>}</TableCell>
+        <TableCell><Badge variant="outline" className={scheduledHours(r) < r.subject.lectureHours + r.subject.labHours ? "border-warning/40 bg-warning/10 text-warning" : undefined}>{scheduledHours(r)} / {r.subject.lectureHours + r.subject.labHours} hrs published</Badge></TableCell>
       </TableRow>)}</TableBody>
     </Table></div></Card>}
   </div>;

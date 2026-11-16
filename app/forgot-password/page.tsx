@@ -5,7 +5,7 @@ export const metadata = { title: "Forgot Password · GRANBY COLLEGES OF SCIENCE 
 
 export default function ForgotPasswordPage() {
   return (
-    <AuthShell title="Forgot your password?" description="Enter your email and we'll send you a reset link.">
+    <AuthShell title="Reset password" description="We will email you a reset link.">
       <ForgotPasswordForm />
     </AuthShell>
   );

@@ -8,7 +8,8 @@ import { TEACHING_ROLES } from "@/lib/permissions/roles";
 import { requireScope } from "@/lib/permissions/scope";
 import { notifyManagers } from "@/lib/notify";
 import { planFacultyUnavailable } from "@/lib/occupancy/adjust";
-import { formatRange } from "@/lib/scheduler/timetable";
+import { DAY_LONG, formatRange } from "@/lib/scheduler/timetable";
+import { availableDays, WEEK_DAYS } from "@/lib/faculty/available-days";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -108,4 +109,38 @@ export async function previewMyUnavailabilityAction(input: z.infer<typeof schema
       loadNote: "Your weekly teaching load does not change: covered or make-up classes stay assigned to you. Only these dated meetings are affected.",
     },
   };
+}
+
+/** A part-time faculty member chooses the days they can teach; kept days keep their hours, new days are open all day. */
+export async function saveAvailableDaysAction(days: string[]): Promise<{ ok: true; affected: number } | { ok: false; error: string }> {
+  const scope = await requireScope(...TEACHING_ROLES);
+  const facultyId = scope.facultyId;
+  if (!facultyId) return { ok: false, error: "Your account is not linked to a faculty record. Ask the Registrar to link it." };
+  const parsed = z.array(z.enum(WEEK_DAYS)).min(1, "Choose at least one day.").safeParse([...new Set(days)]);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the days." };
+  const me = await prisma.faculty.findUnique({ where: { id: facultyId }, select: { employmentType: true, dayOff: true, availability: { select: { dayOfWeek: true } } } });
+  if (me?.employmentType !== "PART_TIME") return { ok: false, error: "Only part-time faculty choose their available days." };
+
+  const chosen = WEEK_DAYS.filter((d) => parsed.data.includes(d));
+  const have = new Set(me.availability.map((a) => a.dayOfWeek));
+  const before = availableDays(me);
+  const affected = await prisma.schedule.count({ where: { facultyId, dayOfWeek: { notIn: chosen }, status: { not: "ARCHIVED" }, semester: { isActive: true } } });
+  await prisma.$transaction([
+    prisma.facultyAvailability.deleteMany({ where: { facultyId, dayOfWeek: { notIn: chosen } } }),
+    prisma.facultyAvailability.createMany({ data: chosen.filter((d) => !have.has(d)).map((dayOfWeek) => ({ facultyId, dayOfWeek, startMin: 0, endMin: 24 * 60 })) }),
+    // The chosen days replace the single day off.
+    prisma.faculty.update({ where: { id: facultyId }, data: { dayOff: null } }),
+    prisma.auditLog.create({ data: { userId: scope.userId, role: scope.role, departmentId: scope.departmentId, action: "Changed available days", entity: "Faculty", entityId: facultyId, oldValue: { days: before }, newValue: { days: chosen } } }),
+  ]);
+  await notifyManagers(scope.departmentId, {
+    title: "Available days changed",
+    message: `${scope.name}: ${chosen.map((d) => DAY_LONG[d]).join(", ")}.${affected ? ` ${affected} class(es) are now on an unavailable day.` : ""}`,
+    link: "/scheduler",
+    type: affected ? "WARNING" : "INFO",
+  });
+  revalidatePath("/availability");
+  revalidatePath("/faculty");
+  revalidatePath("/scheduler");
+  queueWorkloadCheck("A part-time faculty member changed their available days");
+  return { ok: true, affected };
 }

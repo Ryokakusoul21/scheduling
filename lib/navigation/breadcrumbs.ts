@@ -14,11 +14,12 @@ const PAGE_LABELS: Record<string, string> = {
   "/calendar/proposals": "School Activity Proposals",
   "/bookings": "Room Booking",
   "/adjustments": "Schedule Adjustments",
+  "/suspensions": "Class Suspensions",
   "/constraints": "Scheduling Constraints",
   "/requests": "Schedule Requests",
   "/availability": "Report Unavailability",
   "/academic-years": "Academic Years and Terms",
-  "/programs": "Academic Programs",
+  "/programs": "Academic Record",
   "/subjects": "Subjects",
   "/sections": "Sections",
   "/faculty": "Faculty",
@@ -30,16 +31,15 @@ const PAGE_LABELS: Record<string, string> = {
   "/notifications": "Notifications",
   "/profile": "Profile and Security",
   "/department": "Department Profile",
-  "/admin/review-center": "Registrar Review Center",
+  "/admin/review-center": "Submission Monitoring",
   "/admin/users": "User Management",
   "/admin/users/archived": "Archived Records",
   "/admin/audit-logs": "Audit Logs",
   "/admin/settings": "System Settings",
   "/student": "Student Dashboard",
-  "/student/schedule": "My Schedule",
+  "/student/schedule": "My Timetable",
   "/student/subjects": "Subjects",
   "/student/calendar": "Calendar of Activities",
-  "/student/notifications": "Notifications",
   "/student/profile": "Profile",
 };
 
@@ -52,6 +52,7 @@ const QUEUE_LABELS: Record<string, string> = {
   workload: "Workload Fixes",
   "change-requests": "Change Requests",
   "class-schedules": "Class Schedules",
+  "subject-assignments": "Subject Assignment Approvals",
 };
 
 const LEVEL_LABELS: Record<string, string> = {
@@ -62,12 +63,12 @@ const LEVEL_LABELS: Record<string, string> = {
   COLLEGE: "College",
 };
 
-const CONTEXTUAL = new Set(["/scheduler", "/examinations", "/calendar", "/calendar/proposals", "/requests", "/adjustments", "/workload", "/analytics", "/reports"]);
+const CONTEXTUAL = new Set(["/scheduler", "/examinations", "/calendar", "/calendar/proposals", "/requests", "/adjustments", "/suspensions", "/workload", "/analytics", "/reports"]);
 
 function parentTrail(pathname: string): BreadcrumbItem[] {
   if (pathname === "/calendar/proposals") return [{ label: PAGE_LABELS["/calendar"], href: "/calendar" }];
   if (pathname === "/admin/users/archived") return [{ label: PAGE_LABELS["/admin/users"], href: "/admin/users" }];
-  if (/^\/academic-years\/[^/]+$/.test(pathname)) return [{ label: PAGE_LABELS["/academic-years"], href: "/academic-years" }];
+  if (/^\/academic-years\/[^/]+$/.test(pathname)) return [{ label: PAGE_LABELS["/programs"], href: "/programs#academic-calendar" }];
   if (/^\/programs\/[^/]+$/.test(pathname)) return [{ label: PAGE_LABELS["/programs"], href: "/programs" }];
   if (/^\/rooms\/[^/]+$/.test(pathname)) return [{ label: PAGE_LABELS["/rooms"], href: "/rooms" }];
   if (/^\/admin\/review-center\/timetables\/[^/]+$/.test(pathname)) return [{ label: PAGE_LABELS["/admin/review-center"], href: "/admin/review-center" }];
@@ -84,7 +85,7 @@ function pageLabel(pathname: string) {
 }
 
 /** Builds a role-safe trail from the current URL. Department context comes from the authenticated user unless the viewer is a Registrar. */
-export function buildBreadcrumbs(pathname: string, query: URLSearchParams, role: AppRole, ownDepartmentName?: string | null): BreadcrumbItem[] {
+export function buildBreadcrumbs(pathname: string, query: URLSearchParams, role: AppRole, ownDepartmentName?: string | null, departmentNames: Record<string, string> = {}): BreadcrumbItem[] {
   const homeHref = role === "STUDENT" ? "/student" : "/dashboard";
   const homeLabel = role === "STUDENT" ? "Student Dashboard" : "Dashboard";
   if (pathname === homeHref) return [{ label: homeLabel, home: true }];
@@ -94,7 +95,7 @@ export function buildBreadcrumbs(pathname: string, query: URLSearchParams, role:
   const context: BreadcrumbItem[] = [];
   const level = query.get("level");
   if (level && LEVEL_LABELS[level]) context.push({ label: LEVEL_LABELS[level], href: `${pathname}?level=${encodeURIComponent(level)}` });
-  const department = (role === "SUPER_ADMINISTRATOR" || role === "REGISTRAR") ? query.get("department") : ownDepartmentName;
+  const department = (role === "SUPER_ADMINISTRATOR" || role === "REGISTRAR") ? departmentNames[query.get("department") ?? ""] : ownDepartmentName;
   if (department && CONTEXTUAL.has(pathname)) context.push({ label: department, href: pathname });
 
   if (pathname === "/admin/review-center" && query.get("queue")) {

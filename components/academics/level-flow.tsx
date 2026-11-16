@@ -12,6 +12,7 @@ interface Countable {
   programId: string | null;
   yearLevel: string | null;
   gradeLevel: string | null;
+  sharedPrograms?: { id: string }[];
 }
 
 /**
@@ -28,6 +29,7 @@ export function LevelFlow({
   programs,
   allowGeneral = false,
   allowAnyYear = false,
+  queryParams,
 }: {
   basePath: string;
   rootLabel: string;
@@ -37,21 +39,32 @@ export function LevelFlow({
   programs: { id: string; code: string; name: string; level: string }[];
   allowGeneral?: boolean;
   allowAnyYear?: boolean;
+  queryParams?: Record<string, string>;
 }) {
   const program = programs.find((p) => p.id === flow.programId);
-  const crumbs = [{ label: rootLabel, href: basePath }];
-  if (flow.level) crumbs.push({ label: LEVELS[flow.level].label, href: flowHref(basePath, { level: flow.level }) });
+  const href = (state: Partial<Flow>) => {
+    const url = flowHref(basePath, state);
+    const [path, query] = url.split("?");
+    const params = new URLSearchParams(query);
+    Object.entries(queryParams ?? {}).forEach(([key, value]) => params.set(key, value));
+    return params.size ? `${path}?${params}` : path;
+  };
+  const crumbs = [{ label: rootLabel, href: href({}) }];
+  if (flow.level) crumbs.push({ label: LEVELS[flow.level].label, href: href({ level: flow.level }) });
   if (flow.level === "COLLEGE" && flow.programId) {
     crumbs.push({
       label: flow.programId === GENERAL ? "General Education" : (program?.code ?? "Course"),
-      href: flowHref(basePath, { level: flow.level, programId: flow.programId }),
+      href: href({ level: flow.level, programId: flow.programId }),
     });
   }
   if (flow.year) crumbs.push({ label: flow.year === ANY_YEAR ? "Any year" : yearLabel(flow.year), href: "" });
   if (flow.grade) crumbs.push({ label: gradeLabel(flow.grade), href: "" });
 
   const count = (pred: (r: Countable) => boolean) => rows.filter(pred).length;
-  const badge = (n: number) => <Badge variant="secondary">{n} {noun}</Badge>;
+  const badge = (n: number) => <Badge variant="secondary">{n} {n === 1 && noun.endsWith("s") ? noun.slice(0, -1) : noun}</Badge>;
+  const inProgram = (row: Countable, id: string) => row.level === "COLLEGE" && (
+    row.programId === id || row.sharedPrograms?.some((program) => program.id === id) || (!row.programId && row.sharedPrograms?.length === 0)
+  );
 
   let step: React.ReactNode = null;
   if (!flow.level) {
@@ -60,7 +73,7 @@ export function LevelFlow({
         {ACADEMIC_LEVELS.map((l) => (
           <SelectCard
             key={l}
-            href={flowHref(basePath, { level: l })}
+            href={href({ level: l })}
             icon={LEVEL_ICONS[l]}
             accent={LEVEL_ACCENTS[l]}
             title={LEVELS[l].label}
@@ -76,45 +89,45 @@ export function LevelFlow({
       <CardGrid label="Course">
         {allowGeneral && (
           <SelectCard
-            href={flowHref(basePath, { level: "COLLEGE", programId: GENERAL })}
+            href={href({ level: "COLLEGE", programId: GENERAL })}
             icon={Books}
             title="General Education"
-            subtitle="Subjects shared by every course"
+            subtitle="General Education and shared subject catalog"
             meta={badge(count((r) => r.level === "COLLEGE" && !r.programId))}
           />
         )}
         {college.map((p) => (
           <SelectCard
             key={p.id}
-            href={flowHref(basePath, { level: "COLLEGE", programId: p.id })}
+            href={href({ level: "COLLEGE", programId: p.id })}
             icon={Stack}
             title={p.code}
             subtitle={p.name}
-            meta={badge(count((r) => r.programId === p.id))}
+            meta={badge(count((r) => inProgram(r, p.id)))}
           />
         ))}
       </CardGrid>
     );
   } else if (flow.level === "COLLEGE" && !flow.year) {
-    const inProgram = (r: Countable) => r.level === "COLLEGE" && (flow.programId === GENERAL ? !r.programId : r.programId === flow.programId);
+    const inSelectedProgram = (r: Countable) => r.level === "COLLEGE" && (flow.programId === GENERAL ? !r.programId : inProgram(r, flow.programId!));
     step = (
       <CardGrid label="Year level" className="xl:grid-cols-4">
         {YEAR_LEVELS.slice(0, 4).map((y) => (
           <SelectCard
             key={y}
-            href={flowHref(basePath, { ...flow, year: y })}
+            href={href({ ...flow, year: y })}
             icon={CalendarCheck}
             title={yearLabel(y)}
-            meta={badge(count((r) => inProgram(r) && r.yearLevel === y))}
+            meta={badge(count((r) => inSelectedProgram(r) && r.yearLevel === y))}
           />
         ))}
         {allowAnyYear && (
           <SelectCard
-            href={flowHref(basePath, { ...flow, year: ANY_YEAR })}
+            href={href({ ...flow, year: ANY_YEAR })}
             icon={CalendarCheck}
             title="Any year"
             subtitle="Offered regardless of year level"
-            meta={badge(count((r) => inProgram(r) && !r.yearLevel))}
+            meta={badge(count((r) => inSelectedProgram(r) && !r.yearLevel))}
           />
         )}
       </CardGrid>
@@ -126,7 +139,7 @@ export function LevelFlow({
         {LEVELS[level].grades.map((g) => (
           <SelectCard
             key={g}
-            href={flowHref(basePath, { level, grade: g })}
+            href={href({ level, grade: g })}
             icon={LEVEL_ICONS[level]}
             accent={LEVEL_ACCENTS[level]}
             title={gradeLabel(g)}

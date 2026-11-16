@@ -12,6 +12,7 @@ import { logBlocked } from "@/lib/permissions/department";
 import { activeClassesOf, setArchived } from "@/lib/archive/archive";
 import { ARCHIVE_KINDS, type ArchiveKind } from "@/lib/archive/kinds";
 import { queueWorkloadCheck, runWorkloadCheck } from "@/lib/workload/auto";
+import { DepartmentHeadConflictError } from "@/lib/departments/heads";
 
 export type ArchiveResult =
   | { ok: true; message: string }
@@ -26,7 +27,7 @@ const schema = z.object({
   confirmed: z.boolean().default(false),
 });
 
-const PATHS = ["/admin/users", "/admin/users/archived", "/faculty", "/subjects", "/rooms", "/sections", "/workload"];
+const PATHS = ["/admin/users", "/admin/users/archived", "/admin/departments", "/faculty", "/subjects", "/rooms", "/sections", "/workload"];
 
 /** Owning department of the record, for the Head of Department check. */
 async function departmentOf(kind: ArchiveKind, id: string) {
@@ -97,7 +98,13 @@ export async function restoreRecordAction(kind: ArchiveKind, id: string): Promis
     await logBlocked(scope, `restore a ${kind.toLowerCase()} record`, kind, id);
     return { ok: false, error: REFUSED[kind] ?? OUTSIDE_DEPARTMENT };
   }
-  const name = await setArchived(kind, id, scope.userId, false);
+  let name: string;
+  try {
+    name = await setArchived(kind, id, scope.userId, false);
+  } catch (error) {
+    if (error instanceof DepartmentHeadConflictError) return { ok: false, error: error.message };
+    throw error;
+  }
   PATHS.forEach((p) => revalidatePath(p));
   queueWorkloadCheck(`${name} was restored`, scope.userId);
   return { ok: true, message: `${name} was restored.` };

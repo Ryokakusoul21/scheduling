@@ -4,6 +4,8 @@
  * This file deliberately has no server-only or Prisma dependency so the exact
  * same decisions can be used by route handlers, server actions, and React.
  */
+import { submittedTimetableFilter } from "@/lib/scheduler/visibility";
+
 export const POLICY_ACTIONS = [
   "view", "create", "edit", "archive", "restore", "reorder", "bulkImport",
   "autoGenerate", "autoSchedule", "submit", "approve", "reject",
@@ -14,8 +16,10 @@ export type PolicyAction = (typeof POLICY_ACTIONS)[number];
 
 export const POLICY_RESOURCES = [
   "user", "faculty", "department", "program", "subject", "section",
-  "schedule", "examination", "activityProposal", "room", "roomBooking",
+  "schedule", "examination", "activityProposal", "subjectAssignmentProposal", "room", "roomBooking",
   "scheduleRequest", "scheduleAdjustment", "workloadFix", "analytics",
+  /** Class suspensions: Registrar school-wide, Head of Department own department only, never Super Administrator. */
+  "classSuspension",
   "report", "archive", "auditLog", "settings",
   /** The program and strand records themselves (create, edit, delete, reorder); `program` is the department-level stand-in used by canManageDepartment. */
   "programCatalog",
@@ -53,7 +57,7 @@ export interface PolicyResource {
 
 const DEPARTMENT_MANAGED = new Set<PolicyResourceType>([
   "program", "subject", "section", "schedule", "examination",
-  "activityProposal", "scheduleAdjustment", "workloadFix",
+  "activityProposal", "subjectAssignmentProposal", "scheduleAdjustment", "workloadFix", "classSuspension",
 ]);
 const DEPARTMENT_READABLE = new Set<PolicyResourceType>([
   ...DEPARTMENT_MANAGED, "programCatalog", "department", "faculty", "room", "roomBooking", "scheduleRequest",
@@ -76,7 +80,7 @@ export function policyDepartmentIds(user: PolicyUser): string[] {
   ].filter(Boolean))];
 }
 
-const PROGRAM_SCOPED = new Set<PolicyResourceType>(["program", "programCatalog", "section", "subject", "schedule", "examination", "scheduleAdjustment"]);
+const PROGRAM_SCOPED = new Set<PolicyResourceType>(["program", "programCatalog", "section", "subject", "subjectAssignmentProposal", "schedule", "examination", "scheduleAdjustment", "classSuspension"]);
 
 /** Head of Department program restriction: records without a program are outside a restricted scope. */
 function inProgramScope(user: PolicyUser, resource: PolicyResource) {
@@ -114,13 +118,17 @@ function ownsDepartment(user: PolicyUser, resource: PolicyResource) {
 export function can(user: PolicyUser | null | undefined, action: PolicyAction, resource: PolicyResource): boolean {
   if (!isActivePolicyUser(user)) return false;
   if (user.role === "SUPER_ADMINISTRATOR" && resource.type === "roomBooking") return false;
+  if (user.role === "REGISTRAR" && resource.type === "roomBooking") {
+    if (action === "view" || action === "export") return true;
+    return ["create", "submit", "edit", "archive"].includes(action) && !!user.id && resource.ownerUserId === user.id;
+  }
   if (["SUPER_ADMINISTRATOR", "REGISTRAR"].includes(user.role)) {
     if (["scheduleRequest", "workloadFix"].includes(resource.type)) return false;
     if (resource.type === "roomBooking" || resource.type === "activityProposal") return action === "view" || action === "export";
   }
   if (user.role === "SUPER_ADMINISTRATOR") {
     // System ownership grants broad access, but schedule records stay under academic authority.
-    if (["schedule", "examination", "scheduleAdjustment", "scheduleRequest", "workloadFix", "activityProposal"].includes(resource.type)) {
+    if (["schedule", "examination", "scheduleAdjustment", "scheduleRequest", "workloadFix", "activityProposal", "classSuspension"].includes(resource.type)) {
       return action === "view" || action === "export";
     }
     return true;
@@ -131,6 +139,12 @@ export function can(user: PolicyUser | null | undefined, action: PolicyAction, r
   if (user.role === "HEAD_OF_DEPARTMENT") {
     // Room records stay administrative; heads can inspect and export visible rooms.
     if (resource.type === "room") return ["view", "export"].includes(action) && (ownsDepartment(user, resource) || resource.shared === true || resource.departmentId === null);
+    if (resource.type === "subjectAssignmentProposal") {
+      if (action === "approve" || action === "reject") return ownsDepartment(user, resource) && resource.ownerUserId !== user.id;
+      if (action === "view") return ownsDepartment(user, resource) || resource.ownerUserId === user.id;
+      if (action === "submit") return ownsDepartment(user, resource) && inProgramScope(user, resource);
+      return false;
+    }
     // Shared resources expose basic availability/details only, never mutations.
     if (action === "view" && resource.shared && ["subject", "room", "faculty"].includes(resource.type)) return true;
     if (action === "requestChange" && ["subject", "room", "faculty", "schedule"].includes(resource.type)) return ownsDepartment(user, resource) || !!resource.shared;
@@ -166,7 +180,11 @@ export function scopeQuery(user: PolicyUser | null | undefined, type: PolicyReso
   if (!isActivePolicyUser(user)) return { id: { equals: "__denied__" } };
   if (user.role === "SUPER_ADMINISTRATOR" && type === "roomBooking") return { id: { equals: "__denied__" } };
   if (["SUPER_ADMINISTRATOR", "REGISTRAR"].includes(user.role) && ["scheduleRequest", "workloadFix"].includes(type)) return { id: { equals: "__denied__" } };
-  if (user.role === "SUPER_ADMINISTRATOR" || user.role === "REGISTRAR") return {};
+  if (user.role === "SUPER_ADMINISTRATOR" || user.role === "REGISTRAR") {
+    if (type === "schedule" || type === "examination") return submittedTimetableFilter(user.role);
+    if (type === "scheduleAdjustment") return { schedule: submittedTimetableFilter(user.role) };
+    return {};
+  }
   const departments = policyDepartmentIds(user);
   if (user.role === "HEAD_OF_DEPARTMENT") {
     if (!departments.length) return { id: { equals: "__denied__" } };
@@ -174,6 +192,7 @@ export function scopeQuery(user: PolicyUser | null | undefined, type: PolicyReso
     const restricted = programs.length > 0;
     switch (type) {
       case "department": return { id: { in: departments } };
+      case "subjectAssignmentProposal": return { reviewDepartmentId: { in: departments } };
       case "program": return restricted ? { departmentId: { in: departments }, id: { in: programs } } : { departmentId: { in: departments } };
       case "section": return restricted ? { departmentId: { in: departments }, programId: { in: programs } } : { departmentId: { in: departments } };
       case "faculty": case "activityProposal": case "auditLog":
@@ -188,11 +207,13 @@ export function scopeQuery(user: PolicyUser | null | undefined, type: PolicyReso
       case "scheduleRequest": return { OR: [{ departmentId: { in: departments } }, { targetDepartmentId: { in: departments } }] };
       case "scheduleAdjustment": return { schedule: { section: restricted ? { departmentId: { in: departments }, programId: { in: programs } } : { departmentId: { in: departments } } } };
       case "workloadFix": return { departmentId: { in: departments } };
+      case "classSuspension": return { departmentId: { in: departments } };
       default: return { id: { equals: "__denied__" } };
     }
   }
   if (user.role === "FACULTY") {
     if (type === "faculty") return { id: user.facultyId ?? "__denied__" };
+    if (type === "room") return { OR: [{ departmentId: { in: departments } }, { departmentId: null }] };
     if (type === "schedule") return { facultyId: user.facultyId ?? "__denied__" };
     if (type === "roomBooking") return { bookedById: user.id ?? "__denied__" };
     if (type === "scheduleRequest") return { requestedById: user.id ?? "__denied__" };

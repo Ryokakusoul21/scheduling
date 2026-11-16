@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/session";
-import { STAFF_ROLES } from "@/lib/permissions/roles";
+import { ADMIN_ROLES } from "@/lib/permissions/roles";
 import { ACADEMIC_LEVELS, LEVELS, isAcademicLevel, termLabel } from "@/lib/academics/levels";
 import { CardGrid } from "@/components/ux/card-grid";
 import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
@@ -20,7 +20,7 @@ export default async function AcademicYearDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ level?: string }>;
 }) {
-  await requireRole(...STAFF_ROLES);
+  await requireRole(...ADMIN_ROLES);
   const { id } = await params;
   const { level: levelParam } = await searchParams;
   const level = isAcademicLevel(levelParam) ? levelParam : null;
