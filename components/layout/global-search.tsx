@@ -99,12 +99,12 @@ export function GlobalSearch() {
         onFocus={() => query.trim().length >= 2 && setOpen(true)}
         placeholder="Search subject, faculty, room, section…"
         aria-keyshortcuts="/"
-        className="h-10 w-full rounded-xl border border-transparent bg-muted/70 pl-10 pr-9 text-sm text-foreground outline-none ring-1 ring-inset ring-black/[0.04] transition-all placeholder:text-muted-foreground/70 hover:bg-muted focus-visible:border-primary/30 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 dark:ring-white/[0.04]"
+        className="h-11 w-full rounded-xl border border-transparent bg-muted/70 pl-10 pr-3 text-base text-foreground outline-none ring-1 ring-inset ring-black/[0.04] transition-all placeholder:text-muted-foreground/70 hover:bg-muted focus-visible:border-primary/30 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 md:h-10 md:pr-9 md:text-sm dark:ring-white/[0.04]"
       />
       {pending ? (
         <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
       ) : (
-        !query && <Kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs" aria-hidden>/</Kbd>
+        !query && <Kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 text-xs md:inline-flex" aria-hidden>/</Kbd>
       )}
 
       {open && query.trim().length >= 2 && (

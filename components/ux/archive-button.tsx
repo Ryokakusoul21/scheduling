@@ -48,7 +48,7 @@ export function ArchiveButton({ kind, id, name, onDone, open: controlled, onOpen
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Archive {ARCHIVE_LABELS[kind].toLowerCase()} &ldquo;{name}&rdquo;?</DialogTitle>
-            <DialogDescription>{ARCHIVE_CONFIRM_TEXT}</DialogDescription>
+          <DialogDescription>{kind === "ROOM" ? "This room will be kept for historical schedules and bookings and hidden from new schedules and selections. It cannot be restored; you can create a new room using the same number." : ARCHIVE_CONFIRM_TEXT}</DialogDescription>
           </DialogHeader>
 
           {classes ? (

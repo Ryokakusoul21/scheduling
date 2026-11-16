@@ -128,6 +128,12 @@ export async function checkClass(d: ClassData, actor: { userId: string }, opts: 
   if ((!before || before.facultyId !== d.facultyId || before.sectionId !== d.sectionId) && !faculty.teachingLevels.includes(section.level)) {
     return { ok: false as const, error: "This faculty member does not teach this academic level. Update their teaching levels first." };
   }
+  // The timetable follows Subject Assignments: a class needs an assigned teacher, and only that teacher may take it.
+  if (!before || before.facultyId !== d.facultyId || before.sectionId !== d.sectionId || before.subjectId !== d.subjectId) {
+    const assigned = await prisma.subjectAssignment.findFirst({ where: { sectionId: d.sectionId, subjectId: d.subjectId, semesterId: d.semesterId, status: "ACTIVE" }, select: { facultyId: true, faculty: { select: { fullName: true } } } });
+    if (!assigned) return { ok: false as const, error: "No teacher is assigned to this subject for this section. Assign one in Subjects first." };
+    if (assigned.facultyId !== d.facultyId) return { ok: false as const, error: `This subject is assigned to ${assigned.faculty.fullName} for this section. Change the assignment in Subjects to use another teacher.` };
+  }
   const timeChanged = !before || before.sectionId !== d.sectionId || before.semesterId !== d.semesterId || before.dayOfWeek !== d.dayOfWeek || before.startMin !== d.startMin || before.endMin !== d.endMin;
   if (timeChanged) {
     const error = timetableTimeError(await getTimetableConfig(d.semesterId, section.departmentId), d);

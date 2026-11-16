@@ -70,15 +70,15 @@ export function Topbar({
       {student ? (
         <div className="min-w-0"><p className="text-sm font-semibold">Student workspace</p><p className="hidden text-xs text-muted-foreground sm:block">Granby Colleges of Science and Technology</p></div>
       ) : (
-        <div className="order-3 w-full md:order-none md:max-w-md md:flex-1">
+        <div className="min-w-0 flex-1 md:max-w-md">
           <GlobalSearch />
         </div>
       )}
 
-      <div className="ml-auto flex items-center gap-1.5">
+      <div className="ml-auto flex shrink-0 items-center gap-1.5 max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11">
         {!student && <Tooltip>
           <TooltipTrigger
-            render={<Button variant="ghost" size="icon" className="hidden size-9 sm:inline-flex" aria-label="Keyboard shortcuts" aria-keyshortcuts="?" onClick={openHelp} />}
+            render={<Button variant="ghost" size="icon" className="hidden size-9 md:inline-flex" aria-label="Keyboard shortcuts" aria-keyshortcuts="?" onClick={openHelp} />}
           >
             <Keyboard className="size-5" />
           </TooltipTrigger>

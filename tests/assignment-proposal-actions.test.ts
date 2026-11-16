@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 const sync = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/subjects/hand-over", () => ({ handOverClasses: async () => [], unscheduleUnassigned: async () => 0 }));
 vi.mock("@/lib/subjects/assignment-curriculum", () => ({ syncAssignedCurriculum: sync, AssignmentCurriculumError: class extends Error {} }));
 
 const m = vi.hoisted(() => ({

@@ -22,6 +22,13 @@ export type ConstraintKind =
   | "ROOM_PRIORITY";
 
 const DAY = z.enum(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]);
+
+/** Days a part-time faculty member attends; older rules that stored days off mean every other day. */
+export function availableDaysOf(p: Record<string, unknown>): DayOfWeek[] {
+  if (Array.isArray(p.availableDays)) return p.availableDays as DayOfWeek[];
+  const off = Array.isArray(p.daysOff) ? (p.daysOff as string[]) : [];
+  return DAY.options.filter((d) => d !== "SUNDAY" && !off.includes(d));
+}
 const MINUTE = z.number().int().min(0).max(24 * 60);
 const APPLIES_TO = z.enum(["FACULTY", "SECTION"]);
 const empty = z.object({});
@@ -37,8 +44,11 @@ export const PARAM_SCHEMAS = {
     maxDailyHours: z.number().positive().max(24),
     maxWeeklyHours: z.number().positive().max(168),
   }),
-  PREFERRED_TIME: z
-    .object({ facultyId: z.string().min(1, "Choose a faculty member"), startMin: MINUTE, endMin: MINUTE, daysOff: z.array(DAY) })
+  // Older rules stored days off; they are read as every other day being available.
+  PREFERRED_TIME: z.preprocess(
+    (v) => (v && typeof v === "object" && !("availableDays" in v) && "daysOff" in v ? { ...v, availableDays: DAY.options.filter((d) => d !== "SUNDAY" && !(v.daysOff as string[]).includes(d)) } : v),
+    z.object({ facultyId: z.string().min(1, "Choose a faculty member"), startMin: MINUTE, endMin: MINUTE, availableDays: z.array(DAY).min(1, "Choose at least one day they attend") }).strip(),
+  )
     .refine((p) => p.endMin > p.startMin, { message: "The preferred end time must be after the start time", path: ["endMin"] }),
   MAX_CONSECUTIVE: z.object({ maxConsecutive: z.number().int().min(1).max(12), appliesTo: APPLIES_TO }),
   LUNCH_BREAK: z
@@ -58,7 +68,7 @@ export const CONSTRAINT_INFO: Record<ConstraintKind, { label: string; hard: bool
   ROOM_CAPACITY: { label: "Room capacity fits the section", hard: true, description: "The room has at least as many seats as the section has students." },
   ROOM_DESIGNATION: { label: "Room matches department", hard: true, description: "A section only uses rooms designated for its department, or General / Shared rooms." },
   MAX_TEACHING_LOAD: { label: "Maximum teaching load", hard: true, description: "A faculty member does not teach more than the daily and weekly hour limits." },
-  PREFERRED_TIME: { label: "Faculty preferred time and days off", hard: false, description: "Classes of the faculty member fall inside the preferred hours and avoid the days off." },
+  PREFERRED_TIME: { label: "Part-time faculty available days and hours", hard: false, description: "Classes of the part-time faculty member fall on their available days, inside their hours." },
   MAX_CONSECUTIVE: { label: "Maximum consecutive classes", hard: false, description: "No more than the set number of back-to-back classes." },
   LUNCH_BREAK: { label: "Lunch break protection", hard: false, description: "No class overlaps the lunch break." },
   SUBJECT_TIME_OF_DAY: { label: "Subject preferred time of day", hard: false, description: "The subject is taught in the morning or in the afternoon." },
@@ -200,7 +210,7 @@ function evaluate(rule: ConstraintRule, e: Entry, sameDay: Entry[], weeklyMinute
     case "PREFERRED_TIME": {
       if (e.facultyId !== p.facultyId) return [];
       const name = ctx.faculty.get(e.facultyId)?.name ?? "The faculty member";
-      if ((p.daysOff as DayOfWeek[]).includes(e.dayOfWeek)) return [`${me} falls on ${day}, a preferred day off of ${name}.`];
+      if (!availableDaysOf(p).includes(e.dayOfWeek)) return [`${me} falls on ${day}, not an available day of ${name}.`];
       if (e.startMin < p.startMin || e.endMin > p.endMin) return [`${me} is outside the preferred hours of ${name} (${clock(p.startMin)} to ${clock(p.endMin)}).`];
       return [];
     }

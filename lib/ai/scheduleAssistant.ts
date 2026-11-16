@@ -3,6 +3,7 @@ import { FinishReason, ThinkingLevel, type Content, type Part } from "@google/ge
 import { getGeminiClient, SCHEDULING_MODEL } from "./geminiClient";
 import type { Scope } from "@/lib/permissions/scope";
 import { createAssistantData } from "./assistant-data";
+import { fallbackReply } from "./assistant-fallback";
 import { assistantPage, type AssistantReply } from "./assistant-contract";
 
 export const ASSISTANT_MODEL = process.env.GEMINI_ASSISTANT_MODEL ?? SCHEDULING_MODEL;
@@ -41,12 +42,26 @@ Use the read-only tools to fetch current data relevant to each question. Do not 
 If a tool fails, explain that the live information could not be retrieved; never imply that failure means there are no records.`;
 }
 
-/** A bounded read-only tool loop replaces the former full-school prompt snapshot. */
+/** Uses Gemini when configured and reachable; otherwise answers from live data with the built-in fallback. */
 export async function generateAssistantReply(
   scope: Scope, history: AssistantTurn[], message: string, page = "/dashboard",
 ): Promise<AssistantReply> {
-  const client = getGeminiClient();
   const data = await createAssistantData(scope);
+  // A missing key or an unreachable Gemini service both fall through to the built-in answers.
+  try {
+    return await geminiReply(scope, history, message, page, data);
+  } catch (err) {
+    console.error("Gemini assistant unavailable; using built-in answers:", err);
+  }
+  const content = redactSecrets(await fallbackReply(data, message));
+  return { content, sources: [...data.sources.values()], retrievedAt: data.retrievedAt, terms: data.termNames };
+}
+
+/** A bounded read-only tool loop replaces the former full-school prompt snapshot. */
+async function geminiReply(
+  scope: Scope, history: AssistantTurn[], message: string, page: string, data: Awaited<ReturnType<typeof createAssistantData>>,
+): Promise<AssistantReply> {
+  const client = getGeminiClient();
   const contents: Content[] = [
     ...history.slice(-HISTORY_LIMIT).map((t) => ({
       role: t.role === "assistant" ? "model" : "user", parts: [{ text: t.content }],

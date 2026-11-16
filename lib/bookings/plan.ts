@@ -38,7 +38,17 @@ export function weeklyDates(start: string, until: string) {
   return dates;
 }
 
-export const rank = (p: Priority) => PRIORITIES.indexOf(p);
+/** Longest date range a single booking request can cover, in days. */
+export const MAX_RANGE_DAYS = 31;
+
+/** Every day after `start`, up to and including `until` (ISO dates). */
+export function dailyDates(start: string, until: string) {
+  const dates: string[] = [];
+  for (let t = Date.parse(`${start}T00:00:00Z`) + 86_400_000; t <= Date.parse(`${until}T00:00:00Z`); t += 86_400_000) dates.push(new Date(t).toISOString().slice(0, 10));
+  return dates;
+}
+
+export const rank =(p: Priority) => PRIORITIES.indexOf(p);
 /** Urgent and Critical bookings are overrides: they may displace classes. */
 export const isOverride = (p: Priority) => rank(p) >= rank("URGENT");
 /** A booking takes another booking's room only with strictly higher priority. */

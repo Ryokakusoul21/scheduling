@@ -4,6 +4,7 @@ import { AssignmentCurriculumError, syncAssignedCurriculum } from "@/lib/subject
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { handOverClasses } from "@/lib/subjects/hand-over";
 import { prisma } from "@/lib/db/prisma";
 import { can } from "@/lib/permissions/policy";
 import { logBlocked } from "@/lib/permissions/department";
@@ -256,6 +257,7 @@ export async function reviewAssignmentProposalAction(input: z.input<typeof decis
             assignedById: proposal.requestedById,
           },
         });
+        await handOverClasses(tx, [{ subjectId: proposal.subjectId, sectionId: proposal.sectionId, semesterId: proposal.semesterId, facultyId: proposal.facultyId }]);
         await tx.auditLog.create({
           data: {
             userId: scope.userId,

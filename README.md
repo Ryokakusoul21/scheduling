@@ -31,6 +31,12 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 ## Deploy on Vercel
 
+Before deploying a version with new database migrations, run `npx prisma migrate deploy`
+against the deployment database (`DIRECT_URL`), then deploy the application. The
+`20261117000000_persistent_avatars` migration adds persistent storage for profile
+photos; avatars are stored in PostgreSQL because Vercel's application filesystem
+is read-only. No additional storage credentials are needed.
+
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

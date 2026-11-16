@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
 import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
+import { MobileRecordTable } from "@/components/ux/mobile-record-table";
+import { RecordActions } from "@/components/ux/record-actions";
 import { ConfirmDialog, FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
 import { EmptyState } from "@/components/ux/states";
 import { useShortcut } from "@/components/ux/shortcuts";
@@ -46,6 +48,11 @@ export function ProgramsManager({ programs, departments, activeLevel }: { progra
   const editing = target && "id" in target ? (target as ProgramRow) : null;
   const level = target?.level ?? catalogLevel ?? "COLLEGE";
   const deleting = del.state?.mode === "edit" ? del.state.item : null;
+  const mobileTable = <MobileRecordTable label="Programs summary" column={activeLevel === "COLLEGE" ? "Course" : "Strand"} rows={visiblePrograms.map((program) => ({
+    id: program.id, name: program.code, href: `/programs/${program.id}`, summary: `${program.sections} sections`,
+    actions: <RecordActions label={program.code} onEdit={() => dialog.openEdit(program)} onDelete={() => del.openEdit(program)} />,
+    details: <><p className="font-medium">{program.name}</p>{program.department && <p className="text-muted-foreground">{program.department}</p>}<p>{program.subjects} subjects</p>{program.terms > 0 && <p>{program.terms} own semesters</p>}<Link href={`/programs/${program.id}`} className="inline-flex min-h-11 items-center font-medium text-primary">View {program.level === "COLLEGE" ? "course" : "strand"} <ArrowRight className="ml-1 size-4" /></Link></>,
+  }))} />;
 
   const sections: { level: ProgramRow["level"]; title: string; description: string; icon: typeof GraduationCap }[] = [
     { level: "COLLEGE", title: "College courses", description: "Each course has its own sections, subjects, and semesters.", icon: GraduationCap },
@@ -54,12 +61,12 @@ export function ProgramsManager({ programs, departments, activeLevel }: { progra
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h2 className="text-xl font-semibold tracking-tight">Academic Programs</h2><p className="mt-1 text-sm text-muted-foreground">{activeLevel === "COLLEGE" ? "Manage College courses and use the academic calendar above to configure terms." : activeLevel === "SENIOR_HIGH" ? "Manage Senior High School strands and use the academic calendar above to configure terms." : "Configure this level’s academic calendar above."}</p></div>
-        {catalogLevel && <Button onClick={() => dialog.openEdit({ level: catalogLevel })} aria-keyshortcuts="n"><Plus className="size-4" />{catalogLevel === "COLLEGE" ? "Add course" : "Add strand"}</Button>}
+      <div className="flex flex-col items-start justify-between gap-3 md:flex-row">
+        <div><h2 className="text-xl font-semibold tracking-tight">Academic Programs</h2><p className="mt-1 max-w-prose text-sm leading-relaxed text-muted-foreground">{activeLevel === "COLLEGE" ? "Manage College courses and use the academic calendar above to configure terms." : activeLevel === "SENIOR_HIGH" ? "Manage Senior High School strands and use the academic calendar above to configure terms." : "Configure this level’s academic calendar above."}</p></div>
+        {catalogLevel && <Button className="min-h-11 w-full px-4 md:min-h-0 md:w-auto" onClick={() => dialog.openEdit({ level: catalogLevel })} aria-keyshortcuts="n"><Plus className="size-4" />{catalogLevel === "COLLEGE" ? "Add course" : "Add strand"}</Button>}
       </div>
 
-      {catalogLevel && <CollectionView storageKey="programs:view" label="Programs" table={<RecordsTable label="Programs" columns={["Program", "Level", "Department", "Sections", "Subjects", "Semesters", "Actions"]} rows={visiblePrograms.map((p) => ({ id: p.id, label: p.code, cells: [<Link key="name" href={`/programs/${p.id}`} className="font-medium text-primary hover:underline">{p.code}<span className="block text-xs text-muted-foreground">{p.name}</span></Link>, p.level === "COLLEGE" ? "College" : "Senior High", p.department ?? "—", p.sections, p.subjects, p.terms, <div key="actions" className="flex gap-1.5"><ActionButton kind="edit" onClick={() => dialog.openEdit(p)}>Edit</ActionButton><ActionButton kind="delete" onClick={() => del.openEdit(p)}>Delete</ActionButton></div>] }))} />}>
+      {catalogLevel && <CollectionView storageKey="programs:view" label="Programs" mobileTable={mobileTable} table={<RecordsTable label="Programs" columns={["Program", "Level", "Department", "Sections", "Subjects", "Semesters", "Actions"]} rows={visiblePrograms.map((p) => ({ id: p.id, label: p.code, cells: [<Link key="name" href={`/programs/${p.id}`} className="font-medium text-primary hover:underline">{p.code}<span className="block text-xs text-muted-foreground">{p.name}</span></Link>, p.level === "COLLEGE" ? "College" : "Senior High", p.department ?? "—", p.sections, p.subjects, p.terms, <div key="actions" className="flex gap-1.5"><ActionButton kind="edit" onClick={() => dialog.openEdit(p)}>Edit</ActionButton><ActionButton kind="delete" onClick={() => del.openEdit(p)}>Delete</ActionButton></div>] }))} />}>
       {sections.filter((s) => s.level === activeLevel).map((s) => (
         <ProgramSection
           key={s.level}
@@ -127,39 +134,32 @@ function ProgramSection({
       {programs.length === 0 ? (
         <EmptyState title={`No ${title.toLowerCase()} yet`} action={<Button onClick={onAdd}>Add one</Button>} />
       ) : (
-        <div ref={ref} onKeyDown={onKeyDown} onFocus={onFocus} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div ref={ref} onKeyDown={onKeyDown} onFocus={onFocus} className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {programs.map((p) => (
               <div
                 key={p.id}
-                className="group relative min-w-0 rounded-xl border bg-card p-4 shadow-xs transition-shadow hover:shadow-md"
+                className="group relative min-w-0 rounded-2xl border bg-card p-4 shadow-xs transition-shadow hover:shadow-md md:rounded-xl"
               >
                 <div className="flex items-start gap-2">
                   <Link
                     href={`/programs/${p.id}`}
                     data-roving=""
                     tabIndex={-1}
-                    className="min-w-0 flex-1 rounded outline-none"
+                    className="min-w-0 flex-1 rounded outline-none after:absolute after:inset-0 after:rounded-2xl focus-visible:after:ring-2 focus-visible:after:ring-ring"
                     aria-label={`${p.code}, ${p.name}. Open to manage.`}
                   >
-                    <p className="font-semibold">{p.code}</p>
-                    <p className="line-clamp-2 text-sm text-muted-foreground">{p.name}</p>
-                    {p.department && <p className="mt-1 truncate text-xs text-muted-foreground">{p.department}</p>}
+                    <p className="text-lg font-semibold [overflow-wrap:anywhere]">{p.code}</p>
+                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{p.name}</p>
+                    {p.department && <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{p.department}</p>}
                   </Link>
-                  <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
-                    <ActionButton kind="edit" onClick={() => onEdit(p)}>
-                      Edit
-                    </ActionButton>
-                    <ActionButton kind="delete" onClick={() => onDelete(p)}>
-                      Delete
-                    </ActionButton>
-                  </div>
+                  <RecordActions label={p.code} onEdit={() => onEdit(p)} onDelete={() => onDelete(p)} />
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-1.5">
                   <Badge variant="secondary">{p.sections} sections</Badge>
                   <Badge variant="secondary">{p.subjects} subjects</Badge>
                   {p.level === "COLLEGE" && p.terms > 0 && <Badge variant="outline">{p.terms} own semesters</Badge>}
-                  <ArrowRight className="ml-auto size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
                 </div>
+                <p className="mt-4 flex min-h-11 items-center justify-between border-t pt-3 text-sm font-medium text-primary">View {p.level === "COLLEGE" ? "course" : "strand"}<ArrowRight className="size-4" aria-hidden /></p>
               </div>
           ))}
         </div>

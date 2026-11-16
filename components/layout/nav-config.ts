@@ -252,6 +252,21 @@ export function filterNavForRole(role: AppRole): NavGroup[] {
   }));
 }
 
+/** Frequent mobile destinations, resolved from the role's existing authorized menu. */
+export function mobileNavForRole(role: AppRole): NavItem[] {
+  const items = filterNavForRole(role).flatMap((group) => group.items);
+  const preferred = role === "REGISTRAR" ? ["/dashboard", "/programs", "/admin/review-center", "/calendar"]
+    : role === "HEAD_OF_DEPARTMENT" ? ["/dashboard", "/scheduler", "/assignment-approvals", "/calendar"]
+    : role === "SUPER_ADMINISTRATOR" ? ["/dashboard", "/analytics", "/admin/review-center", "/calendar"]
+    : role === "FACULTY" ? ["/dashboard", "/scheduler", "/requests", "/calendar"]
+    : ["/student", "/student/schedule", "/student/calendar", "/student/profile"];
+  const selected = preferred.flatMap((href) => {
+    const item = items.find((candidate) => candidate.href === href);
+    return item ? [item] : [];
+  });
+  return [...selected, ...items.filter((item) => !selected.some((entry) => entry.href === item.href))].slice(0, 4);
+}
+
 /** Every page a role may open from the menu, including pages reached through tabs (used by keyboard shortcuts). */
 export function allowedHrefsForRole(role: AppRole) {
   if (role === "STUDENT") return [];

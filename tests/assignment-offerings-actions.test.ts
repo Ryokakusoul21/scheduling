@@ -3,6 +3,7 @@ import type { Scope } from "@/lib/permissions/scope";
 
 const m = vi.hoisted(() => ({ scope: vi.fn(), subjects: vi.fn(), sections: vi.fn(), term: vi.fn(), existing: vi.fn(), pending: vi.fn(), proposals: vi.fn(), managers: vi.fn(), meetings: vi.fn(), pool: vi.fn(), archive: vi.fn(), create: vi.fn(), audit: vi.fn(), transaction: vi.fn() }));
 const sync = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/subjects/hand-over", () => ({ handOverClasses: async () => [], unscheduleUnassigned: async () => 0 }));
 vi.mock("@/lib/subjects/assignment-curriculum", () => ({ syncAssignedCurriculum: sync, AssignmentCurriculumError: class extends Error {} }));
 vi.mock("@/lib/permissions/scope", () => ({ requireScope: m.scope, policyUserFromScope: (s: Scope) => ({ ...s, id: s.userId }) }));
 vi.mock("@/lib/permissions/department", () => ({ logBlocked: vi.fn() }));

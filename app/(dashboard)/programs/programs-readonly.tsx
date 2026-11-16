@@ -40,7 +40,7 @@ export function ProgramsReadOnly({ programs, departments }: { programs: ProgramR
                     <Icon className="size-5 text-primary" /> {title}
                     <Badge variant="secondary">{items.length}</Badge>
                   </h3>
-                  <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 [&:has(>li:only-child)]:max-w-md">
+                  <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 [&:has(>li:only-child)]:max-w-md">
                     {items.map((p) => (
                       <li key={p.id}>
                         <Link
@@ -49,7 +49,7 @@ export function ProgramsReadOnly({ programs, departments }: { programs: ProgramR
                           className="group block h-full rounded-xl border bg-card p-4 shadow-xs outline-none transition-shadow hover:shadow-md focus-visible:ring-3 focus-visible:ring-ring/60"
                         >
                           <p className="font-semibold">{p.code}</p>
-                          <p className="line-clamp-2 text-sm text-muted-foreground">{p.name}</p>
+                          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{p.name}</p>
                           <div className="mt-3 flex flex-wrap items-center gap-1.5">
                             <Badge variant="secondary">{p.sections} sections</Badge>
                             <Badge variant="secondary">{p.subjects} subjects</Badge>

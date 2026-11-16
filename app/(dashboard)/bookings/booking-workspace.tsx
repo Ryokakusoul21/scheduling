@@ -106,7 +106,7 @@ export function BookingWorkspace({ readOnly = false, bookings, acknowledgements,
   function book(option: RoomOption, choices: Record<string, string> = {}) {
     if (!request) return;
     startTransition(async () => {
-      const res = await bookRoomAction({ ...request, roomId: option.roomId, urgentReason: request.urgentReason || null, reasonDetail: request.reasonDetail || null, repeatUntil: request.repeatUntil || null, choices });
+      const res = await bookRoomAction({ ...request, roomId: option.roomId, urgentReason: request.urgentReason || null, reasonDetail: request.reasonDetail || null, repeatUntil: request.repeatUntil || null, endDate: request.endDate || null, choices });
       setConfirm(null);
       if (!res.ok) return announce(false, res.error);
       const { bookingId: id, status, items, displaced, repeat } = res.data;

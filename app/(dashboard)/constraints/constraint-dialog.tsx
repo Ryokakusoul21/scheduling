@@ -9,7 +9,7 @@ import { Buildings, CalendarBlank, Clock, UserCircle } from "@phosphor-icons/rea
 import { StrengthBadge } from "./rule-row";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ux/native-select";
-import { CONSTRAINT_INFO, type ConstraintKind } from "@/lib/scheduler/constraints";
+import { availableDaysOf, CONSTRAINT_INFO, type ConstraintKind } from "@/lib/scheduler/constraints";
 import { DAY_LONG, WEEK_DAYS, timeOptions } from "@/lib/scheduler/timetable";
 import { cn } from "@/lib/utils";
 import { CREATE_CATEGORIES, DEFAULT_PARAMS, createCategoryOf, type ConstraintRow, type CreateCategory, type Params } from "./categories";
@@ -18,7 +18,7 @@ import { ClassPolicyFields, type PolicyOptions } from "./class-policy-fields";
 import { isClassPolicy } from "@/lib/scheduler/class-policies";
 import { previewConstraintAction, saveConstraintAction } from "./actions";
 
-type Option = { value: string; label: string };
+type Option = { value: string; label: string; partTime?: boolean };
 
 const CATEGORY_ICONS = { faculty: UserCircle, preference: Clock, schedule: CalendarBlank, rooms: Buildings } as const;
 
@@ -176,22 +176,22 @@ export function ConstraintDialog({
             )}
             {kind === "PREFERRED_TIME" && (
               <>
-                {selectField("facultyId", "Faculty member", faculty, "Choose a faculty member", (id) => {
+                {selectField("facultyId", "Part-time faculty member", faculty.filter((f) => f.partTime), "Choose a part-time faculty member", (id) => {
                   const who = faculty.find((f) => f.value === id)?.label;
-                  if (who && autoName) setName(`${who}: preferred time and days off`);
+                  if (who && autoName) setName(`${who}: available days and hours`);
                 })}
                 <div className="grid gap-4 sm:grid-cols-2">
                   {timeField("startMin", "From")}
                   {timeField("endMin", "To")}
                 </div>
                 <fieldset>
-                  <legend className="mb-2 text-sm font-medium">Days off</legend>
+                  <legend className="mb-2 text-sm font-medium">Available days</legend>
                   <div className="flex flex-wrap gap-1.5">
-                    {WEEK_DAYS.map((d) => {
-                      const off = (params.daysOff as string[]) ?? [];
-                      const on = off.includes(d);
+                    {WEEK_DAYS.filter((d) => d !== "SUNDAY").map((d) => {
+                      const days: string[] = availableDaysOf(params);
+                      const on = days.includes(d);
                       return (
-                        <button key={d} type="button" aria-pressed={on} onClick={() => set("daysOff", on ? off.filter((x) => x !== d) : [...off, d])}
+                        <button key={d} type="button" aria-pressed={on} onClick={() => set("availableDays", on ? days.filter((x) => x !== d) : [...days, d])}
                           className={cn("h-8 rounded-full border px-3 text-xs font-medium", on ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:bg-muted")}>
                           {DAY_LONG[d]}
                         </button>

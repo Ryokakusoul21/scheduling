@@ -19,7 +19,7 @@ function Seal({ size }: { size: number }) {
   );
 }
 
-/** Poster-style split layout: campus panel on the left, one quiet form card on the right. */
+/** Quiet navy backdrop on phones; full campus photo and branding on the desktop left panel. */
 export function AuthShell({ title, description, wide = false, children }: {
   title: string;
   description?: React.ReactNode;
@@ -29,13 +29,18 @@ export function AuthShell({ title, description, wide = false, children }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-svh bg-slate-50 dark:bg-background lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <aside className="relative overflow-hidden bg-brand-navy text-white max-lg:h-40 max-lg:rounded-b-3xl lg:min-h-svh">
-        <Image src="/branding/school.jpg" alt="" fill priority sizes="(min-width: 1024px) 50vw, 100vw" className="object-cover object-[center_58%] lg:object-center" />
-        <div aria-hidden className="absolute inset-0 bg-linear-to-r from-brand-navy/85 via-brand-navy/45 to-brand-navy/15 lg:bg-linear-to-b lg:from-brand-navy/70 lg:via-brand-navy/55 lg:to-brand-navy/90" />
-        <div aria-hidden className="absolute inset-0 bg-linear-to-b from-brand-navy/45 via-transparent to-brand-navy/25 lg:hidden" />
-        <div aria-hidden className="absolute inset-x-8 bottom-0 h-px bg-linear-to-r from-transparent via-brand-gold/70 to-transparent lg:hidden" />
-        <div className="relative flex h-full flex-col justify-between p-5 lg:sticky lg:top-0 lg:min-h-svh lg:p-10 xl:p-14">
+    <div className="relative isolate min-h-svh bg-brand-navy lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:bg-slate-50 dark:lg:bg-background">
+      <div aria-hidden className="fixed inset-0 -z-10 overflow-hidden bg-linear-to-b from-[#0b1730] to-[#173b63] lg:right-1/2">
+        <div className="absolute inset-x-0 bottom-0 h-[62%] overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_35%)] lg:inset-0 lg:h-full lg:[mask-image:none]">
+          {/* Crop out the embedded seal on phones; preserve the full photo on desktop. */}
+          <div className="absolute inset-x-0 bottom-0 h-[200%] lg:h-full">
+            <Image src="/branding/school.jpg" alt="" fill priority sizes="(min-width: 1024px) 50vw, 100vw" className="scale-[1.02] object-cover object-bottom blur-[2px] lg:scale-100 lg:object-center lg:blur-none" />
+          </div>
+        </div>
+        <div className="absolute inset-0 bg-linear-to-b from-[#0b1730]/95 via-[#102642]/80 to-[#173b63]/75 lg:from-brand-navy/70 lg:via-brand-navy/55 lg:to-brand-navy/90" />
+      </div>
+      <aside className="text-white">
+        <div className="flex h-full flex-col justify-between p-5 lg:sticky lg:top-0 lg:min-h-svh lg:p-10 xl:p-14">
           <div className="flex items-center gap-3">
             <Seal size={44} />
             <div>
@@ -60,7 +65,7 @@ export function AuthShell({ title, description, wide = false, children }: {
       <main id="main-content" className="flex min-w-0 flex-col px-4 py-6 sm:px-8 lg:px-10 lg:py-9 xl:px-16">
         <div className="flex justify-end"><PortalSwitch /></div>
         <div className={cn("mx-auto flex w-full flex-1 flex-col justify-center py-6", wide ? "max-w-2xl" : "max-w-[540px]")}>
-          <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[0_24px_64px_-28px_rgba(11,31,77,0.35)]">
+          <div className="overflow-hidden rounded-2xl border border-white/20 bg-card text-card-foreground shadow-[0_24px_64px_-20px_rgba(3,12,27,0.35)]">
             <div className="h-1.5 bg-linear-to-r from-brand-blue via-brand-blue to-brand-gold" />
             <div className="p-6 sm:p-12 sm:py-14">
             <header className="mb-9">
@@ -71,9 +76,9 @@ export function AuthShell({ title, description, wide = false, children }: {
             </div>
           </div>
         </div>
-        <footer className="flex justify-center gap-5 text-xs text-muted-foreground">
-          <Link href="/privacy" className="hover:text-foreground hover:underline">Privacy</Link>
-          <Link href="/terms" className="hover:text-foreground hover:underline">Terms</Link>
+        <footer className="flex justify-center gap-5 text-xs text-white/70 lg:text-muted-foreground">
+          <Link href="/privacy" className="hover:text-white hover:underline lg:hover:text-foreground">Privacy</Link>
+          <Link href="/terms" className="hover:text-white hover:underline lg:hover:text-foreground">Terms</Link>
         </footer>
       </main>
     </div>

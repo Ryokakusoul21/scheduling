@@ -54,7 +54,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             role={role}
             unreadNotifications={unread}
           />
-          <main id="main-content" tabIndex={-1} className="mb-[calc(6.5rem+env(safe-area-inset-bottom))] min-h-0 flex-1 overflow-y-auto p-3 outline-none md:mb-0 print:m-0 print:overflow-visible print:p-0 lg:[&:has([data-viewport-lock])]:overflow-hidden md:p-4">
+          <main id="main-content" tabIndex={-1} className="mb-[calc(4.5rem+env(safe-area-inset-bottom))] min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4 pb-24 outline-none dark:bg-background md:mb-0 md:bg-background md:p-4 print:m-0 print:overflow-visible print:p-0 lg:[&:has([data-viewport-lock])]:overflow-hidden">
             <div className="space-y-3 lg:has-[[data-viewport-lock]]:h-full">
               <Suspense fallback={<div className="h-5" aria-hidden />}><AppBreadcrumbs role={role} departmentName={account?.faculty?.department?.name} departmentNames={departmentNames} /></Suspense>
               <SectionTabs role={role} />

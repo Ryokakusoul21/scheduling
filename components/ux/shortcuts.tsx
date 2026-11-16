@@ -52,7 +52,6 @@ const NAV_SHORTCUTS: { keys: string; href: string; description: string }[] = [
   { keys: "g d", href: "/dashboard", description: "Go to Dashboard" },
   { keys: "g s", href: "/scheduler", description: "Go to Scheduler" },
   { keys: "g c", href: "/calendar", description: "Go to Calendar of Activities" },
-  { keys: "g x", href: "/scheduler?mode=examinations", description: "Go to Examination Schedule" },
   { keys: "g b", href: "/bookings", description: "Go to Room Booking" },
   { keys: "g y", href: "/academic-years", description: "Go to the academic calendar" },
   { keys: "g p", href: "/programs", description: "Go to Programs and Strands" },

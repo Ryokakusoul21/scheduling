@@ -8,7 +8,7 @@ import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ux/native-select";
 import { DEFAULT_GRID, formatTime, timeOptions } from "@/lib/scheduler/timetable";
-import { isOverride, MAX_REPEATS, PRIORITY_LABEL, URGENT_REASONS, weeklyDates, type Priority } from "@/lib/bookings/plan";
+import { dailyDates, isOverride, MAX_RANGE_DAYS, MAX_REPEATS, PRIORITY_LABEL, URGENT_REASONS, weeklyDates, type Priority } from "@/lib/bookings/plan";
 import { cn } from "@/lib/utils";
 import { manilaClock } from "./format";
 
@@ -25,16 +25,17 @@ export interface SearchRequest {
   reasonDetail: string;
   /** Last date of a weekly repeat; empty for a single booking. */
   repeatUntil: string;
+  /** Last day of a daily date range; empty for a single day. */
+  endDate: string;
 }
 
 type Form = {
-  purpose: string; attendees: string; date: string; startMin: string; duration: string; roomId: string;
+  purpose: string; attendees: string; date: string; endDate: string; startMin: string; endMin: string; roomId: string;
   priority: Priority; urgentReason: string; reasonDetail: string; repeat: boolean; repeatUntil: string;
 };
 type Clock = { today: string; nowMin: number };
 
-const REQUIRED: (keyof Form)[] = ["purpose", "attendees", "date", "startMin", "duration", "urgentReason", "reasonDetail", "repeatUntil"];
-const DURATIONS = [30, 60, 90, 120, 180, 240];
+const REQUIRED: (keyof Form)[] = ["purpose", "attendees", "date", "endDate", "startMin", "endMin", "urgentReason", "reasonDetail", "repeatUntil"];
 const OVERRIDE_HELP = "An urgent booking can take a room used by a class or a lower-priority booking. Displaced classes move to another room or time, and everyone affected is notified.";
 const PRIORITY_HELP: Record<Priority, string> = {
   REGULAR: "Takes a free room only.",
@@ -45,7 +46,6 @@ const PRIORITY_HELP: Record<Priority, string> = {
 
 const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const weekday = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "long" });
-const durationLabel = (m: number) => (m === 240 ? "Half day (4 hours)" : m < 60 ? `${m} minutes` : `${Math.floor(m / 60)} hour${m >= 120 ? "s" : ""}${m % 60 ? ` ${m % 60} minutes` : ""}`);
 
 /** Inline problems per field; the server checks the same rules again. */
 function validate(f: Form, clock: Clock, closeMin: number) {
@@ -58,10 +58,13 @@ function validate(f: Form, clock: Clock, closeMin: number) {
   if (!f.date) e.date = "Choose a date.";
   else if (f.date < clock.today) e.date = "The date can't be in the past.";
   else if (f.date === clock.today && Number(f.startMin) < clock.nowMin) e.startMin = "This start time has already passed.";
-  if (Number(f.startMin) + Number(f.duration) > closeMin) e.duration = `This ends after closing time (${formatTime(closeMin)}). Choose an earlier start or a shorter duration.`;
+  if (f.endDate && f.date && f.endDate < f.date) e.endDate = "The end date can't be before the start date.";
+  else if (f.endDate && f.date && dailyDates(f.date, f.endDate).length >= MAX_RANGE_DAYS) e.endDate = `A date range can cover up to ${MAX_RANGE_DAYS} days.`;
+  if (Number(f.endMin) <= Number(f.startMin)) e.endMin = "The end time must be after the start time.";
+  else if (Number(f.endMin) > closeMin) e.endMin = `This ends after closing time (${formatTime(closeMin)}).`;
   if (isOverride(f.priority) && !f.urgentReason) e.urgentReason = "Choose why this booking is urgent.";
   if (isOverride(f.priority) && f.urgentReason === "OTHER" && f.reasonDetail.trim().length < 3) e.reasonDetail = "Describe the reason.";
-  if (f.repeat && !isOverride(f.priority)) {
+  if (f.repeat && !isOverride(f.priority) && !(f.endDate && f.endDate > f.date)) {
     const count = f.repeatUntil && f.date ? weeklyDates(f.date, f.repeatUntil).length : 0;
     if (!f.repeatUntil) e.repeatUntil = "Choose the last date to repeat.";
     else if (count === 0) e.repeatUntil = "Choose a date at least one week after the first booking.";
@@ -82,15 +85,18 @@ export function SearchForm({ defaults, initial, clock: initialClock, pending, on
   roomChoices: { value: string; label: string }[];
 }) {
   const times = timeOptions({ ...DEFAULT_GRID, dayStart: hours.openMin, dayEnd: hours.closeMin }).map((t) => ({ value: String(t.value), label: t.label }));
+  // Closing time is a valid end even when the start list stops before it; never list it twice.
+  const endTimes = times.some((t) => t.value === String(hours.closeMin)) ? times.slice(1) : [...times.slice(1), { value: String(hours.closeMin), label: formatTime(hours.closeMin) }];
   const start = initial?.startMin ?? defaults.startMin;
-  const initialDuration = initial?.endMin !== undefined && initial.endMin > start ? initial.endMin - start : Math.min(60, Math.max(30, hours.closeMin - start));
+  const initialEnd = initial?.endMin !== undefined && initial.endMin > start ? initial.endMin : Math.min(start + 60, hours.closeMin);
   const [form, setForm] = useState<Form>({
     purpose: initial?.purpose ?? "",
     // Left blank on purpose: the number decides which rooms fit, so it should be entered, not assumed.
     attendees: initial?.attendees ? String(initial.attendees) : "",
     date: initial?.date ?? defaults.date,
+    endDate: initial?.endDate ?? "",
     startMin: String(start),
-    duration: String(initialDuration),
+    endMin: String(initialEnd),
     roomId: initial?.roomId ?? "",
     priority: initial?.priority && priorities.includes(initial.priority) ? initial.priority : "REGULAR",
     urgentReason: initial?.urgentReason ?? "",
@@ -105,14 +111,20 @@ export function SearchForm({ defaults, initial, clock: initialClock, pending, on
   const errors = validate(form, clock, hours.closeMin);
   const invalid = Object.keys(errors).length > 0;
   const urgent = isOverride(form.priority);
-  const endMin = Number(form.startMin) + Number(form.duration);
-  const durations = [...new Set([...DURATIONS, Number(form.duration)])].sort((a, b) => a - b).map((m) => ({ value: String(m), label: durationLabel(m) }));
+  const endMin = Number(form.endMin);
+  // A multi-day range books every day in it, so a weekly repeat is not offered alongside it.
+  const multiDay = !!form.endDate && form.endDate > form.date;
 
   function update<K extends keyof Form>(key: K, value: Form[K]) {
     setClock(manilaClock());
     setTouched((t) => ({ ...t, [key]: true }));
     // An urgent booking can displace classes, so it is never repeated automatically.
-    setForm((f) => ({ ...f, [key]: value, ...(key === "priority" && isOverride(value as Priority) ? { repeat: false } : {}) }));
+    setForm((f) => {
+      const next = { ...f, [key]: value, ...(key === "priority" && isOverride(value as Priority) ? { repeat: false } : {}) };
+      // Moving the start keeps the same length when possible.
+      if (key === "startMin") next.endMin = String(Math.min(Number(value) + Number(f.endMin) - Number(f.startMin), hours.closeMin));
+      return next;
+    });
   }
 
   function submit(e: React.FormEvent) {
@@ -122,7 +134,8 @@ export function SearchForm({ defaults, initial, clock: initialClock, pending, on
       date: form.date, startMin: Number(form.startMin), endMin, attendees: Number(form.attendees), purpose: form.purpose.trim(),
       roomId: form.roomId, priority: form.priority,
       urgentReason: urgent ? form.urgentReason : "", reasonDetail: urgent ? form.reasonDetail.trim() : "",
-      repeatUntil: form.repeat && !urgent ? form.repeatUntil : "",
+      repeatUntil: form.repeat && !urgent && !multiDay ? form.repeatUntil : "",
+      endDate: multiDay ? form.endDate : "",
     });
   }
 
@@ -130,7 +143,6 @@ export function SearchForm({ defaults, initial, clock: initialClock, pending, on
   const describe = (key: keyof Form) => ({ "aria-invalid": !!shown(key), "aria-describedby": shown(key) ? `b-${key}-error` : undefined });
   const error = (key: keyof Form) => <FieldError id={`b-${key}-error`} errors={[shown(key) ? { message: shown(key) } : undefined]} />;
   const missing = Object.values(errors);
-  const chips: [string, string][] = [["Today", clock.today], ["Tomorrow", addDays(clock.today, 1)], ["Next week", addDays(clock.today, 7)]];
 
   return (
     <form
@@ -147,34 +159,31 @@ export function SearchForm({ defaults, initial, clock: initialClock, pending, on
         {error("purpose")}
       </Field>
 
-      <Field data-invalid={!!shown("attendees")}>
+      <Field data-invalid={!!shown("attendees")} className="col-span-2">
         <FieldLabel htmlFor="b-attendees">Attendees <span className="text-danger" aria-hidden>*</span></FieldLabel>
         <Input id="b-attendees" type="number" min={1} required inputMode="numeric" placeholder="For example 30" value={form.attendees} onChange={(e) => update("attendees", e.target.value)} className="h-10" {...describe("attendees")} />
         {error("attendees")}
       </Field>
       <Field data-invalid={!!shown("date")}>
-        <FieldLabel htmlFor="b-date">Date</FieldLabel>
+        <FieldLabel htmlFor="b-date">From date</FieldLabel>
         <Input id="b-date" type="date" min={clock.today} value={form.date} onChange={(e) => update("date", e.target.value)} className="h-10" {...describe("date")} />
         {error("date")}
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Quick dates">
-          {chips.map(([label, value]) => (
-            <button key={label} type="button" aria-pressed={form.date === value} onClick={() => update("date", value)}
-              className="h-7 rounded-full border border-primary/30 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/10 aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground">
-              {label}
-            </button>
-          ))}
-        </div>
+      </Field>
+      <Field data-invalid={!!shown("endDate")}>
+        <FieldLabel htmlFor="b-endDate">To date</FieldLabel>
+        <Input id="b-endDate" type="date" min={form.date || clock.today} value={form.endDate} onChange={(e) => update("endDate", e.target.value)} className="h-10" {...describe("endDate")} />
+        {error("endDate")}
       </Field>
 
       <Field data-invalid={!!shown("startMin")}>
-        <FieldLabel htmlFor="b-startMin">Start</FieldLabel>
-        <NativeSelect id="b-startMin" value={form.startMin} onChange={(e) => update("startMin", e.target.value)} options={times} className="h-10" {...describe("startMin")} />
+        <FieldLabel htmlFor="b-startMin">From time</FieldLabel>
+        <NativeSelect id="b-startMin" value={form.startMin} onChange={(e) => update("startMin", e.target.value)} options={times.filter((t) => Number(t.value) < hours.closeMin)} className="h-10" {...describe("startMin")} />
         {error("startMin")}
       </Field>
-      <Field data-invalid={!!shown("duration")}>
-        <FieldLabel htmlFor="b-duration">Duration</FieldLabel>
-        <NativeSelect id="b-duration" value={form.duration} onChange={(e) => update("duration", e.target.value)} options={durations} className="h-10" {...describe("duration")} />
-        {shown("duration") ? error("duration") : <FieldDescription>Ends {formatTime(endMin)}</FieldDescription>}
+      <Field data-invalid={!!shown("endMin")}>
+        <FieldLabel htmlFor="b-endMin">To time</FieldLabel>
+        <NativeSelect id="b-endMin" value={form.endMin} onChange={(e) => update("endMin", e.target.value)} options={endTimes.filter((t) => Number(t.value) > Number(form.startMin))} className="h-10" {...describe("endMin")} />
+        {error("endMin")}
       </Field>
 
       <Field className="col-span-2">
@@ -214,7 +223,7 @@ export function SearchForm({ defaults, initial, clock: initialClock, pending, on
         </div>
       )}
 
-      {!urgent && (
+      {!urgent && !multiDay && (
         <div className="col-span-2 space-y-2">
           <label className="flex w-fit cursor-pointer items-center gap-2.5 text-sm font-medium select-none">
             <Checkbox checked={form.repeat} onCheckedChange={(on) => update("repeat", !!on)} />

@@ -63,7 +63,8 @@ export async function replaceRoomCatalog(db: PrismaClient, capacities: Record<st
       tx.floor.findMany(),
       tx.room.findMany({ include: { availability: true, programs: { select: { id: true } } } }),
     ]);
-    const duplicates = rooms.filter((room, index) => rooms.findIndex((other) => normalize(other.roomNumber) === normalize(room.roomNumber)) !== index);
+    const activeRooms = rooms.filter((room) => room.archivedAt === null);
+    const duplicates = activeRooms.filter((room, index) => activeRooms.findIndex((other) => normalize(other.roomNumber) === normalize(room.roomNumber)) !== index);
     if (duplicates.length) throw new Error("Resolve duplicate room numbers before importing.");
     const directory = resolve("uploads/room-backups");
     await mkdir(directory, { recursive: true });
@@ -89,15 +90,14 @@ export async function replaceRoomCatalog(db: PrismaClient, capacities: Record<st
         floorIds.set(number, floor.id);
       }
       for (const [index, room] of source.rooms.entries()) {
-        const existingRoom = rooms.find((row) => normalize(row.roomNumber) === room.number);
+        const existingRoom = activeRooms.find((row) => normalize(row.roomNumber) === room.number);
         const capacity = capacities[room.number];
         const data = { roomNumber: room.number, roomName: suppliedRoomName(room), floorId: floorIds.get(room.floor)!, roomType: room.type,
           capacity, departmentId: room.owner ? departments[room.owner] : null,
           isGeneralShared: !room.owner || departments[room.owner] === null, sortOrder: index,
-          archivedAt: null, archivedById: null, archiveReason: null,
         };
         const saved = existingRoom
-          ? await tx.room.update({ where: { id: existingRoom.id }, data: { ...data, status: capacity === 0 ? "UNAVAILABLE" : existingRoom.status } })
+          ? await tx.room.update({ where: { id: existingRoom.id, archivedAt: null }, data: { ...data, status: capacity === 0 ? "UNAVAILABLE" : existingRoom.status } })
           : await tx.room.create({ data: { ...data, equipment: [], status: capacity === 0 ? "UNAVAILABLE" : "AVAILABLE" } });
         importedIds.push(saved.id);
       }

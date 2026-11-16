@@ -70,6 +70,8 @@ describe("soft constraints", () => {
 
   it("checks preferred hours, days off, subject time of day, and gaps", () => {
     expect(checkEntry(entry("a", { dayOfWeek: "FRIDAY" }), [], [rule("PREFERRED_TIME", { facultyId: "f1", startMin: 420, endMin: 1020, daysOff: ["FRIDAY"] })], ctx)).toHaveLength(1);
+    expect(checkEntry(entry("a", { dayOfWeek: "FRIDAY" }), [], [rule("PREFERRED_TIME", { facultyId: "f1", startMin: 420, endMin: 1020, availableDays: ["MONDAY", "FRIDAY"] })], ctx)).toHaveLength(0);
+    expect(checkEntry(entry("a", { dayOfWeek: "TUESDAY" }), [], [rule("PREFERRED_TIME", { facultyId: "f1", startMin: 420, endMin: 1020, availableDays: ["MONDAY", "FRIDAY"] })], ctx)).toHaveLength(1);
     expect(checkEntry(entry("a", { startMin: 780, endMin: 840 }), [], [rule("SUBJECT_TIME_OF_DAY", { subjectId: "math", period: "MORNING" })], ctx)).toHaveLength(1);
     expect(checkEntry(entry("a"), [entry("b", { sectionId: "secA", facultyId: "x", startMin: 545, endMin: 600 })], [rule("MINIMUM_GAP", { minutes: 15, appliesTo: "SECTION" })], ctx)).toHaveLength(1);
   });

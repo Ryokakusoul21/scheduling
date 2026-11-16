@@ -31,6 +31,7 @@ export async function activeClassesOf(kind: ArchiveKind, id: string) {
  * record move together, so an archived person can neither sign in nor be scheduled.
  */
 export async function setArchived(kind: ArchiveKind, id: string, actorId: string, archive: boolean, reason?: string | null) {
+  if (kind === "ROOM" && !archive) throw new Error("Archived rooms are kept for history and cannot be restored. Create a new room instead.");
   const data = archive
     ? { archivedAt: new Date(), archivedById: actorId, archiveReason: reason?.trim() || null }
     : { archivedAt: null, archivedById: null, archiveReason: null };

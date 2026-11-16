@@ -1,4 +1,3 @@
-import { roomLabel } from "@/lib/rooms/label";
 import { availableDays } from "@/lib/faculty/available-days";
 import { submittedTimetableFilter } from "@/lib/scheduler/visibility";
 import { prisma } from "@/lib/db/prisma";
@@ -19,7 +18,7 @@ export default async function FacultyPage({ searchParams }: { searchParams: Prom
   const own = scope.isAdmin ? {} : { departmentId: scope.manageDepartmentId };
   // Room preferences are for the Head of Department and the Registrar only.
   const canPrefer = scope.role === "HEAD_OF_DEPARTMENT" || scope.role === "REGISTRAR";
-  const [faculty, departments, workload, rooms] = await Promise.all([
+  const [faculty, departments, workload] = await Promise.all([
     prisma.faculty.findMany({
       where: { ...own, archivedAt: null },
       include: {
@@ -35,7 +34,6 @@ export default async function FacultyPage({ searchParams }: { searchParams: Prom
     prisma.department.findMany({ where: scope.isAdmin ? {} : { id: scope.manageDepartmentId ?? "__none__" }, orderBy: { name: "asc" } }),
     // Load and status come from the workload engine, the same numbers as Faculty Workload.
     activeTermIds().then((ids) => loadWorkload(ids, null, { visibilityRole: scope.role })),
-    canPrefer ? prisma.room.findMany({ where: { archivedAt: null, ...(scope.isAdmin ? {} : { OR: [{ departmentId: scope.manageDepartmentId }, { departmentId: null }] }) }, orderBy: { roomNumber: "asc" }, select: { id: true, roomNumber: true, roomName: true, capacity: true } }) : Promise.resolve(null),
   ]);
   const loads = new Map(loadReport(workload.faculty, workload.assignments, workload.limits).map((r) => [r.facultyId, r]));
 
@@ -43,7 +41,6 @@ export default async function FacultyPage({ searchParams }: { searchParams: Prom
     <FacultyBrowser
       canManage={can(policyUserFromScope(scope), "edit", { type: "faculty" })}
       initialQuery={q ?? ""}
-      rooms={rooms?.map((r) => ({ id: r.id, label: `${roomLabel(r)} · ${r.capacity} seats` })) ?? null}
       departments={departments.map((d) => ({ value: d.id, label: d.name }))}
       faculty={faculty.map((f) => ({
         id: f.id,

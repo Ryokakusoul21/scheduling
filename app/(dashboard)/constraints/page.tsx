@@ -17,7 +17,7 @@ export default async function ConstraintsPage() {
       where: scope.isAdmin ? {} : { OR: [{ departmentId: null }, { departmentId: { in: departmentIds } }] },
       orderBy: [{ kind: "asc" }, { createdAt: "asc" }],
     }),
-    prisma.faculty.findMany({ where: { archivedAt: null, ...departmentWhere.faculty(scope) }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true } }),
+    prisma.faculty.findMany({ where: { archivedAt: null, ...departmentWhere.faculty(scope) }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true, employmentType: true } }),
     // Room priority: a Head of Department picks only rooms designated to their department.
     prisma.room.findMany({ where: { archivedAt: null, ...(scope.isAdmin ? {} : { departmentId: scope.manageDepartmentId ?? scope.departmentId ?? "" }) }, orderBy: { roomNumber: "asc" }, select: { id: true, roomNumber: true, roomName: true } }),
   ]);
@@ -28,7 +28,7 @@ export default async function ConstraintsPage() {
       departmentId: c.departmentId, department: c.departmentId ? names.get(c.departmentId) ?? "Unknown department" : "School-wide",
       editable: canManageDepartment(scope, c.departmentId) }))}
     departments={departments}
-    faculty={faculty.map((f) => ({ value: f.id, label: f.fullName }))}
+    faculty={faculty.map((f) => ({ value: f.id, label: f.fullName, partTime: f.employmentType === "PART_TIME" }))}
     rooms={rooms.map((r) => ({ value: r.id, label: r.roomName && r.roomName !== r.roomNumber ? `${r.roomNumber} · ${r.roomName}` : r.roomNumber }))}
     subjects={policyOptions.subjects ?? []}
     policyOptions={policyOptions}

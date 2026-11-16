@@ -41,7 +41,7 @@ async function validate(kind: ImportKind, records: Record<string, string>[], sco
     });
   }
   const [rooms, departments, floors] = await Promise.all([
-    prisma.room.findMany({ select: { roomNumber: true } }),
+    prisma.room.findMany({ where: { archivedAt: null }, select: { roomNumber: true } }),
     prisma.department.findMany({ select: { id: true, code: true, name: true } }),
     prisma.floor.findMany({ select: { name: true, building: { select: { name: true } } } }),
   ]);

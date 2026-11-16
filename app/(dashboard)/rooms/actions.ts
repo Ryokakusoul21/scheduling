@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
@@ -13,6 +14,7 @@ type Result = { ok: boolean; error?: string };
 
 function done(): Result {
   revalidatePath("/rooms");
+  revalidatePath("/rooms/[buildingId]", "page");
   revalidatePath("/scheduler");
   return { ok: true };
 }
@@ -148,8 +150,19 @@ export async function saveRoomAction(id: string | null, formData: FormData): Pro
   }
   if (!canManageDepartment(scope, departmentId)) return { ok: false, error: OWN_ROOMS };
   if (id) {
-    const existing = await prisma.room.findUnique({ where: { id }, select: { departmentId: true } });
+    const existing = await prisma.room.findUnique({ where: { id }, select: { departmentId: true, archivedAt: true } });
+    if (!existing) return { ok: false, error: "This room no longer exists. Refresh the page." };
     if (!canManageDepartment(scope, existing?.departmentId)) return { ok: false, error: OWN_ROOMS };
+    if (existing.archivedAt) return { ok: false, error: "This room was archived and is kept for history. Create a new room instead." };
+  }
+  const duplicate = await prisma.room.findFirst({
+    where: { roomNumber: d.roomNumber, archivedAt: null, ...(id ? { id: { not: id } } : {}) },
+    select: { id: true, departmentId: true, floor: { select: { name: true, building: { select: { name: true } } } } },
+  });
+  if (duplicate) {
+    if (!canManageDepartment(scope, duplicate.departmentId)) return { ok: false, error: OWN_ROOMS };
+    const location = duplicate.floor ? ` in ${duplicate.floor.building.name}, ${duplicate.floor.name}` : "";
+    return { ok: false, error: `Room number "${d.roomNumber}" already belongs to an active room${location}. Open that building to edit it, or use another room number.` };
   }
   const data = {
     ...d,
@@ -159,7 +172,7 @@ export async function saveRoomAction(id: string | null, formData: FormData): Pro
     equipment: d.equipment ? d.equipment.split(",").map((e) => e.trim()).filter(Boolean) : [],
   };
   try {
-    if (id) await prisma.room.update({ where: { id }, data });
+    if (id) await prisma.room.update({ where: { id, archivedAt: null }, data });
     else {
       const last = await prisma.room.aggregate({ where: { floorId: d.floorId }, _max: { sortOrder: true } });
       await prisma.room.create({
@@ -177,8 +190,14 @@ export async function saveRoomAction(id: string | null, formData: FormData): Pro
         },
       });
     }
-  } catch {
-    return { ok: false, error: `Room number "${d.roomNumber}" is already used.` };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2002") return { ok: false, error: `An active room already uses room number "${d.roomNumber}". Refresh the page or use another room number.` };
+      if (error.code === "P2003") return { ok: false, error: "The selected floor or department no longer exists. Refresh the page and choose again." };
+      if (error.code === "P2025") return { ok: false, error: "The room has changed or no longer exists. Refresh the page and try again." };
+    }
+    console.error("[rooms] Could not save room", { code: error instanceof Prisma.PrismaClientKnownRequestError ? error.code : "UNKNOWN" });
+    return { ok: false, error: "Could not save the room. Please try again." };
   }
   return done();
 }

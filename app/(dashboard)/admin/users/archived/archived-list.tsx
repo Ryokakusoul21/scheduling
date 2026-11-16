@@ -85,6 +85,7 @@ export function ArchivedList({ rows }: { rows: ArchivedRow[] }) {
   }
 
   function restoreButton(row: ArchivedRow, primary = false) {
+    if (row.kind === "ROOM") return <Badge variant="outline" className="px-3 py-2">History only</Badge>;
     const busy = pending && restoring === `${row.kind}-${row.id}`;
     return (
       <Button type="button" variant={primary ? "default" : "outline"} disabled={pending} onClick={() => restore(row)} aria-label={`Restore ${row.name}`} className={cn("h-9 gap-2 px-3", !primary && "bg-card text-primary hover:border-primary/40 hover:bg-primary/5 hover:text-primary")}>
@@ -107,7 +108,7 @@ export function ArchivedList({ rows }: { rows: ArchivedRow[] }) {
 
       <div className="flex items-start gap-3 rounded-xl border border-primary/15 bg-primary/5 px-4 py-3">
         <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
-        <p className="text-xs leading-relaxed text-muted-foreground"><span className="font-semibold text-foreground">Past data stays preserved.</span> Archived records are hidden from new schedules and selections. Restoring makes them available again with their history intact.</p>
+        <p className="text-xs leading-relaxed text-muted-foreground"><span className="font-semibold text-foreground">Past data stays preserved.</span> Archived rooms remain history only. Create a new room to reuse a room number. Other archived record types can be restored with their history intact.</p>
       </div>
 
       <section aria-labelledby="archive-register-title" className="min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
@@ -168,7 +169,7 @@ export function ArchivedList({ rows }: { rows: ArchivedRow[] }) {
               </dl>
               <div className="space-y-2"><h4 className="text-sm font-semibold">Archive reason</h4><p className="rounded-xl border bg-muted/40 p-4 text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground wrap-anywhere">{selected.reason || "No reason was provided when this record was archived."}</p></div>
             </div>
-            <SheetFooter className="gap-3 border-t bg-muted/20 p-6"><p className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground"><ArrowCounterClockwise className="mt-0.5 size-4 shrink-0" aria-hidden />Restore this record to make it available again. Its past data will be preserved.</p>{restoreButton(selected, true)}</SheetFooter>
+            <SheetFooter className="gap-3 border-t bg-muted/20 p-6"><p className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground"><Archive className="mt-0.5 size-4 shrink-0" aria-hidden />{selected.kind === "ROOM" ? "This room is kept for historical schedules and bookings. Create a new room to reuse its number." : "Restore this record to make it available again. Its past data will be preserved."}</p>{restoreButton(selected, true)}</SheetFooter>
           </>}
         </SheetContent>
       </Sheet>

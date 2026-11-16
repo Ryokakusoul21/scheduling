@@ -180,6 +180,7 @@ export function AssignFacultyModal({ subjects, context, proposal = false, onClos
                               ) : single ? (cur ? cur.facultyName : <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400"><Warning className="size-3.5" aria-hidden /> No teacher yet</span>) : `${coveredCount(key)} of ${subjects.length} have a teacher`}
                             </span>
                             {single && <span className="block text-xs text-muted-foreground">{single.lectureHours + single.labHours} hrs required · {single.progress?.find((p) => p.sectionId === key)?.scheduledHours ?? 0} scheduled · {Math.max(0, single.lectureHours + single.labHours - (single.progress?.find((p) => p.sectionId === key)?.scheduledHours ?? 0))} remaining</span>}
+                            {single?.progress?.find((p) => p.sectionId === key)?.taughtByOthers?.length ? <span className="block text-xs font-medium text-amber-700 dark:text-amber-400">Timetable still with {single.progress.find((p) => p.sectionId === key)!.taughtByOthers!.join(", ")} (time clash); hours count for them.</span> : null}
                             {pendingFor(key) && <span className="block text-xs font-medium text-amber-700">Pending approval: {pendingFor(key)!.facultyName} · {pendingFor(key)!.departmentName}. The current teacher stays assigned until approval.</span>}
                           </span>
                         </label>

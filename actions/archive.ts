@@ -80,6 +80,7 @@ export async function archiveRecordAction(input: z.input<typeof schema>): Promis
 
   const name = await setArchived(kind, id, scope.userId, true, reason);
   PATHS.forEach((p) => revalidatePath(p));
+  if (kind === "ROOM") revalidatePath("/rooms/[buildingId]", "page");
 
   // An archived faculty member counts as inactive, so the workload check proposes new teachers for their classes.
   if (teaching && classes.length > 0) {
@@ -87,7 +88,7 @@ export async function archiveRecordAction(input: z.input<typeof schema>): Promis
     return { ok: true, message: `${name} was archived; ${status.proposed} reassignment proposal(s) await Head of Department approval in Faculty Workload.` };
   }
   queueWorkloadCheck(`${name} was archived`, scope.userId);
-  return { ok: true, message: `${name} was archived. Restore it any time from the Archived list.` };
+  return { ok: true, message: kind === "ROOM" ? `${name} was archived and is kept for history. Its room number can be used for a new room.` : `${name} was archived. Restore it any time from the Archived list.` };
 }
 
 /** Brings an archived record back with all of its past data. */
@@ -98,6 +99,7 @@ export async function restoreRecordAction(kind: ArchiveKind, id: string): Promis
     await logBlocked(scope, `restore a ${kind.toLowerCase()} record`, kind, id);
     return { ok: false, error: REFUSED[kind] ?? OUTSIDE_DEPARTMENT };
   }
+  if (kind === "ROOM") return { ok: false, error: "Archived rooms are kept for history and cannot be restored. Create a new room instead; its room number can be reused." };
   let name: string;
   try {
     name = await setArchived(kind, id, scope.userId, false);

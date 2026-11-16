@@ -82,7 +82,7 @@ export function RoomResults({ options, caps, request, pending, canOverride, onBo
       {capWarning && (
         <p className={cn("flex items-start gap-2 rounded-lg p-3 text-[13px]", capWarning.reached ? "bg-danger/10 text-danger" : "bg-warning/10 text-warning")}>
           <Warning className="mt-0.5 size-4 shrink-0" weight="fill" />
-          {capWarning === caps?.user ? "You have" : "Your department has"} used {capWarning.used} of {capWarning.cap} urgent overrides this month.{capWarning.reached ? " No more can be made until next month." : ""}
+          {capWarning === caps?.user ? "You have" : "Your department has"} used {capWarning.used} of {capWarning.cap} urgent overrides this month.{capWarning.reached ? (options.some((o) => !o.needsApproval && o.ownership === "OWN") ? " Rooms your department manages are not limited." : " No more can be made until next month.") : ""}
         </p>
       )}
 
@@ -108,7 +108,7 @@ export function RoomResults({ options, caps, request, pending, canOverride, onBo
           className="py-8"
         />
       ) : (
-        <CollectionView storageKey="booking-results:view" label="Room results" table={<RecordsTable label="Room results" columns={["Room", "Location", "Type", "Capacity", "Availability", "Equipment", "Actions"]} rows={shown.map((o) => ({ id: o.roomId, cells: [<span key="room" className="font-semibold">{o.name}{o.roomId === best && <BadgeLabel />}</span>, `${o.location}${o.ownership === "OWN" ? " · Your department" : o.ownership === "SHARED" ? " · Shared" : ""}`, typeLabel(o.roomType), `${o.capacity} seats · ${o.capacity >= request.attendees ? `${o.capacity - request.attendees} spare` : `${request.attendees - o.capacity} short`}`, <div key="availability" className="space-y-1"><Availability option={o} />{o.needsApproval && o.status !== "BLOCKED" && <p className="text-xs text-warning">Needs approval from {o.needsApproval}; nothing moves until they approve.</p>}{o.status === "BLOCKED" && <p className="text-xs text-danger">{o.blockers[0]}</p>}</div>, o.equipment.join(", ") || "—", o.status !== "BLOCKED" ? <Button key="book" size="sm" variant={o.status === "FREE" ? "default" : "outline"} disabled={pending || !!capWarning?.reached && urgent} onClick={() => onBook(o)} aria-label={`Book ${o.name}`}>{o.needsApproval ? "Request" : "Book"}</Button> : "Unavailable"] }))} />}>
+        <CollectionView storageKey="booking-results:view" label="Room results" table={<RecordsTable label="Room results" columns={["Room", "Location", "Type", "Capacity", "Availability", "Equipment", "Actions"]} rows={shown.map((o) => ({ id: o.roomId, cells: [<span key="room" className="font-semibold">{o.name}{o.roomId === best && <BadgeLabel />}</span>, `${o.location}${o.ownership === "OWN" ? " · Your department" : o.ownership === "SHARED" ? " · Shared" : ""}`, typeLabel(o.roomType), `${o.capacity} seats · ${o.capacity >= request.attendees ? `${o.capacity - request.attendees} spare` : `${request.attendees - o.capacity} short`}`, <div key="availability" className="space-y-1"><Availability option={o} />{o.needsApproval && o.status !== "BLOCKED" && <p className="text-xs text-warning">Needs approval from {o.needsApproval}; nothing moves until they approve.</p>}{o.status === "BLOCKED" && <p className="text-xs text-danger">{o.blockers[0]}</p>}</div>, o.equipment.join(", ") || "—", o.status !== "BLOCKED" ? <Button key="book" size="sm" variant={o.status === "FREE" ? "default" : "outline"} disabled={pending || (!!capWarning?.reached && urgent && !!o.needsApproval)} onClick={() => onBook(o)} aria-label={`Book ${o.name}`}>{o.needsApproval ? "Request" : "Book"}</Button> : "Unavailable"] }))} />}>
         <div className="space-y-4">
           {groups.map(([building, list]) => (
             <div key={building || "all"} className="space-y-2">
@@ -131,7 +131,7 @@ export function RoomResults({ options, caps, request, pending, canOverride, onBo
               {o.needsApproval && o.status !== "BLOCKED" && <p className="rounded-md bg-warning/10 p-2 text-[13px] text-warning">Needs approval from {o.needsApproval}; nothing moves until they approve.</p>}
               {o.status === "BLOCKED" && <p className="text-[13px] text-danger">{o.blockers[0]}</p>}
               {o.status !== "BLOCKED" && (
-                <Button className="mt-auto h-9 self-start" variant={o.status === "FREE" ? "default" : "outline"} disabled={pending || !!capWarning?.reached && urgent} onClick={() => onBook(o)} aria-label={`Book ${o.name}`}>
+                <Button className="mt-auto h-9 self-start" variant={o.status === "FREE" ? "default" : "outline"} disabled={pending || (!!capWarning?.reached && urgent && !!o.needsApproval)} onClick={() => onBook(o)} aria-label={`Book ${o.name}`}>
                   {o.needsApproval ? "Request" : "Book"}
                 </Button>
               )}

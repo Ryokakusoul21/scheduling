@@ -1,0 +1,1344 @@
+{
+  "source": "UPDATED CLASS SCHEDULE 1ST SEM SY2627.pdf",
+  "sha256": "e7aa25b8567710abb7f64571e4e9d8a31bb131ca5d73febd6d25daaef57e4158",
+  "academicYear": "2026-2027",
+  "semester": "FIRST",
+  "rows": [
+    {
+      "page": 1,
+      "section": "BSIT1A",
+      "code": "GE1",
+      "title": "Purposive Communication",
+      "units": 3,
+      "instructor": "Ms. Juna May Diaz"
+    },
+    {
+      "page": 1,
+      "section": "BSIT1A",
+      "code": "GE2",
+      "title": "Readings in the Philippine History",
+      "units": 3,
+      "instructor": "Ms. Septy Rodriguez"
+    },
+    {
+      "page": 1,
+      "section": "BSIT1A",
+      "code": "GE3",
+      "title": "Mathematics in Modern World",
+      "units": 3,
+      "instructor": "Ms. Joynelyn Gatchalian"
+    },
+    {
+      "page": 1,
+      "section": "BSIT1A",
+      "code": "GVAL1",
+      "title": "Granby Values 1",
+      "units": 3,
+      "instructor": "Ms. Joynelyn Gatchalian"
+    },
+    {
+      "page": 1,
+      "section": "BSIT1A",
+      "code": "CC101",
+      "title": "Introduction to Computing",
+      "units": 3,
+      "instructor": "Mr. Jude Allan C. Pabiton"
+    },
+    {
+      "page": 1,
+      "section": "BSIT1A",
+      "code": "CC102",
+      "title": "Computer Programming 1",
+      "units": 3,
+      "instructor": "Mr. Marvin A. Ramos"
+    },
+    {
+      "page": 1,
+      "section": "BSIT1A",
+      "code": "PATHFIT1",
+      "title": "Human Enhancement",
+      "units": 2,
+      "instructor": "Mr. Jonathan F. Sabalo"
+    },
+    {
+      "page": 1,
+      "section": "BSIT1A",
+      "code": "NSTP1",
+      "title": "Civic Welfare Training Services -1",
+      "units": 3,
+      "instructor": "Mr. Ryan G. Grumal"
+    },
+    {
+      "page": 2,
+      "section": "BSIT1B",
+      "code": "GE1",
+      "title": "Purposive Communication",
+      "units": 3,
+      "instructor": "Ms. Juna May Diaz"
+    },
+    {
+      "page": 2,
+      "section": "BSIT1B",
+      "code": "GE2",
+      "title": "Readings in the Philippine History",
+      "units": 3,
+      "instructor": "Ms. Septy Rodriguez"
+    },
+    {
+      "page": 2,
+      "section": "BSIT1B",
+      "code": "GE3",
+      "title": "Mathematics in Modern World",
+      "units": 3,
+      "instructor": "Ms. Juna May Diaz"
+    },
+    {
+      "page": 2,
+      "section": "BSIT1B",
+      "code": "GVAL1",
+      "title": "Granby Values 1",
+      "units": 3,
+      "instructor": "Ms. Juna May Diaz"
+    },
+    {
+      "page": 2,
+      "section": "BSIT1B",
+      "code": "CC101",
+      "title": "Introduction to Computing",
+      "units": 3,
+      "instructor": "Mr. Jude Allan C. Pabiton"
+    },
+    {
+      "page": 2,
+      "section": "BSIT1B",
+      "code": "CC102",
+      "title": "Computer Programming 1",
+      "units": 3,
+      "instructor": "Mr. Marvin A. Ramos"
+    },
+    {
+      "page": 2,
+      "section": "BSIT1B",
+      "code": "PATHFIT1",
+      "title": "Human Enhancement",
+      "units": 2,
+      "instructor": "Mr. Jonathan F. Sabalo"
+    },
+    {
+      "page": 2,
+      "section": "BSIT1B",
+      "code": "NSTP1",
+      "title": "Civic Welfare Training Services -1",
+      "units": 3,
+      "instructor": "Mr. Edzon Caacbay"
+    },
+    {
+      "page": 3,
+      "section": "BSIT1C",
+      "code": "GE1",
+      "title": "Purposive Communication",
+      "units": 3,
+      "instructor": "Ms. Tablasan"
+    },
+    {
+      "page": 3,
+      "section": "BSIT1C",
+      "code": "GE2",
+      "title": "Readings in the Philippine History",
+      "units": 3,
+      "instructor": "Ms. Corazon L. Madriaga"
+    },
+    {
+      "page": 3,
+      "section": "BSIT1C",
+      "code": "GE3",
+      "title": "Mathematics in Modern World",
+      "units": 3,
+      "instructor": "Mr. Raymundo S. Barerra Jr."
+    },
+    {
+      "page": 3,
+      "section": "BSIT1C",
+      "code": "GVAL1",
+      "title": "Granby Values 1",
+      "units": 3,
+      "instructor": "Mr. Philip Loyola"
+    },
+    {
+      "page": 3,
+      "section": "BSIT1C",
+      "code": "CC101",
+      "title": "Introduction to Computing",
+      "units": 3,
+      "instructor": "Mr. Jude Allan C. Pabiton"
+    },
+    {
+      "page": 3,
+      "section": "BSIT1C",
+      "code": "CC102",
+      "title": "Computer Programming 1",
+      "units": 3,
+      "instructor": "Mr. Marvin A. Ramos"
+    },
+    {
+      "page": 3,
+      "section": "BSIT1C",
+      "code": "PATHFIT1",
+      "title": "Human Enhancement",
+      "units": 2,
+      "instructor": "Mr. Jonathan F. Sabalo"
+    },
+    {
+      "page": 3,
+      "section": "BSIT1C",
+      "code": "NSTP1",
+      "title": "Civic Welfare Training Services -1",
+      "units": 3,
+      "instructor": "Mr. Ryan G. Grumal"
+    },
+    {
+      "page": 4,
+      "section": "BSIT1D",
+      "code": "GE1",
+      "title": "Purposive Communication",
+      "units": 3,
+      "instructor": "Ms. Juna May Diaz"
+    },
+    {
+      "page": 4,
+      "section": "BSIT1D",
+      "code": "GE2",
+      "title": "Readings in the Philippine History",
+      "units": 3,
+      "instructor": "Ms. Corazon L. Madriaga"
+    },
+    {
+      "page": 4,
+      "section": "BSIT1D",
+      "code": "GE3",
+      "title": "Mathematics in Modern World",
+      "units": 3,
+      "instructor": "Mr. Raymundo S. Barerra Jr."
+    },
+    {
+      "page": 4,
+      "section": "BSIT1D",
+      "code": "GVAL1",
+      "title": "Granby Values 1",
+      "units": 3,
+      "instructor": "Ms. Joynelyn Gatchalian"
+    },
+    {
+      "page": 4,
+      "section": "BSIT1D",
+      "code": "CC101",
+      "title": "Introduction to Computing",
+      "units": 3,
+      "instructor": "Mr. Jude Allan C. Pabiton"
+    },
+    {
+      "page": 4,
+      "section": "BSIT1D",
+      "code": "CC102",
+      "title": "Computer Programming 1",
+      "units": 3,
+      "instructor": "Mr. Marvin A. Ramos"
+    },
+    {
+      "page": 4,
+      "section": "BSIT1D",
+      "code": "PATHFIT1",
+      "title": "Human Enhancement",
+      "units": 2,
+      "instructor": "Mr. Jonathan F. Sabalo"
+    },
+    {
+      "page": 4,
+      "section": "BSIT1D",
+      "code": "NSTP1",
+      "title": "Civic Welfare Training Services -1",
+      "units": 3,
+      "instructor": "Mr. Ryan G. Grumal"
+    },
+    {
+      "page": 5,
+      "section": "BSIT1E",
+      "code": "GE1",
+      "title": "Purposive Communication",
+      "units": 3,
+      "instructor": "Ms. Juna May Diaz"
+    },
+    {
+      "page": 5,
+      "section": "BSIT1E",
+      "code": "GE2",
+      "title": "Readings in the Philippine History",
+      "units": 3,
+      "instructor": "Ms. Corazon L. Madriaga"
+    },
+    {
+      "page": 5,
+      "section": "BSIT1E",
+      "code": "GE3",
+      "title": "Mathematics in Modern World",
+      "units": 3,
+      "instructor": "Mr. Raymundo S. Barerra Jr."
+    },
+    {
+      "page": 5,
+      "section": "BSIT1E",
+      "code": "GVAL1",
+      "title": "Granby Values 1",
+      "units": 3,
+      "instructor": "Ms. Joynelyn Gatchalian"
+    },
+    {
+      "page": 5,
+      "section": "BSIT1E",
+      "code": "CC101",
+      "title": "Introduction to Computing",
+      "units": 3,
+      "instructor": "Mr. Jude Allan C. Pabiton"
+    },
+    {
+      "page": 5,
+      "section": "BSIT1E",
+      "code": "CC102",
+      "title": "Computer Programming 1",
+      "units": 3,
+      "instructor": "Mr. Marvin A. Ramos"
+    },
+    {
+      "page": 5,
+      "section": "BSIT1E",
+      "code": "PATHFIT1",
+      "title": "Human Enhancement",
+      "units": 2,
+      "instructor": "Mr. Jonathan F. Sabalo"
+    },
+    {
+      "page": 5,
+      "section": "BSIT1E",
+      "code": "NSTP1",
+      "title": "Civic Welfare Training Services -1",
+      "units": 3,
+      "instructor": "Mr. Ryan G. Grumal"
+    },
+    {
+      "page": 6,
+      "section": "BSIT1F",
+      "code": "GE1",
+      "title": "Purposive Communication",
+      "units": 3,
+      "instructor": "Ms. Juna May Diaz"
+    },
+    {
+      "page": 6,
+      "section": "BSIT1F",
+      "code": "GE2",
+      "title": "Readings in the Philippine History",
+      "units": 3,
+      "instructor": "Ms. Corazon L. Madriaga"
+    },
+    {
+      "page": 6,
+      "section": "BSIT1F",
+      "code": "GE3",
+      "title": "Mathematics in Modern World",
+      "units": 3,
+      "instructor": "Mr. Raymundo S. Barerra Jr."
+    },
+    {
+      "page": 6,
+      "section": "BSIT1F",
+      "code": "GVAL1",
+      "title": "Granby Values 1",
+      "units": 3,
+      "instructor": "Ms. Joynelyn Gatchalian"
+    },
+    {
+      "page": 6,
+      "section": "BSIT1F",
+      "code": "CC101",
+      "title": "Introduction to Computing",
+      "units": 3,
+      "instructor": "Mr. Jude Allan C. Pabiton"
+    },
+    {
+      "page": 6,
+      "section": "BSIT1F",
+      "code": "CC102",
+      "title": "Computer Programming 1",
+      "units": 3,
+      "instructor": "Mr. Marvin A. Ramos"
+    },
+    {
+      "page": 6,
+      "section": "BSIT1F",
+      "code": "PATHFIT1",
+      "title": "Human Enhancement",
+      "units": 2,
+      "instructor": "Mr. Jonathan F. Sabalo"
+    },
+    {
+      "page": 6,
+      "section": "BSIT1F",
+      "code": "NSTP1",
+      "title": "Civic Welfare Training Services -1",
+      "units": 3,
+      "instructor": "Mr. Ryan G. Grumal"
+    },
+    {
+      "page": 7,
+      "section": "BSIT1G",
+      "code": "GE1",
+      "title": "Purposive Communication",
+      "units": 3,
+      "instructor": "Ms. Juna May Diaz"
+    },
+    {
+      "page": 7,
+      "section": "BSIT1G",
+      "code": "GE2",
+      "title": "Readings in the Philippine History",
+      "units": 3,
+      "instructor": "Ms. Corazon L. Madriaga"
+    },
+    {
+      "page": 7,
+      "section": "BSIT1G",
+      "code": "GE3",
+      "title": "Mathematics in Modern World",
+      "units": 3,
+      "instructor": "Mr. Raymundo S. Barerra Jr."
+    },
+    {
+      "page": 7,
+      "section": "BSIT1G",
+      "code": "GVAL1",
+      "title": "Granby Values 1",
+      "units": 3,
+      "instructor": "Ms. Juna May Diaz"
+    },
+    {
+      "page": 7,
+      "section": "BSIT1G",
+      "code": "CC101",
+      "title": "Introduction to Computing",
+      "units": 3,
+      "instructor": "Mr. Jude Allan C. Pabiton"
+    },
+    {
+      "page": 7,
+      "section": "BSIT1G",
+      "code": "CC102",
+      "title": "Computer Programming 1",
+      "units": 3,
+      "instructor": "Mr. Marvin A. Ramos"
+    },
+    {
+      "page": 7,
+      "section": "BSIT1G",
+      "code": "PATHFIT1",
+      "title": "Human Enhancement",
+      "units": 2,
+      "instructor": "Mr. Jonathan F. Sabalo"
+    },
+    {
+      "page": 7,
+      "section": "BSIT1G",
+      "code": "NSTP1",
+      "title": "Civic Welfare Training Services -1",
+      "units": 3,
+      "instructor": "Mr. Ryan G. Grumal"
+    },
+    {
+      "page": 8,
+      "section": "BSIT1H",
+      "code": "GE1",
+      "title": "Purposive Communication",
+      "units": 3,
+      "instructor": "Ms. Juna May Diaz"
+    },
+    {
+      "page": 8,
+      "section": "BSIT1H",
+      "code": "GE2",
+      "title": "Readings in the Philippine History",
+      "units": 3,
+      "instructor": "Ms. Corazon L. Madriaga"
+    },
+    {
+      "page": 8,
+      "section": "BSIT1H",
+      "code": "GE3",
+      "title": "Mathematics in Modern World",
+      "units": 3,
+      "instructor": "Mr. Raymundo S. Barerra Jr."
+    },
+    {
+      "page": 8,
+      "section": "BSIT1H",
+      "code": "GVAL1",
+      "title": "Granby Values 1",
+      "units": 3,
+      "instructor": "Ms. Joynelyn Gatchalian"
+    },
+    {
+      "page": 8,
+      "section": "BSIT1H",
+      "code": "CC101",
+      "title": "Introduction to Computing",
+      "units": 3,
+      "instructor": "Ms. Loren Olino"
+    },
+    {
+      "page": 8,
+      "section": "BSIT1H",
+      "code": "CC102",
+      "title": "Computer Programming 1",
+      "units": 3,
+      "instructor": "Mr. Marvin A. Ramos"
+    },
+    {
+      "page": 8,
+      "section": "BSIT1H",
+      "code": "PATHFIT1",
+      "title": "Human Enhancement",
+      "units": 2,
+      "instructor": "Mr. Jonathan F. Sabalo"
+    },
+    {
+      "page": 8,
+      "section": "BSIT1H",
+      "code": "NSTP1",
+      "title": "Civic Welfare Training Services -1",
+      "units": 3,
+      "instructor": "Mr. Philip Loyola"
+    },
+    {
+      "page": 9,
+      "section": "BSIT2A",
+      "code": "GE5",
+      "title": "Art Appreciation",
+      "units": 3,
+      "instructor": "Ms. Otesa C. Manalo"
+    },
+    {
+      "page": 9,
+      "section": "BSIT2A",
+      "code": "ITC3",
+      "title": "Fundamentals of Database Management Systems",
+      "units": 3,
+      "instructor": "Mr. Marvin A. Ramos"
+    },
+    {
+      "page": 9,
+      "section": "BSIT2A",
+      "code": "ITC4",
+      "title": "Object-Oriented Programming",
+      "units": 3,
+      "instructor": "Mr. Jonnel M. Bilaos"
+    },
+    {
+      "page": 9,
+      "section": "BSIT2A",
+      "code": "ITC5",
+      "title": "Networking-1",
+      "units": 3,
+      "instructor": "Mr. Eduardo Ello"
+    },
+    {
+      "page": 9,
+      "section": "BSIT2A",
+      "code": "GE6",
+      "title": "Understanding the Self",
+      "units": 3,
+      "instructor": "Mr. Regan P. Legaspi"
+    },
+    {
+      "page": 9,
+      "section": "BSIT2A",
+      "code": "GE7",
+      "title": "The Contemporary World",
+      "units": 3,
+      "instructor": "Ms. Juna May Diaz"
+    },
+    {
+      "page": 9,
+      "section": "BSIT2A",
+      "code": "GEELC1",
+      "title": "GE Elective-1 (Living in the IT Era)",
+      "units": 3,
+      "instructor": "Ms. Mary Shane Abina"
+    },
+    {
+      "page": 9,
+      "section": "BSIT2A",
+      "code": "PATHFIT3",
+      "title": "Physical Activities Towards Health and Fitness in Dance",
+      "units": 2,
+      "instructor": "Mr. Arby R. Miranda"
+    },
+    {
+      "page": 10,
+      "section": "BSIT2B",
+      "code": "GE5",
+      "title": "Art Appreciation",
+      "units": 3,
+      "instructor": "Ms. Otesa C. Manalo"
+    },
+    {
+      "page": 10,
+      "section": "BSIT2B",
+      "code": "ITC3",
+      "title": "Fundamentals of Database Management Systems",
+      "units": 3,
+      "instructor": "Mr. Marvin A. Ramos"
+    },
+    {
+      "page": 10,
+      "section": "BSIT2B",
+      "code": "ITC4",
+      "title": "Object-Oriented Programming",
+      "units": 3,
+      "instructor": "Mr. Jonnel M. Bilaos"
+    },
+    {
+      "page": 10,
+      "section": "BSIT2B",
+      "code": "ITC5",
+      "title": "Networking-1",
+      "units": 3,
+      "instructor": "Mr. Eduardo Ello"
+    },
+    {
+      "page": 10,
+      "section": "BSIT2B",
+      "code": "GE6",
+      "title": "Understanding the Self",
+      "units": 3,
+      "instructor": "Mr. Regan P. Legaspi"
+    },
+    {
+      "page": 10,
+      "section": "BSIT2B",
+      "code": "GE7",
+      "title": "The Contemporary World",
+      "units": 3,
+      "instructor": "Ms. Mary Shane Abina"
+    },
+    {
+      "page": 10,
+      "section": "BSIT2B",
+      "code": "GEELC1",
+      "title": "GE Elective-1 (Living in the IT Era)",
+      "units": 3,
+      "instructor": "Ms. Mary Shane Abina"
+    },
+    {
+      "page": 10,
+      "section": "BSIT2B",
+      "code": "PATHFIT3",
+      "title": "Physical Activities Towards Health and Fitness in Dance",
+      "units": 2,
+      "instructor": "Mr. Arby R. Miranda"
+    },
+    {
+      "page": 11,
+      "section": "BSIT2C",
+      "code": "GE5",
+      "title": "Art Appreciation",
+      "units": 3,
+      "instructor": "Ms. Otesa C. Manalo"
+    },
+    {
+      "page": 11,
+      "section": "BSIT2C",
+      "code": "ITC3",
+      "title": "Fundamentals of Database Management Systems",
+      "units": 3,
+      "instructor": "Mr. Kervin Draude Corpuz"
+    },
+    {
+      "page": 11,
+      "section": "BSIT2C",
+      "code": "ITC4",
+      "title": "Object-Oriented Programming",
+      "units": 3,
+      "instructor": "Mr. Jonnel M. Bilaos"
+    },
+    {
+      "page": 11,
+      "section": "BSIT2C",
+      "code": "ITC5",
+      "title": "Networking-1",
+      "units": 3,
+      "instructor": "Mr. Eduardo Ello"
+    },
+    {
+      "page": 11,
+      "section": "BSIT2C",
+      "code": "GE6",
+      "title": "Understanding the Self",
+      "units": 3,
+      "instructor": "Mr. Regan P. Legaspi"
+    },
+    {
+      "page": 11,
+      "section": "BSIT2C",
+      "code": "GE7",
+      "title": "The Contemporary World",
+      "units": 3,
+      "instructor": "Ms. Mary Shane Abina"
+    },
+    {
+      "page": 11,
+      "section": "BSIT2C",
+      "code": "GEELC1",
+      "title": "GE Elective-1 (Living in the IT Era)",
+      "units": 3,
+      "instructor": "Ms. Mary Shane Abina"
+    },
+    {
+      "page": 11,
+      "section": "BSIT2C",
+      "code": "PATHFIT3",
+      "title": "Physical Activities Towards Health and Fitness in Dance",
+      "units": 2,
+      "instructor": "Mr. Arby R. Miranda"
+    },
+    {
+      "page": 12,
+      "section": "BSIT2D",
+      "code": "GE5",
+      "title": "Art Appreciation",
+      "units": 3,
+      "instructor": "Ms. Otesa C. Manalo"
+    },
+    {
+      "page": 12,
+      "section": "BSIT2D",
+      "code": "ITC3",
+      "title": "Fundamentals of Database Management Systems",
+      "units": 3,
+      "instructor": "Mr. Kervin Draude Corpuz"
+    },
+    {
+      "page": 12,
+      "section": "BSIT2D",
+      "code": "ITC4",
+      "title": "Object-Oriented Programming",
+      "units": 3,
+      "instructor": "Mr. Jonnel M. Bilaos"
+    },
+    {
+      "page": 12,
+      "section": "BSIT2D",
+      "code": "ITC5",
+      "title": "Networking-1",
+      "units": 3,
+      "instructor": "Mr. Jonnel M. Bilaos"
+    },
+    {
+      "page": 12,
+      "section": "BSIT2D",
+      "code": "GE6",
+      "title": "Understanding the Self",
+      "units": 3,
+      "instructor": "Mr. Regan P. Legaspi"
+    },
+    {
+      "page": 12,
+      "section": "BSIT2D",
+      "code": "GE7",
+      "title": "The Contemporary World",
+      "units": 3,
+      "instructor": "Ms. Joynelyn Gatchalian"
+    },
+    {
+      "page": 12,
+      "section": "BSIT2D",
+      "code": "GEELC1",
+      "title": "GE Elective-1 (Living in the IT Era)",
+      "units": 3,
+      "instructor": "Ms. Mary Shane Abina"
+    },
+    {
+      "page": 12,
+      "section": "BSIT2D",
+      "code": "PATHFIT3",
+      "title": "Physical Activities Towards Health and Fitness in Dance",
+      "units": 2,
+      "instructor": "Mr. Arby R. Miranda"
+    },
+    {
+      "page": 13,
+      "section": "BSIT2E",
+      "code": "GE5",
+      "title": "Art Appreciation",
+      "units": 3,
+      "instructor": "Ms. Otesa C. Manalo"
+    },
+    {
+      "page": 13,
+      "section": "BSIT2E",
+      "code": "ITC3",
+      "title": "Fundamentals of Database Management Systems",
+      "units": 3,
+      "instructor": "Ms. Gerami Benedicto"
+    },
+    {
+      "page": 13,
+      "section": "BSIT2E",
+      "code": "ITC4",
+      "title": "Object-Oriented Programming",
+      "units": 3,
+      "instructor": "Mr. Jonnel M. Bilaos"
+    },
+    {
+      "page": 13,
+      "section": "BSIT2E",
+      "code": "ITC5",
+      "title": "Networking-1",
+      "units": 3,
+      "instructor": "Mr. Jonnel M. Bilaos"
+    },
+    {
+      "page": 13,
+      "section": "BSIT2E",
+      "code": "GE6",
+      "title": "Understanding the Self",
+      "units": 3,
+      "instructor": "Mr. Regan P. Legaspi"
+    },
+    {
+      "page": 13,
+      "section": "BSIT2E",
+      "code": "GE7",
+      "title": "The Contemporary World",
+      "units": 3,
+      "instructor": "Ms. Joynelyn Gatchalian"
+    },
+    {
+      "page": 13,
+      "section": "BSIT2E",
+      "code": "GEELC1",
+      "title": "GE Elective-1 (Living in the IT Era)",
+      "units": 3,
+      "instructor": "Ms. Mary Shane Abina"
+    },
+    {
+      "page": 13,
+      "section": "BSIT2E",
+      "code": "PATHFIT3",
+      "title": "Physical Activities Towards Health and Fitness in Dance",
+      "units": 2,
+      "instructor": "Mr. Philip Loyola"
+    },
+    {
+      "page": 14,
+      "section": "BSIT2F",
+      "code": "GE5",
+      "title": "Art Appreciation",
+      "units": 3,
+      "instructor": "Ms. Juna May Gatchalian"
+    },
+    {
+      "page": 14,
+      "section": "BSIT2F",
+      "code": "ITC3",
+      "title": "Fundamentals of Database Management Systems",
+      "units": 3,
+      "instructor": "Ms. Gerami Benedicto"
+    },
+    {
+      "page": 14,
+      "section": "BSIT2F",
+      "code": "ITC4",
+      "title": "Object-Oriented Programming",
+      "units": 3,
+      "instructor": "Mr. Jonnel M. Bilaos"
+    },
+    {
+      "page": 14,
+      "section": "BSIT2F",
+      "code": "ITC5",
+      "title": "Networking-1",
+      "units": 3,
+      "instructor": "Mr. Jonnel Bilaos"
+    },
+    {
+      "page": 14,
+      "section": "BSIT2F",
+      "code": "GE6",
+      "title": "Understanding the Self",
+      "units": 3,
+      "instructor": "Mr. Regan P. Legaspi"
+    },
+    {
+      "page": 14,
+      "section": "BSIT2F",
+      "code": "GE7",
+      "title": "The Contemporary World",
+      "units": 3,
+      "instructor": "Ms. Joynelyn Gatchalian"
+    },
+    {
+      "page": 14,
+      "section": "BSIT2F",
+      "code": "GEELC1",
+      "title": "GE Elective-1 (Living in the IT Era)",
+      "units": 3,
+      "instructor": "Ms. Mary Shane Abina"
+    },
+    {
+      "page": 14,
+      "section": "BSIT2F",
+      "code": "PATHFIT3",
+      "title": "Physical Activities Towards Health and Fitness in Dance",
+      "units": 2,
+      "instructor": "Mr. Philip Loyola"
+    },
+    {
+      "page": 15,
+      "section": "BSIT3A",
+      "code": "ITC8",
+      "title": "Systems Administration and Maintenance",
+      "units": 3,
+      "instructor": "Ms. Loren B. Olino"
+    },
+    {
+      "page": 15,
+      "section": "BSIT3A",
+      "code": "ITC9",
+      "title": "Systems Integration and Architecture 1",
+      "units": 3,
+      "instructor": "Mr. Eduardo Ello"
+    },
+    {
+      "page": 15,
+      "section": "BSIT3A",
+      "code": "ITC10",
+      "title": "Systems Analysis and Design",
+      "units": 3,
+      "instructor": "Mr. Kervin Draude Corpuz"
+    },
+    {
+      "page": 15,
+      "section": "BSIT3A",
+      "code": "ITC11",
+      "title": "Introduction to Human-Computer Interaction",
+      "units": 3,
+      "instructor": "Mr. Eduardo Ello"
+    },
+    {
+      "page": 15,
+      "section": "BSIT3A",
+      "code": "ITC12",
+      "title": "Integrative Programming and Technologies 1",
+      "units": 3,
+      "instructor": "Ms. Gerami Benedicto"
+    },
+    {
+      "page": 15,
+      "section": "BSIT3A",
+      "code": "ITC13",
+      "title": "Quantitative Methods (incl. Modeling & Simulation)",
+      "units": 3,
+      "instructor": "Ms. Loren B. Olino"
+    },
+    {
+      "page": 16,
+      "section": "BSIT3B",
+      "code": "ITC8",
+      "title": "Systems Administration and Maintenance",
+      "units": 3,
+      "instructor": "Ms. Loren B. Olino"
+    },
+    {
+      "page": 16,
+      "section": "BSIT3B",
+      "code": "ITC9",
+      "title": "Systems Integration and Architecture 1",
+      "units": 3,
+      "instructor": "Mr. Eduardo Ello"
+    },
+    {
+      "page": 16,
+      "section": "BSIT3B",
+      "code": "ITC10",
+      "title": "Systems Analysis and Design",
+      "units": 3,
+      "instructor": "Mr. Kervin Draude Corpuz"
+    },
+    {
+      "page": 16,
+      "section": "BSIT3B",
+      "code": "ITC11",
+      "title": "Introduction to Human-Computer Interaction",
+      "units": 3,
+      "instructor": "Mr. Jude Allan Pabiton"
+    },
+    {
+      "page": 16,
+      "section": "BSIT3B",
+      "code": "ITC12",
+      "title": "Integrative Programming and Technologies 1",
+      "units": 3,
+      "instructor": "Ms. Gerami Benedicto"
+    },
+    {
+      "page": 16,
+      "section": "BSIT3B",
+      "code": "ITC13",
+      "title": "Quantitative Methods (incl. Modeling & Simulation)",
+      "units": 3,
+      "instructor": "Ms. Loren B. Olino"
+    },
+    {
+      "page": 17,
+      "section": "BSIT3C",
+      "code": "ITC8",
+      "title": "Systems Administration and Maintenance",
+      "units": 3,
+      "instructor": "Ms. Loren B. Olino"
+    },
+    {
+      "page": 17,
+      "section": "BSIT3C",
+      "code": "ITC9",
+      "title": "Systems Integration and Architecture 1",
+      "units": 3,
+      "instructor": "Mr. Glen Calvin Doce"
+    },
+    {
+      "page": 17,
+      "section": "BSIT3C",
+      "code": "ITC10",
+      "title": "Systems Analysis and Design",
+      "units": 3,
+      "instructor": "Mr. Kervin Draude Corpuz"
+    },
+    {
+      "page": 17,
+      "section": "BSIT3C",
+      "code": "ITC11",
+      "title": "Introduction to Human-Computer Interaction",
+      "units": 3,
+      "instructor": "Mr. Jude Allan Pabiton"
+    },
+    {
+      "page": 17,
+      "section": "BSIT3C",
+      "code": "ITC12",
+      "title": "Integrative Programming and Technologies 1",
+      "units": 3,
+      "instructor": "Ms. Gerami Benedicto"
+    },
+    {
+      "page": 17,
+      "section": "BSIT3C",
+      "code": "ITC13",
+      "title": "Quantitative Methods (incl. Modeling & Simulation)",
+      "units": 3,
+      "instructor": "Ms. Loren B. Olino"
+    },
+    {
+      "page": 18,
+      "section": "BSIT3D",
+      "code": "ITC8",
+      "title": "Systems Administration and Maintenance",
+      "units": 3,
+      "instructor": "Ms. Loren B. Olino"
+    },
+    {
+      "page": 18,
+      "section": "BSIT3D",
+      "code": "ITC9",
+      "title": "Systems Integration and Architecture 1",
+      "units": 3,
+      "instructor": "Mr. Eduardo Ello"
+    },
+    {
+      "page": 18,
+      "section": "BSIT3D",
+      "code": "ITC10",
+      "title": "Systems Analysis and Design",
+      "units": 3,
+      "instructor": "Mr. Kervin Draude Corpuz"
+    },
+    {
+      "page": 18,
+      "section": "BSIT3D",
+      "code": "ITC11",
+      "title": "Introduction to Human-Computer Interaction",
+      "units": 3,
+      "instructor": "Mr. Jude Allan Pabiton"
+    },
+    {
+      "page": 18,
+      "section": "BSIT3D",
+      "code": "ITC12",
+      "title": "Integrative Programming and Technologies 1",
+      "units": 3,
+      "instructor": "Ms. Gerami Benedicto"
+    },
+    {
+      "page": 18,
+      "section": "BSIT3D",
+      "code": "ITC13",
+      "title": "Quantitative Methods (incl. Modeling & Simulation)",
+      "units": 3,
+      "instructor": "Ms. Loren B. Olino"
+    },
+    {
+      "page": 19,
+      "section": "BSIT4A",
+      "code": "ITC18",
+      "title": "Capstone Project and Research 2",
+      "units": 3,
+      "instructor": "Dr. Mercurio G. Villanueva"
+    },
+    {
+      "page": 19,
+      "section": "BSIT4A",
+      "code": "ITC22",
+      "title": "Practicum (500 HRS)",
+      "units": 6,
+      "instructor": null
+    },
+    {
+      "page": 20,
+      "section": "BSIT4B",
+      "code": "ITC18",
+      "title": "Capstone Project and Research 2",
+      "units": 3,
+      "instructor": "Dr. Mercurio G. Villanueva"
+    },
+    {
+      "page": 20,
+      "section": "BSIT4B",
+      "code": "ITC22",
+      "title": "Practicum (500 HRS)",
+      "units": 6,
+      "instructor": null
+    },
+    {
+      "page": 21,
+      "section": "BSIT4C",
+      "code": "ITC18",
+      "title": "Capstone Project and Research 2",
+      "units": 3,
+      "instructor": "Dr. Mercurio G. Villanueva"
+    },
+    {
+      "page": 21,
+      "section": "BSIT4C",
+      "code": "ITC22",
+      "title": "Practicum (500 HRS)",
+      "units": 6,
+      "instructor": null
+    },
+    {
+      "page": 22,
+      "section": "BSCS1A",
+      "code": "GE1",
+      "title": "Purposive Communication",
+      "units": 3,
+      "instructor": "Ms. Juna May Diaz"
+    },
+    {
+      "page": 22,
+      "section": "BSCS1A",
+      "code": "GE2",
+      "title": "Readings in the Philippine History",
+      "units": 3,
+      "instructor": "Ms. Corazon L. Madriaga"
+    },
+    {
+      "page": 22,
+      "section": "BSCS1A",
+      "code": "GE3",
+      "title": "Mathematics in Modern World",
+      "units": 3,
+      "instructor": "Mr. Raymundo S. Barerra Jr."
+    },
+    {
+      "page": 22,
+      "section": "BSCS1A",
+      "code": "GVAL1",
+      "title": "Granby Values 1",
+      "units": 3,
+      "instructor": "Ms. Joynelyn Gatchalian"
+    },
+    {
+      "page": 22,
+      "section": "BSCS1A",
+      "code": "CC101",
+      "title": "Introduction to Computing",
+      "units": 3,
+      "instructor": "Mr. Jude Allan C. Pabiton"
+    },
+    {
+      "page": 22,
+      "section": "BSCS1A",
+      "code": "CC102",
+      "title": "Computer Programming 1",
+      "units": 3,
+      "instructor": "Mr. Marvin A. Ramos"
+    },
+    {
+      "page": 22,
+      "section": "BSCS1A",
+      "code": "PATHFIT1",
+      "title": "Human Enhancement",
+      "units": 2,
+      "instructor": "Mr. Jonathan F. Sabalo"
+    },
+    {
+      "page": 22,
+      "section": "BSCS1A",
+      "code": "CWTS1",
+      "title": "Civic Welfare Training Services -1",
+      "units": 3,
+      "instructor": "Mr. Arby Miranda"
+    },
+    {
+      "page": 23,
+      "section": "BSCS2A",
+      "code": "GE5",
+      "title": "Art Appreciation",
+      "units": 3,
+      "instructor": "Ms. Otesa C. Manalo"
+    },
+    {
+      "page": 23,
+      "section": "BSCS2A",
+      "code": "CSC2",
+      "title": "Discrete Structures-2",
+      "units": 3,
+      "instructor": "Ms. Joynelyn Gatchalian"
+    },
+    {
+      "page": 23,
+      "section": "BSCS2A",
+      "code": "CSC3",
+      "title": "Object-Oriented Programming",
+      "units": 3,
+      "instructor": "Mr. Jonnel M. Bilaos"
+    },
+    {
+      "page": 23,
+      "section": "BSCS2A",
+      "code": "CSC4",
+      "title": "Algorithms and Complexity",
+      "units": 3,
+      "instructor": "Ms. Loren Olino"
+    },
+    {
+      "page": 23,
+      "section": "BSCS2A",
+      "code": "GE7",
+      "title": "The Contemporary World",
+      "units": 3,
+      "instructor": "Ms. Joynelyn Gatchalian"
+    },
+    {
+      "page": 23,
+      "section": "BSCS2A",
+      "code": "GEELC1",
+      "title": "GE Elective-1 (Living in the IT Era)",
+      "units": 3,
+      "instructor": "Ms. Mary Shane Abina"
+    },
+    {
+      "page": 23,
+      "section": "BSCS2A",
+      "code": "PATHFIT3",
+      "title": "Physical Activities Towards Health and Fitness in Dance",
+      "units": 2,
+      "instructor": "Mr. Arby Miranda"
+    },
+    {
+      "page": 24,
+      "section": "BSCS3A",
+      "code": "CSC6",
+      "title": "Automata Theory and Formal Language",
+      "units": 3,
+      "instructor": "Mr. Calvin Doce"
+    },
+    {
+      "page": 24,
+      "section": "BSCS3A",
+      "code": "CC106",
+      "title": "Application Development and Emerging Technologies",
+      "units": 3,
+      "instructor": "Ms. Loren B. Olino"
+    },
+    {
+      "page": 24,
+      "section": "BSCS3A",
+      "code": "CSC7",
+      "title": "Architecture and Organization",
+      "units": 3,
+      "instructor": "Ms. Loren B. Olino"
+    },
+    {
+      "page": 24,
+      "section": "BSCS3A",
+      "code": "CSC8",
+      "title": "Information Assurance and Security",
+      "units": 3,
+      "instructor": "Ms. Loren B. Olino"
+    },
+    {
+      "page": 24,
+      "section": "BSCS3A",
+      "code": "CSC9",
+      "title": "Programming Language",
+      "units": 3,
+      "instructor": "Mr. Jonnel M. Bilaos"
+    },
+    {
+      "page": 24,
+      "section": "BSCS3A",
+      "code": "CSC10",
+      "title": "Software Engineering 1",
+      "units": 3,
+      "instructor": "Ms. Juna May Diaz"
+    },
+    {
+      "page": 24,
+      "section": "BSCS3A",
+      "code": "CSC11",
+      "title": "Advance Database Management System",
+      "units": 3,
+      "instructor": "Mr. Jonnel M. Bilaos"
+    },
+    {
+      "page": 24,
+      "section": "BSCS3A",
+      "code": "CSC12",
+      "title": "Human Computer Interaction",
+      "units": 3,
+      "instructor": "Mr. Jude Allan Pabiton"
+    },
+    {
+      "page": 25,
+      "section": "BSCS4A",
+      "code": "CSC401",
+      "title": "Practicum (300 hours)",
+      "units": 6,
+      "instructor": null
+    },
+    {
+      "page": 25,
+      "section": "BSCS4A",
+      "code": "CSC406",
+      "title": "CS Thesis Writing 2",
+      "units": 3,
+      "instructor": "Dr. Mercurio G. Villanueva"
+    }
+  ]
+}

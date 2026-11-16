@@ -22,7 +22,7 @@ export interface WorkloadSettings {
 }
 
 export const DEFAULT_WORKLOAD: WorkloadSettings = {
-  measure: "HOURS", minimum: 12, maximum: 24, partTimeMinimum: 12, partTimeMaximum: 24, maxUnits: 30, tolerance: 6, crossDepartment: "BOTH_HEADS",
+  measure: "HOURS", minimum: 12, maximum: 39, partTimeMinimum: 12, partTimeMaximum: 24, maxUnits: 30, tolerance: 6, crossDepartment: "BOTH_HEADS",
 };
 
 export async function getWorkloadSettings(): Promise<WorkloadSettings> {

@@ -74,7 +74,7 @@ export default async function SubjectsPage({ searchParams }: { searchParams: Pro
       }),
       prisma.section.findMany({ where: { AND: [departmentWhere.section(scope), { semesterId: term.id, programId: program.id, yearLevel: year as never, archivedAt: null }] }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { classPlaceholders: { select: { subjectId: true } } } }),
       assignableFaculty(term.id),
-      prisma.schedule.findMany({ where: { semesterId: term.id, status: { not: "ARCHIVED" }, section: { programId: program.id, yearLevel: year as never } }, select: { subjectId: true, sectionId: true, startMin: true, endMin: true } }),
+      prisma.schedule.findMany({ where: { semesterId: term.id, status: { not: "ARCHIVED" }, section: { programId: program.id, yearLevel: year as never } }, select: { subjectId: true, sectionId: true, startMin: true, endMin: true, facultyId: true, faculty: { select: { fullName: true } } } }),
       prisma.subjectAssignmentProposal.findMany({ where: { semesterId: term.id, status: "PENDING", subjectId: { in: visible.map((s) => s.id) }, section: { AND: [departmentWhere.section(scope), { programId: program.id, yearLevel: year as never }] } }, select: { subjectId: true, sectionId: true, faculty: { select: { fullName: true } }, reviewDepartment: { select: { name: true } } } }),
     ]) : [[], [], null, [], []];
     const assignmentScope = { departmentIds: policyDepartmentIds(actor), inactiveFacultyCount: await prisma.faculty.count({ where: { departmentId: { in: policyDepartmentIds(actor) }, archivedAt: null, status: "INACTIVE" } }) };
@@ -91,7 +91,13 @@ export default async function SubjectsPage({ searchParams }: { searchParams: Pro
     const offeringInfo = (subject: (typeof visible)[number]) => ({
       pendingApprovals: pendingApprovals.filter((p) => p.subjectId === subject.id).map((p) => ({ sectionId: p.sectionId, facultyName: p.faculty.fullName, departmentName: p.reviewDepartment.name })),
       eligibleSectionIds: term ? sections.filter((s) => offeringMatches(subject, { ...s, curriculum: s.classPlaceholders }, { id: term.id, type: term.type, level: "COLLEGE" })).map((s) => s.id) : [],
-      progress: sections.map((s) => ({ sectionId: s.id, scheduledHours: meetings.filter((m) => m.subjectId === subject.id && m.sectionId === s.id).reduce((sum, m) => sum + Math.max(0, m.endMin - m.startMin) / 60, 0) })),
+      progress: sections.map((s) => {
+        const own = meetings.filter((m) => m.subjectId === subject.id && m.sectionId === s.id);
+        const assigned = assignments.find((a) => a.subjectId === subject.id && a.sectionId === s.id)?.facultyId;
+        // Meetings the assigned teacher cannot take (usually a time clash) still count for whoever teaches them.
+        const others = assigned ? [...new Set(own.filter((m) => m.facultyId !== assigned).map((m) => m.faculty.fullName))] : [];
+        return { sectionId: s.id, scheduledHours: own.reduce((sum, m) => sum + Math.max(0, m.endMin - m.startMin) / 60, 0), taughtByOthers: others };
+      }),
     });
     const query = (patch: Record<string, string | null>) => { const next = new URLSearchParams(); Object.entries({ category: filters.category === "ALL" ? null : filters.category, semester: headSemester, owner: filters.owner === "ALL" ? null : filters.owner, program: program?.id, year, term: params.term ?? null, status: params.status ?? null, ...patch }).forEach(([key, value]) => value && next.set(key, value)); return `/subjects?${next}`; };
     return <div className="space-y-4">

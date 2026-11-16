@@ -52,6 +52,15 @@ describe("assistant replies and verified sources", () => {
     expect(mocks.generate.mock.calls[1][0].config.tools).toBeUndefined();
   });
 
+  it("answers from live data when Gemini is unavailable", async () => {
+    mocks.generate.mockRejectedValue(new Error("GEMINI_API_KEY missing"));
+    mocks.execute.mockResolvedValue({ total: 1, rows: [{ name: "Ana Santos", status: "OVERLOADED" }] });
+    const reply = await generateAssistantReply(scope, [], "Who is overloaded?");
+    expect(mocks.execute).toHaveBeenCalledWith("getWorkloads", { status: "OVERLOADED" });
+    expect(reply.content).toContain("Ana Santos");
+    expect(reply.sources).toEqual([{ label: "Scheduler", href: "/scheduler" }]);
+  });
+
   it("supports older plain-text history and refuses unauthorized page context", () => {
     expect(readAssistantReply("An older answer")).toEqual({ content: "An older answer" });
     expect(assistantPage("/requests", "REGISTRAR")).toBe("/dashboard");

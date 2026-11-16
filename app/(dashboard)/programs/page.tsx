@@ -50,7 +50,7 @@ export default async function ProgramsPage({ searchParams }: { searchParams: Pro
 
   // Heads manage their department profile on the same page; the Registrar uses Departments.
   const profile = scope.role === "HEAD_OF_DEPARTMENT" ? <ProfileSection scope={scope} /> : null;
-  const tabs = single ? null : <LevelTabs basePath="/programs" active={active} params={params} noun="programs" counts={counts} />;
+  const tabs = single ? null : <LevelTabs basePath="/programs" active={active} params={params} noun="programs" counts={counts} mobileSelect />;
 
   // The same policy the actions enforce decides which view is shown.
   const who = policyUserFromScope(scope);

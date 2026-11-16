@@ -39,7 +39,7 @@ export function BookDialog({ option, request, pending, onConfirm, onClose }: { o
             <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 rounded-lg border p-4 text-sm">
               <dt className="text-muted-foreground">Purpose</dt><dd className="font-medium">{request.purpose}</dd>
               <dt className="text-muted-foreground">Room</dt><dd>{option.name} · {option.location}</dd>
-              <dt className="text-muted-foreground">Date</dt><dd>{formatDay(request.date)}</dd>
+              <dt className="text-muted-foreground">Date</dt><dd>{formatDay(request.date)}{request.endDate && ` to ${formatDay(request.endDate)}`}</dd>
               <dt className="text-muted-foreground">Time</dt><dd>{formatRange(request.startMin, request.endMin)}</dd>
               <dt className="text-muted-foreground">Attendees</dt><dd>{request.attendees} (capacity {option.capacity})</dd>
               <dt className="text-muted-foreground">Priority</dt><dd>{PRIORITY_LABEL[request.priority]}</dd>

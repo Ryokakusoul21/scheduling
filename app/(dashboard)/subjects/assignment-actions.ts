@@ -15,6 +15,7 @@ import { planSchema, projectedLoads, type PlanInput } from "@/lib/subjects/plan"
 import { offeringMatches } from "@/lib/subjects/offerings";
 import { AssignmentCurriculumError, syncAssignedCurriculum } from "@/lib/subjects/assignment-curriculum";
 import { assignableFaculty } from "@/lib/subjects/assignments";
+import { handOverClasses, unscheduleUnassigned } from "@/lib/subjects/hand-over";
 import { formatRange } from "@/lib/scheduler/timetable";
 import { notifyFacultyEach, notifyManagers } from "@/lib/notify";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
@@ -76,7 +77,11 @@ export async function saveAssignmentPlanAction(input: PlanInput): Promise<Result
   const proposed = ops.filter((o) => o.change.facultyId && facultyAssignmentRoute(actor, people.get(o.change.facultyId)!.departmentId) === "APPROVAL");
   if (!ops.length) {
     try {
-      await prisma.$transaction((tx) => syncAssignedCurriculum(tx, subjects.flatMap((s) => changes.filter((c) => c.facultyId).map((c) => ({ subjectId: s.id, sectionId: c.sectionId, semesterId })))));
+      await prisma.$transaction(async (tx) => {
+        await syncAssignedCurriculum(tx, subjects.flatMap((s) => changes.filter((c) => c.facultyId).map((c) => ({ subjectId: s.id, sectionId: c.sectionId, semesterId }))));
+        // Saving the same teacher again also brings their timetabled classes back in step.
+        await handOverClasses(tx, subjects.flatMap((s) => changes.flatMap((c) => (c.facultyId ? [{ subjectId: s.id, sectionId: c.sectionId, semesterId, facultyId: c.facultyId }] : []))));
+      });
       revalidate();
       return { ok: true, warnings: [], changed: 0 };
     } catch (error) {
@@ -106,6 +111,9 @@ export async function saveAssignmentPlanAction(input: PlanInput): Promise<Result
       const added = direct.filter((o) => o.change.facultyId);
       if (added.length) await tx.subjectAssignment.createMany({ data: added.map((o) => ({ subjectId: o.subject.id, facultyId: o.change.facultyId!, sectionId: o.change.sectionId, semesterId, assignedById: scope.userId })) });
       await syncAssignedCurriculum(tx, added.map((o) => ({ subjectId: o.subject.id, sectionId: o.change.sectionId, semesterId })));
+      await handOverClasses(tx, added.map((o) => ({ subjectId: o.subject.id, sectionId: o.change.sectionId, semesterId, facultyId: o.change.facultyId! })));
+      // A section left without a teacher goes back to Unscheduled.
+      await unscheduleUnassigned(tx, direct.filter((o) => !o.change.facultyId).map((o) => ({ subjectId: o.subject.id, sectionId: o.change.sectionId, semesterId })));
       if (proposed.length) await tx.subjectAssignmentProposal.createMany({ data: proposed.map((o) => ({ subjectId: o.subject.id, sectionId: o.change.sectionId, facultyId: o.change.facultyId!, semesterId, reviewDepartmentId: people.get(o.change.facultyId!)!.departmentId!, requestedById: scope.userId })) });
       await tx.auditLog.createMany({
         data: ops.map(({ subject, prev, change }) => {

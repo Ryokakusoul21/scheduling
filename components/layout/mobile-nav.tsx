@@ -7,11 +7,16 @@ import { DotsThree, SignOut } from "@phosphor-icons/react/ssr";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { cn } from "@/lib/utils";
-import { activeHrefFor, filterNavForRole } from "./nav-config";
+import { activeHrefFor, filterNavForRole, mobileNavForRole } from "./nav-config";
 import { usePathname } from "next/navigation";
 import type { AppRole } from "@/lib/permissions/roles";
 
-const BAR_ITEMS = 4;
+const SHORT_LABELS: Record<string, string> = {
+  "/dashboard": "Dashboard", "/programs": "Records", "/admin/review-center": "Approvals",
+  "/calendar": "Calendar", "/analytics": "Analytics", "/assignment-approvals": "Approvals",
+  "/scheduler": "Timetable", "/requests": "Requests", "/student": "Home",
+  "/student/schedule": "Timetable", "/student/calendar": "Calendar", "/student/profile": "Profile",
+};
 
 /** Bottom navigation for phones: the first pages as icons, and every page in the "More pages" sheet. */
 export function MobileNav({ role, name, image, roleLabel }: { role: AppRole; name: string; image?: string | null; roleLabel: string }) {
@@ -19,29 +24,27 @@ export function MobileNav({ role, name, image, roleLabel }: { role: AppRole; nam
   const [confirmLogout, setConfirmLogout] = useState(false);
   const items = filterNavForRole(role).flatMap((g) => g.items);
   const activeHref = activeHrefFor(usePathname(), role);
-  const bar = items.slice(0, BAR_ITEMS);
-  const moreActive = !bar.some((i) => i.href === activeHref);
+  const bar = mobileNavForRole(role);
+  const moreActive = !!activeHref && !bar.some((i) => i.href === activeHref);
   const student = role === "STUDENT";
 
   return (
     <>
-      <nav aria-label="Main navigation" className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-40 flex h-16 items-center justify-around rounded-2xl bg-sidebar px-2 text-sidebar-foreground shadow-lg md:hidden print:hidden">
+      <nav aria-label="Main navigation" className="fixed inset-x-0 bottom-0 z-40 grid h-[calc(4.5rem+env(safe-area-inset-bottom))] grid-cols-5 items-center gap-1 border-t bg-card px-2 pb-[env(safe-area-inset-bottom)] text-muted-foreground shadow-[0_-4px_20px_rgba(15,23,42,0.04)] md:hidden print:hidden">
         {bar.map((item) => {
           const active = item.href === activeHref;
           return (
             <Link key={item.href} href={item.href} aria-label={item.label} aria-current={active ? "page" : undefined}
-              className="relative flex w-16 flex-col items-center outline-none focus-visible:ring-2 focus-visible:ring-brand-gold">
-              <span className={cn("flex items-center justify-center rounded-full transition-all duration-300",
-                active ? "-mt-9 size-16 bg-background text-primary shadow-md ring-4 ring-sidebar" : "size-10 border border-white/20")}>
-                <item.icon className={active ? "size-6" : "size-5"} weight={active ? "fill" : "regular"} />
-              </span>
-              {active && <span className="mt-0.5 max-w-20 truncate text-[11px] font-semibold">{item.label}</span>}
+              className={cn("flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring", active ? "bg-primary/10 text-primary" : "hover:bg-muted hover:text-foreground")}>
+              <item.icon className="size-5" weight={active ? "fill" : "regular"} />
+              <span className={cn("text-[11px] leading-tight", active && "font-semibold")}>{SHORT_LABELS[item.href] ?? item.label}</span>
             </Link>
           );
         })}
         <button type="button" onClick={() => setOpen(true)} aria-label="More pages" aria-expanded={open}
-          className={cn("flex size-10 items-center justify-center rounded-full border border-white/20 outline-none focus-visible:ring-2 focus-visible:ring-brand-gold", moreActive && "bg-white/15")}>
+          className={cn("flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring", moreActive && "bg-primary/10 text-primary")}>
           <DotsThree className="size-6" weight="bold" />
+          <span className="text-[11px] leading-tight">More</span>
         </button>
       </nav>
 

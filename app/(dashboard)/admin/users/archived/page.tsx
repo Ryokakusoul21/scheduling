@@ -12,7 +12,7 @@ export default async function ArchivedPage() {
     <div className="space-y-6">
       <div className="space-y-1.5">
         <h1 className="text-2xl font-semibold tracking-tight">Archived records</h1>
-        <p className="text-sm text-muted-foreground">Review archived accounts and academic records. Restore a record to make it available again.</p>
+        <p className="text-sm text-muted-foreground">Review archived accounts and academic records. Archived rooms are kept for history; other record types can be restored.</p>
       </div>
       <UserTabs current="archived" archivedCount={rows.length} />
       <ArchivedList rows={rows} />

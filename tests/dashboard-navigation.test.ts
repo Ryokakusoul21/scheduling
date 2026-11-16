@@ -1,9 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { activeHrefFor, allowedHrefsForRole, filterNavForRole, navMatchesPath, tabsForPath } from "@/components/layout/nav-config";
+import { activeHrefFor, allowedHrefsForRole, filterNavForRole, mobileNavForRole, navMatchesPath, tabsForPath } from "@/components/layout/nav-config";
 import { canAccessPath } from "@/lib/permissions/routes";
 import { ROLES } from "@/lib/permissions/roles";
 
 describe("role-focused sidebar navigation", () => {
+  it("keeps the Registrar's frequent destinations directly available on mobile", () => {
+    expect(mobileNavForRole("REGISTRAR").map((item) => item.href)).toEqual(["/dashboard", "/programs", "/admin/review-center", "/calendar"]);
+  });
+
+  it("only offers authorized, distinct mobile destinations for each role", () => {
+    for (const role of ROLES) {
+      const items = mobileNavForRole(role);
+      expect(items).toHaveLength(4);
+      expect(new Set(items.map((item) => item.href)).size).toBe(4);
+      for (const item of items) expect(canAccessPath(item.href, role), `${role}: ${item.href}`).toBe(true);
+    }
+  });
+
   it("merges programs and terms into the Registrar's Academic Record workspace", () => {
     const groups = filterNavForRole("REGISTRAR");
     expect(groups[1].label).toBe("Academic Record");

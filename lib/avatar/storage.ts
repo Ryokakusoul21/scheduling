@@ -1,8 +1,9 @@
 import "server-only";
 import sharp from "sharp";
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
+import { prisma } from "@/lib/db/prisma";
 import { AVATAR_MAX_BYTES } from "./url";
 
 const DIR = path.join(process.cwd(), "uploads", "avatars");
@@ -25,11 +26,16 @@ function fileOf(image: string | null | undefined) {
   return name && AVATAR_FILE_RE.test(name) ? name : null;
 }
 
-/** Deletes both sizes of a stored avatar; missing files are fine. */
+/** Deletes the stored avatar and any legacy local copies; missing files are fine. */
 export async function deleteAvatarFiles(image: string | null | undefined) {
   const name = fileOf(image);
   if (!name) return;
-  await Promise.all([name, name.replace(/\.webp$/, "-64.webp")].map((f) => rm(path.join(DIR, f), { force: true })));
+  const original = name.replace(/-64\.webp$/, ".webp");
+  await prisma.avatarFile.deleteMany({ where: { name: original } });
+  // Previous versions wrote to disk. Vercel's application directory is read-only.
+  if (!process.env.VERCEL) {
+    await Promise.all([original, original.replace(/\.webp$/, "-64.webp")].map((f) => rm(path.join(DIR, f), { force: true })));
+  }
 }
 
 /** Validates, re-encodes (sharp drops EXIF by default) and stores 256px and 64px WebP copies; returns the URL. */
@@ -48,15 +54,19 @@ export async function saveAvatar(userId: string, input: Buffer) {
   }
 
   const name = `${userId.toLowerCase().replace(/[^a-z0-9]/g, "")}-${randomBytes(8).toString("hex")}.webp`;
-  await mkdir(DIR, { recursive: true });
-  await Promise.all([
-    writeFile(path.join(DIR, name), large),
-    writeFile(path.join(DIR, name.replace(/\.webp$/, "-64.webp")), small),
-  ]);
+  // Keep both small, re-encoded images in persistent storage, shared by all function instances.
+  await prisma.avatarFile.create({ data: { name, image: new Uint8Array(large), thumbnail: new Uint8Array(small) } });
   return `${URL_PREFIX}${name}`;
 }
 
 export async function readAvatarFile(name: string) {
   if (!AVATAR_FILE_RE.test(name)) return null;
+  const thumbnail = name.endsWith("-64.webp");
+  const stored = await prisma.avatarFile.findUnique({
+    where: { name: name.replace(/-64\.webp$/, ".webp") },
+    select: { image: !thumbnail, thumbnail },
+  });
+  if (stored) return thumbnail ? stored.thumbnail : stored.image;
+  // Preserve photos uploaded by earlier versions on a persistent local filesystem.
   return readFile(path.join(DIR, name)).catch(() => null);
 }

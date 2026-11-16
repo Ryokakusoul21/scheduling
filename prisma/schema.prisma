@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -305,6 +306,13 @@ enum NotificationType {
 // ---------------------------------------------------------------------------
 // Identity
 // ---------------------------------------------------------------------------
+
+/// Re-encoded profile photos, shared across serverless instances and deployments.
+model AvatarFile {
+  name      String @id
+  image     Bytes
+  thumbnail Bytes
+}
 
 model User {
   suspensionsIssued   ClassSuspension[]     @relation("SuspensionIssuer")
@@ -836,7 +844,7 @@ model Floor {
 
 model Room {
   id              String      @id @default(cuid())
-  roomNumber      String      @unique
+  roomNumber      String
   roomName        String
   floorId         String?
   floor           Floor?      @relation(fields: [floorId], references: [id])
@@ -867,6 +875,9 @@ model Room {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Archived room numbers may be reused by new records without changing history.
+  @@unique([roomNumber], map: "Room_active_roomNumber_key", where: { archivedAt: null })
 }
 
 model RoomAvailability {

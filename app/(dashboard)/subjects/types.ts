@@ -6,7 +6,7 @@ export type AssignmentRow = { id: string; facultyId: string; facultyName: string
 export type SubjectInfo = {
   id: string; code: string; name: string; description: string; units: number; lectureHours: number; labHours: number;
   departmentId: string | null; departmentName: string | null; assignments: AssignmentRow[];
-  progress?: { sectionId: string; scheduledHours: number }[];
+  progress?: { sectionId: string; scheduledHours: number; taughtByOthers?: string[] }[];
   eligibleSectionIds?: string[];
   pendingApprovals?: { sectionId: string; facultyName: string; departmentName: string }[];
 };

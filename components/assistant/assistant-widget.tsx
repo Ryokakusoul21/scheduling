@@ -29,7 +29,7 @@ export function AssistantWidget({ userName, userId, role }: { userName?: string 
       <PopoverTrigger
         type="button"
         aria-label="Open Scheduling Assistant"
-        className="fixed right-4 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-40 flex size-14 items-center justify-center rounded-full bg-gradient-to-br from-primary to-violet-500 text-primary-foreground shadow-lg outline-none transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-brand-gold md:right-6 md:bottom-6 print:hidden"
+        className="fixed right-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-40 flex size-12 items-center justify-center rounded-full bg-gradient-to-br from-primary to-violet-500 text-primary-foreground shadow-lg outline-none transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-brand-gold md:right-6 md:bottom-6 md:size-14 print:hidden"
       >
         <Sparkles className="size-6" weight="fill" />
       </PopoverTrigger>

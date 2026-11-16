@@ -38,6 +38,9 @@ function monthStart() {
   return new Date(`${today.slice(0, 8)}01T00:00:00+08:00`);
 }
 
+/** A Head of Department approves bookings of rooms their own department manages, so theirs need no approval or cap. */
+const selfApproves = (scope: Scope, departmentId: string | null) => scope.role === "HEAD_OF_DEPARTMENT" && !!departmentId && scope.departmentIds.includes(departmentId);
+
 /** Overrides used this month by the person and their department against the configured caps. */
 export async function overrideCaps(scope: Scope) {
   const settings = await getBookingSettings();
@@ -128,7 +131,7 @@ export async function searchRooms(scope: Scope, input: SlotInput & { roomType?: 
       blockers: privateSlot ? [PRIVATE_TIMETABLE_BLOCKER] : plan.blockers,
       notes: privateSlot ? [] : plan.notes,
       overridable: !privateSlot && plan.overridable,
-      needsApproval: approval ? (departments.find((d) => d.id === approval)?.name ?? "the owning department") : null,
+      needsApproval: approval && !selfApproves(scope, approval) ? (departments.find((d) => d.id === approval)?.name ?? "the owning department") : null,
       ownership: !r.departmentId ? "SHARED" : scope.departmentIds.includes(r.departmentId) ? "OWN" : "OTHER",
     };
   });
@@ -139,7 +142,7 @@ export async function searchRooms(scope: Scope, input: SlotInput & { roomType?: 
 }
 
 /** Checks the request itself: allowed priority, a reason for overrides, the room, and the monthly caps. */
-async function vet(scope: Scope, d: BookingInput) {
+async function vet(scope: Scope, d: BookingInput, skipCap = false) {
   if (!["REGISTRAR", "HEAD_OF_DEPARTMENT", "FACULTY"].includes(scope.role)) return { error: "Your role cannot create room bookings." } as const;
   if (!allowedPriorities(scope.role).includes(d.priority)) return { error: `Your role can book up to ${PRIORITY_LABEL[allowedPriorities(scope.role).at(-1)!]} priority.` } as const;
   if (isOverride(d.priority) && !d.urgentReason) return { error: "Choose the reason for the urgent booking." } as const;
@@ -149,7 +152,7 @@ async function vet(scope: Scope, d: BookingInput) {
     await logBlocked(scope, "book a room of another department", "RoomBooking", d.roomId);
     return { error: "That room is not available to your department." } as const;
   }
-  if (isOverride(d.priority) && !scope.isAdmin) {
+  if (isOverride(d.priority) && !scope.isAdmin && !skipCap && !selfApproves(scope, room.departmentId ?? scope.departmentId)) {
     const caps = await overrideCaps(scope);
     if (caps.user.reached) return { error: `You have used all ${caps.user.cap} urgent overrides allowed this month.` } as const;
     if (caps.department?.reached) return { error: `Your department has used all ${caps.department.cap} urgent overrides allowed this month.` } as const;
@@ -157,9 +160,10 @@ async function vet(scope: Scope, d: BookingInput) {
   return { room } as const;
 }
 
-/** Requests a booking; every booking waits for the responsible department head. */
-export async function createBooking(scope: Scope, d: BookingInput) {
-  const v = await vet(scope, d);
+/** Requests a booking; it waits for the responsible department head unless the booker is that head. */
+/** `continuesRange` marks a later day of an approved range, which shares the first day's override allowance. */
+export async function createBooking(scope: Scope, d: BookingInput, continuesRange = false) {
+  const v = await vet(scope, d, continuesRange);
   if ("error" in v) return { ok: false, error: v.error! } satisfies Fail;
   const approval = v.room.departmentId ?? scope.departmentId;
   if (!approval) return { ok: false, error: "Assign a responsible department before requesting this room." } satisfies Fail;
@@ -167,7 +171,8 @@ export async function createBooking(scope: Scope, d: BookingInput) {
     roomId: d.roomId, bookedById: scope.userId, purpose: d.purpose, date: day(d.date), startMin: d.startMin, endMin: d.endMin, attendees: d.attendees,
     departmentId: scope.departmentId, priority: d.priority, urgentReason: isOverride(d.priority) ? d.urgentReason : null, reasonDetail: d.reasonDetail?.trim() || null,
   };
-  if (approval) {
+  // A Head of Department booking a room their own department manages is the approver, so it is confirmed at once.
+  if (!selfApproves(scope, approval)) {
     // Nothing moves until the room's department approves; the plan is made again at that moment.
     const settings = await getBookingSettings();
     const loaded = await loadPlan(d.date, addDays(d.date, PLAN_WINDOW_DAYS));

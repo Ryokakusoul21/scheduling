@@ -20,7 +20,7 @@ import type { PolicyOptions } from "./class-policy-fields";
 import { TimetableConfiguration } from "@/components/scheduler/timetable-configuration";
 import { deleteConstraintAction, saveConstraintAction, toggleConstraintAction } from "./actions";
 
-type Option = { value: string; label: string };
+type Option = { value: string; label: string; partTime?: boolean };
 type Filter = "all" | "required" | "preferred" | "active" | "inactive";
 
 const FILTERS: { value: Filter; label: string }[] = [

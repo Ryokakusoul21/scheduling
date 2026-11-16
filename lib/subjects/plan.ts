@@ -17,7 +17,7 @@ export type PlanInput = z.input<typeof planSchema>;
 
 export type PlanSubject = AssignableSubject & {
   id: string; assignments: { facultyId: string; sectionId: string | null }[];
-  progress?: { sectionId: string; scheduledHours: number }[];
+  progress?: { sectionId: string; scheduledHours: number; taughtByOthers?: string[] }[];
 };
 
 /** Last change per section wins, so a later pick replaces an earlier one. */

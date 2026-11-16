@@ -20,7 +20,6 @@ import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { ACADEMIC_LEVELS, LEVELS, levelLabel } from "@/lib/academics/levels";
 import { LoadBar, LoadStatusLabel } from "@/components/workload/load-bar";
 import { createFacultyAction, updateFacultyAction } from "./actions";
-import { RoomPreferences } from "./room-preferences";
 import { FacultyDetails } from "./faculty-details";
 
 export interface FacultyRow {
@@ -58,13 +57,10 @@ export function FacultyBrowser({
   faculty,
   departments,
   initialQuery,
-  rooms,
   canManage,
 }: {
   canManage: boolean;
   faculty: FacultyRow[];
-  /** Rooms a Head of Department or Registrar may prefer; null hides room preferences. */
-  rooms: { id: string; label: string }[] | null;
   departments: { value: string; label: string }[];
   initialQuery: string;
 }) {
@@ -124,7 +120,6 @@ export function FacultyBrowser({
       <ActionButton kind={canManage ? "edit" : "view"} onClick={() => dialog.openEdit(f)}>
         {canManage ? "Edit" : "Details"}
       </ActionButton>
-      {rooms && <RoomPreferences key={f.preferredRoomIds.join()} facultyId={f.id} name={f.fullName} selected={f.preferredRoomIds} rooms={rooms} />}
       <ActionButton kind="view" nativeButton={false} render={<Link href={`/scheduler?facultyId=${f.id}`} />}>
         Timetable
       </ActionButton>
@@ -289,7 +284,7 @@ export function FacultyBrowser({
         onOpenChange={(o) => !o && dialog.close()}
         title={editing ? `Edit ${editing.fullName}` : "Add faculty member"}
         fields={fields}
-        values={editing ?? { maxHours: 24, employmentType: "FULL_TIME", dayOff: "", status: "ACTIVE", teachingLevels: level ? [level] : ["COLLEGE"] }}
+        values={editing ?? { maxHours: 39, employmentType: "FULL_TIME", dayOff: "", status: "ACTIVE", teachingLevels: level ? [level] : ["COLLEGE"] }}
         submitLabel={editing ? "Save changes" : "Add faculty"}
         successMessage={editing ? "Faculty updated" : "Faculty added"}
         onSubmit={(fd) => (editing ? updateFacultyAction(editing.id, fd) : createFacultyAction(fd))}

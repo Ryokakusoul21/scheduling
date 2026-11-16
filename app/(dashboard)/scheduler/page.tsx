@@ -15,6 +15,9 @@ import type { SchedulerData } from "@/components/scheduler/types";
 import { EmptyState } from "@/components/ux/states";
 import { ModeSwitch } from "@/components/scheduler/mode-switch";
 import { ExamMode } from "./exam-mode";
+
+/** Set to true to bring back the Examination Schedule tab. */
+const EXAM_SCHEDULING_ENABLED = false as boolean;
 import { HeadNotices } from "@/components/scheduler/head-notices";
 import { loadWorkload } from "@/lib/workload/load";
 import { loadReport } from "@/lib/workload/optimizer";
@@ -33,8 +36,8 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
     prisma.academicYear.findMany({ orderBy: { startDate: "desc" } }),
   ]);
   const role = scope.role;
-  // Examination scheduling is for staff only; anything else falls back to the class schedule.
-  const mode = modeParam === "examinations" && STAFF_ROLES.includes(role) ? "examinations" : "classes";
+  // Examination scheduling is hidden for now; every request falls back to the class schedule.
+  const mode = EXAM_SCHEDULING_ENABLED && modeParam === "examinations" && STAFF_ROLES.includes(role) ? "examinations" : "classes";
 
   const academicYear = academicYears.find((y) => y.id === ay) ?? academicYears.find((y) => y.isActive) ?? academicYears[0];
 
@@ -232,7 +235,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
       <SchedulerWorkspace
         // Remount when switching academic year so filters reset to that year's terms.
         key={academicYear.id}
-        modes={STAFF_ROLES.includes(role) ? <ModeSwitch mode={mode} academicYearId={academicYear.id} /> : undefined}
+        modes={EXAM_SCHEDULING_ENABLED && STAFF_ROLES.includes(role) ? <ModeSwitch mode={mode} academicYearId={academicYear.id} /> : undefined}
         data={data}
         permissions={{
           canConfigureTimetable: STAFF_ROLES.includes(role),

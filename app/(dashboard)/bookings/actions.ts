@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireScope } from "@/lib/permissions/scope";
 import { ROOM_BOOKING_ROLES } from "@/lib/permissions/roles";
-import { MAX_REPEATS, PRIORITIES, URGENT_REASONS, weeklyDates } from "@/lib/bookings/plan";
+import { dailyDates, MAX_RANGE_DAYS, MAX_REPEATS, PRIORITIES, URGENT_REASONS, weeklyDates } from "@/lib/bookings/plan";
 import {
   bookingTimeline, cancelBooking, createBooking, editBookingDetails, respondAcknowledgement, reviewOverride, searchRooms, shortenBooking,
   type RoomOption,
@@ -38,6 +38,8 @@ const bookSchema = slotSchema.and(z.object({
   urgentReason: z.enum(REASONS).optional().nullable(),
   reasonDetail: z.string().trim().max(300).optional().nullable(),
   repeatUntil: date.optional().nullable(),
+  /** Last day of a daily date range; empty for a single day. */
+  endDate: date.optional().nullable(),
   // The placement picked for each displaced class (class id to placement key).
   choices: z.record(z.string(), z.string().max(120)).optional(),
 }));
@@ -67,24 +69,28 @@ export async function bookRoomAction(input: z.input<typeof bookSchema>): Promise
   const parsed = bookSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the booking details." };
   if (parsed.data.date < today()) return { ok: false, error: "Bookings must be for today or a later date." };
-  const { repeatUntil, ...slot } = parsed.data;
-  const later = repeatUntil ? weeklyDates(slot.date, repeatUntil) : [];
+  const { repeatUntil, endDate, ...slot } = parsed.data;
+  const range = endDate && endDate > slot.date ? dailyDates(slot.date, endDate) : [];
+  if (range.length && repeatUntil) return { ok: false, error: "Choose either a date range or a weekly repeat, not both." };
+  if (range.length >= MAX_RANGE_DAYS) return { ok: false, error: `A date range can cover up to ${MAX_RANGE_DAYS} days.` };
+  const later = repeatUntil ? weeklyDates(slot.date, repeatUntil) : range;
   if (repeatUntil && slot.priority !== "REGULAR") return { ok: false, error: "Only Regular bookings can repeat weekly." };
   if (repeatUntil && later.length === 0) return { ok: false, error: "Choose a repeat end date at least one week after the first booking." };
   if (later.length > MAX_REPEATS) return { ok: false, error: `A repeat can run for up to ${MAX_REPEATS} more weeks.` };
   const result = await createBooking(scope, { ...slot, urgentReason: slot.urgentReason as never });
   if (!result.ok) return result;
-  // Each later date is booked on its own as a Regular booking, so a taken room is skipped and never displaces anything.
+  // Each later date is booked on its own; weekly repeats never displace anything, while a date range keeps its priority
+  // and reason, so displaced classes on later days move to their default placement.
   const skipped: { date: string; reason: string }[] = [];
   let booked = 0;
   for (const d of later) {
-    const again = await createBooking(scope, { ...slot, date: d, urgentReason: null, choices: undefined });
+    const again = await createBooking(scope, { ...slot, date: d, urgentReason: range.length ? (slot.urgentReason as never) : null, choices: undefined }, range.length > 0);
     if (again.ok) booked++;
     else skipped.push({ date: d, reason: again.error });
   }
   revalidate();
   const { bookingId, status, items, displaced } = result;
-  return { ok: true, data: { bookingId, status, items, displaced, ...(repeatUntil ? { repeat: { booked, skipped } } : {}) } };
+  return { ok: true, data: { bookingId, status, items, displaced, ...(later.length ? { repeat: { booked, skipped } } : {}) } };
 }
 
 /** Cancels a booking; `restore` puts displaced classes and bookings back when their slots are still free. */

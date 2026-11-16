@@ -44,6 +44,10 @@ export async function saveConstraintAction(id: string | null, input: ConstraintI
 
   const departmentId = scope.isAdmin ? parsed.data.departmentId || null : parsed.data.departmentId || scope.manageDepartmentId || scope.departmentId;
   if (!canManageDepartment(scope, departmentId)) return { ok: false, error: OUTSIDE_DEPARTMENT };
+  if (parsed.data.kind === "PREFERRED_TIME") {
+    const who = await prisma.faculty.findUnique({ where: { id: (params.data as { facultyId: string }).facultyId }, select: { employmentType: true, archivedAt: true } });
+    if (!who || who.archivedAt || who.employmentType !== "PART_TIME") return { ok: false, error: "Available days and hours apply to part-time faculty only." };
+  }
   if (parsed.data.kind === "ROOM_PRIORITY") {
     const p = params.data as { roomId: string; facultyId: string };
     const [room, faculty] = await Promise.all([
