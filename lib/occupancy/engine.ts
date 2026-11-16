@@ -1,3 +1,4 @@
+import { roomAllowsSection, type RoomDesignation } from "@/lib/rooms/designation";
 /**
  * Dated occupancy engine shared by room booking, examinations, the calendar, and dynamic adjustments.
  * Weekly classes are expanded into dated sessions, adjustments are applied, and everything that holds a
@@ -203,7 +204,7 @@ export function describeClash(c: Clash) {
 // Finding the nearest available room, time slot, or substitute
 // ---------------------------------------------------------------------------
 
-export interface RoomInfo {
+export interface RoomInfo extends RoomDesignation {
   id: string;
   name: string;
   capacity: number;
@@ -241,6 +242,7 @@ export interface PlanContext {
   sectionLevel: Map<string, string>;
   /** Program or strand of each section, for room designation. */
   sectionProgram?: Map<string, string | null>;
+  sectionDepartment?: Map<string, string | null>;
   subjectRoomType: Map<string, RoomType>;
   dayStart?: number;
   dayEnd?: number;
@@ -262,7 +264,7 @@ export function roomSuits(room: RoomInfo, s: Pick<Session, "sectionId" | "subjec
   if (room.status !== "AVAILABLE") return false;
   if (room.capacity < (ctx.sectionSize.get(s.sectionId) ?? 0)) return false;
   const programId = ctx.sectionProgram?.get(s.sectionId);
-  if (room.programIds && !(programId && room.programIds.includes(programId))) return false;
+  if (!roomAllowsSection(room, { programId, departmentId: ctx.sectionDepartment?.get(s.sectionId), level: ctx.sectionLevel.get(s.sectionId) })) return false;
   if (s.component === "LABORATORY") {
     const required = ctx.subjectRoomType.get(s.subjectId);
     return required && LAB_TYPES.includes(required) ? room.roomType === required : LAB_TYPES.includes(room.roomType);

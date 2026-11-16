@@ -7,7 +7,9 @@ import type { ResolverInput } from "./types";
 
 export function buildResolverInput(data: SchedulerData, entries: SchedulerEntry[], termOf: (sectionId: string) => string): ResolverInput {
   const subjects = new Map(data.subjects.map((s) => [s.id, s]));
+  const approvedFacultyIds = new Set(data.assignments.filter((a) => data.sections.some((s) => s.id === a.sectionId && s.editable && !s.archived && (!a.semesterId || a.semesterId === termOf(s.id)))).map((a) => a.facultyId));
   return {
+    assignments: data.assignments.flatMap((a) => a.sectionId ? [{ ...a, sectionId: a.sectionId, semesterId: a.semesterId ?? termOf(a.sectionId) }] : []),
     // Other departments' classes come in as anonymous busy blocks: they block time and are never moved.
     entries: [...entries, ...data.busy].filter((e) => e.status !== "ARCHIVED").map((e) => ({
       id: e.id, semesterId: e.semesterId, sectionId: e.sectionId, subjectId: e.subjectId, facultyId: e.facultyId, roomId: e.roomId,
@@ -26,16 +28,16 @@ export function buildResolverInput(data: SchedulerData, entries: SchedulerEntry[
     faculty: data.faculty.map((f) => ({
       id: f.id, fullName: f.fullName, maxHours: f.maxHours, assignedHours: 0, teachingLevels: f.teachingLevels,
       dayOff: (f.dayOff as DayOfWeek | null) ?? null, availability: f.availability,
-      assignable: f.status === "ACTIVE" && !f.foreign,
+      assignable: f.status === "ACTIVE" && (!f.foreign || approvedFacultyIds.has(f.id)), preferredRoomIds: f.preferredRoomIds,
     })),
     rooms: data.rooms.map((r) => ({
       id: r.id, roomNumber: r.roomNumber, roomName: r.roomName, capacity: r.capacity, roomType: r.roomType, status: r.status,
-      availability: r.availability, programIds: r.programIds, assignable: !r.archived && !r.foreign && r.status === "AVAILABLE",
+      availability: r.availability, departmentId: r.departmentId, departmentCode: r.departmentCode, programIds: r.programIds, assignable: !r.archived && !r.foreign && r.status === "AVAILABLE",
     })),
     rules: data.rules,
     ruleCtx: {
-      rooms: new Map(data.rooms.map((r) => [r.id, { name: r.roomName, capacity: r.capacity, isGeneralShared: r.programIds === null, programIds: r.programIds ?? [] }])),
-      sections: new Map(data.sections.map((s) => [s.id, { name: s.shortName, studentCount: s.studentCount, programId: s.programId, departmentId: s.departmentId }])),
+      rooms: new Map(data.rooms.map((r) => [r.id, { name: r.roomName, capacity: r.capacity, departmentId: r.departmentId, departmentCode: r.departmentCode, isGeneralShared: r.programIds === null, programIds: r.programIds ?? [] }])),
+      sections: new Map(data.sections.map((s) => [s.id, { name: s.shortName, studentCount: s.studentCount, level: s.level, programId: s.programId, departmentId: s.departmentId }])),
       subjects: new Map(data.subjects.map((s) => [s.id, { code: s.code, name: s.name }])),
       faculty: new Map(data.faculty.map((f) => [f.id, { name: f.fullName }])),
       programNames: new Map(data.programs.map((p) => [p.id, p.name])),

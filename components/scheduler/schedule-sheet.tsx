@@ -8,6 +8,7 @@ import { DAY_LONG, formatRange } from "@/lib/scheduler/timetable";
 import { stageLabel } from "@/lib/academics/levels";
 import { cn } from "@/lib/utils";
 import type { SchedulerData, SchedulerEntry } from "./types";
+import { TIMETABLE_PRINT_CSS, TIMETABLE_PRINT_SCRIPT, timetablePrintColumns } from "@/lib/export/timetable-print";
 
 
 const esc = (t: string | number | null | undefined) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -41,7 +42,7 @@ function sheetHtml(source: SheetSource) {
       const subj = subjects.get(c.subjectId);
       return `<td rowspan="${span(c)}" class="cls" style="background:${PRINT_FILLS[subjectIds.indexOf(c.subjectId) % PRINT_FILLS.length]}"><b>${esc(subj?.name ?? "Class")}${c.component === "LABORATORY" ? " (Laboratory)" : ""}</b><br>(${esc(rooms.get(c.roomId)?.roomName ?? "Room to be announced")})<br>${esc(formatRange(c.startMin, c.endMin, config.hour12))}</td>`;
     }).join("");
-    return `<tr><td class="t">${clock(m)}</td><td class="t">${clock(ticks[r + 1])}</td>${tds}</tr>`;
+    return `<tr><td class="time">${esc(clock(m))} – ${esc(clock(ticks[r + 1]))}</td>${tds}</tr>`;
   }).join("");
 
   const subjectRows = subjectIds.map((id) => {
@@ -56,35 +57,31 @@ function sheetHtml(source: SheetSource) {
   const details = [["Course", source.programName], ["Year", stageLabel(section)], ["Section", section.shortName], ["No. of Students", section.studentCount ? section.studentCount : null]]
     .filter(([, v]) => v).map(([k, v]) => `<tr><td class="k">${k}</td><td><b>: ${esc(v)}</b></td></tr>`).join("");
 
-  return `<section class="sheet">
-    <div class="head"><img src="${location.origin}/branding/logo.jpg" alt="" width="64" height="64"><div><b>GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY</b>${source.departmentName ? `<div class="dept">${esc(source.departmentName)}</div>` : ""}<div>Naic, Cavite, Philippines</div></div></div>
+  return `<section class="sheet"><div class="sheet-content">
+    <div class="head"><img src="${esc(globalThis.location?.origin ?? "")}/branding/logo.jpg" alt="" width="64" height="64"><div><b>GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY</b>${source.departmentName ? `<div class="dept">${esc(source.departmentName)}</div>` : ""}<div>Naic, Cavite, Philippines</div></div></div>
     <div class="title"><b>SCHEDULE OF CLASSES</b><div>${esc(source.termLabel)}</div></div>
     <table class="info">${details}</table>
-    <table class="grid"><thead><tr><th colspan="2">TIME</th>${DAYS.map(([, l]) => `<th>${l}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>
+    <table class="grid">${timetablePrintColumns(DAYS.length)}<thead><tr><th>TIME</th>${DAYS.map(([, l]) => `<th>${l}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>
     <table class="subjects"><thead><tr><th>SUBJ CODE</th><th>SUBJECT TITLE</th><th>UNITS</th><th>INSTRUCTOR/S</th></tr></thead><tbody>${subjectRows}</tbody></table>
-  </section>`;
+  </div></section>`;
 }
 
-const PRINT_CSS = `@page{size:A4 landscape;margin:0}*{box-sizing:border-box}body{margin:0;padding:8mm;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:11px}
-.sheet{page-break-after:always;padding:4px}.sheet:last-child{page-break-after:auto}
-.head{display:flex;align-items:center;justify-content:center;gap:14px;text-align:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:10px;line-height:1.3}.head b{font-size:13px}.dept{font-size:17px;font-weight:700}
-.title{text-align:center;margin-bottom:8px}.info{margin:0 auto 10px;border-collapse:collapse}.info td{padding:1px 6px}.k{width:110px}
-table.grid,table.subjects{width:100%;border-collapse:collapse;table-layout:fixed}.grid th,.grid td,.subjects th,.subjects td{border:1px solid #000;text-align:center;padding:0 2px}
-.grid th{height:22px;font-size:10px}.grid td{height:24px;font-size:9px}.grid td.t{width:38px;font-size:9px}.grid td.cls{vertical-align:middle;line-height:1.25;overflow:hidden}
-.subjects{margin:14px auto 0;width:90%}.subjects th{background:#f3f4f6;font-size:10px}.subjects td{font-size:10px;padding:2px 4px}
-`;
+/** The same complete document is used by the print frame and PDF layout checks. */
+export function scheduleSheetsHtml(sources: SheetSource[], title: string) {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${TIMETABLE_PRINT_CSS}</style></head><body>${sources.map(sheetHtml).join("")}${TIMETABLE_PRINT_SCRIPT}</body></html>`;
+}
 
 /** Prints the given sheets from a hidden frame, so no tab opens and no page layout, dialog or scroll box can clip them. */
 export function printSheets(sources: SheetSource[], title: string) {
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
-  frame.style.cssText = "position:fixed;left:-10000px;top:0;width:210mm;height:297mm;border:0";
+  frame.style.cssText = "position:fixed;left:-10000px;top:0;width:297mm;height:210mm;border:0";
   document.body.appendChild(frame);
   const doc = frame.contentDocument;
   const win = frame.contentWindow;
   if (!doc || !win) return frame.remove();
   doc.open();
-  doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${PRINT_CSS}</style></head><body>${sources.map(sheetHtml).join("")}</body></html>`);
+  doc.write(scheduleSheetsHtml(sources, title));
   doc.close();
   win.addEventListener("afterprint", () => frame.remove());
   // Give the logo a moment to load before the print dialog opens.
@@ -204,14 +201,13 @@ export function SectionSheet({ source, className, highlight, flagged }: { source
 
       <FitWidth className={cn("space-y-4 sm:block print:block", mobileView !== "week" && "hidden")}>
         <div role="region" aria-label={`Weekly grid for ${section.name}`} className="rounded-sm">
-          <div className="grid w-full border-l border-t border-foreground/60 text-[11px] print:border-black" style={{ gridTemplateColumns: `64px 64px repeat(${DAYS.length}, minmax(0, 1fr))`, gridTemplateRows: `28px ${slots.map((m, i) => `${Math.max(14, (rows.ticks[i + 1] - m) / rows.grid.slot * rows.grid.rowHeight)}px`).join(" ")}` }}>
-            <div className="col-span-2 flex items-center justify-center border-b border-r border-foreground/60 font-bold print:border-black">TIME</div>
+          <div className="grid w-full border-l border-t border-foreground/60 text-[11px] print:border-black" style={{ gridTemplateColumns: `100px repeat(${DAYS.length}, minmax(0, 1fr))`, gridTemplateRows: `28px ${slots.map((m, i) => `${Math.max(14, (rows.ticks[i + 1] - m) / rows.grid.slot * rows.grid.rowHeight)}px`).join(" ")}` }}>
+            <div className="flex items-center justify-center border-b border-r border-foreground/60 font-bold print:border-black">TIME</div>
             {DAYS.map(([d, label]) => <div key={d} className="flex items-center justify-center border-b border-r border-foreground/60 font-bold print:border-black">{label}</div>)}
             {slots.map((m, i) => (
               <div key={m} className="contents">
-                <div className="flex items-center justify-center border-b border-r border-foreground/60 print:border-black" style={{ gridRow: i + 2, gridColumn: 1 }}>{clock(m)}</div>
-                <div className="flex items-center justify-center border-b border-r border-foreground/60 print:border-black" style={{ gridRow: i + 2, gridColumn: 2 }}>{clock(rows.ticks[i + 1])}</div>
-                {DAYS.map((_, c) => <div key={c} className="border-b border-r border-foreground/40 print:border-black/60" style={{ gridRow: i + 2, gridColumn: c + 3 }} />)}
+                <div className="flex items-center justify-center whitespace-nowrap border-b border-r border-foreground/60 px-0.5 text-[9px] tabular-nums print:border-black" style={{ gridRow: i + 2, gridColumn: 1 }}>{clock(m)} – {clock(rows.ticks[i + 1])}</div>
+                {DAYS.map((_, c) => <div key={c} className="border-b border-r border-foreground/40 print:border-black/60" style={{ gridRow: i + 2, gridColumn: c + 2 }} />)}
               </div>
             ))}
             {rows.classes.map((e) => {
@@ -222,7 +218,7 @@ export function SectionSheet({ source, className, highlight, flagged }: { source
                 <div
                   key={e.id}
                   className={cn("z-[1] flex flex-col items-center justify-center gap-0 overflow-hidden border-b border-r border-foreground/60 px-1 text-center text-[10px] leading-[1.2] print:border-black", fillOf(e.subjectId), highlight?.has(e.id) && "ring-2 ring-inset ring-blue-600", flagged?.has(e.id) && "ring-[3px] ring-inset ring-red-600")}
-                  style={{ gridRow: `${first} / span ${span}`, gridColumn: DAYS.findIndex(([d]) => d === e.dayOfWeek) + 3 }}
+                  style={{ gridRow: `${first} / span ${span}`, gridColumn: DAYS.findIndex(([d]) => d === e.dayOfWeek) + 2 }}
                   title={`${subject?.code ?? ""} ${formatRange(e.startMin, e.endMin)}`}
                 >
                   <span className="font-semibold">{subject?.name ?? "Class"}{e.component === "LABORATORY" ? " (Laboratory)" : ""}</span>

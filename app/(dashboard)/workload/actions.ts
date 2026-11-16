@@ -51,7 +51,7 @@ export async function approveProposalAction(input: z.infer<typeof reviewSchema>)
   return review("APPROVE", input);
 }
 
-/** Rejects the given rows (or the whole proposal); the reason is optional. */
+/** Rejects the given rows (or the whole proposal) with a required reason. */
 export async function rejectProposalAction(input: z.infer<typeof reviewSchema>) {
   return review("REJECT", input);
 }

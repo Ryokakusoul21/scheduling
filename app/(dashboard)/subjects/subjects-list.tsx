@@ -6,14 +6,15 @@ import { ActionButton } from "@/components/ux/action-button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
+import { useDialogState, type FormField } from "@/components/ux/form-dialog";
+import { SubjectFormDialog } from "./subject-form-dialog";
+import { termLabel } from "@/lib/academics/levels";
+import type { SubjectCalendar } from "@/lib/subjects/terms";
 import { ArchiveButton } from "@/components/ux/archive-button";
-import { DragHandle, SortableList } from "@/components/ux/sortable-list";
 import { EmptyState } from "@/components/ux/states";
 import { CollectionView } from "@/components/ux/collection-view";
 import { useShortcut } from "@/components/ux/shortcuts";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
-import { reorderAction } from "@/actions/reorder";
 import { LEVELS, YEAR_LEVELS, gradeLabel, yearLabel, type AcademicLevel } from "@/lib/academics/levels";
 import { cn } from "@/lib/utils";
 import { saveSubjectAction } from "./actions";
@@ -26,6 +27,7 @@ export interface SubjectRow {
   units: number;
   lectureHours: number;
   labHours: number;
+  semester: string | null;
   requiredRoomType: string;
   level: string;
   programId: string;
@@ -44,18 +46,24 @@ const ROOM_TYPES = [
   { value: "OTHER", label: "Other" },
 ];
 
+const semesterLabel = (semester: string | null) => semester ? termLabel(semester) : "Any configured semester";
+
 export function SubjectsList({
   heading,
   context,
   subjects,
   showStrand,
   strands,
+  calendar,
+  defaultSemester,
 }: {
   heading: string;
   context: { level: string; programId: string; yearLevel: string; gradeLevel: string };
   subjects: SubjectRow[];
   showStrand: boolean;
   strands: { value: string; label: string }[];
+  calendar: SubjectCalendar | null;
+  defaultSemester?: string;
 }) {
   const dialog = useDialogState<SubjectRow>();
   const { ref, onKeyDown, onFocus } = useRovingFocus<HTMLTableSectionElement>();
@@ -72,8 +80,7 @@ export function SubjectsList({
     { name: "code", label: "Subject code", type: "text", required: true, placeholder: isCollege ? "IT101" : "MATH7" },
     { name: "name", label: "Subject name", type: "text", required: true },
     { name: "units", label: isCollege ? "Units" : "Units / credit", type: "number", step: "0.5", min: 0, required: true },
-    { name: "lectureHours", label: "Lecture hours per week", type: "number", step: "0.5", min: 0, required: true },
-    { name: "labHours", label: "Lab hours per week", type: "number", step: "0.5", min: 0, required: true },
+    { name: "hoursPerWeek", label: "Hours per week", type: "number", step: "0.5", min: 0.5, required: true },
     { name: "requiredRoomType", label: "Room needed", type: "select", required: true, options: ROOM_TYPES },
     isCollege
       ? {
@@ -89,6 +96,13 @@ export function SubjectsList({
           required: true,
           options: LEVELS[level].grades.map((g) => ({ value: g, label: gradeLabel(g) })),
         },
+    ...(isCollege
+      ? [{
+          name: "semester",
+          label: "Semester",
+          type: "select" as const,
+        }]
+      : []),
     ...(level === "SENIOR_HIGH"
       ? [{ name: "programId", label: "Strand", type: "select" as const, options: [{ value: "", label: "Core — all strands" }, ...strands] }]
       : []),
@@ -126,28 +140,22 @@ export function SubjectsList({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">
-                  <span className="sr-only">Reorder</span>
-                </TableHead>
                 <TableHead>Code</TableHead>
                 <TableHead>Subject</TableHead>
+                {isCollege && <TableHead>Semester</TableHead>}
                 {showStrand && <TableHead>Strand</TableHead>}
                 <TableHead className="text-right">Units</TableHead>
-                <TableHead className="text-right">Lec / Lab hrs</TableHead>
+                <TableHead className="text-right">Hours per week</TableHead>
                 <TableHead>Room</TableHead>
                 <TableHead>
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
-            <SortableList
-              items={subjects}
-              getLabel={(s) => s.code}
-              onReorder={(ids) => reorderAction("subject", ids)}
-              renderItem={(s, { setNodeRef, style, isDragging, handleProps }) => (
+            <TableBody ref={ref} onKeyDown={onKeyDown} onFocus={onFocus}>
+              {subjects.map((s) => (
                 <TableRow
-                  ref={setNodeRef}
-                  style={style}
+                  key={s.id}
                   data-roving=""
                   tabIndex={-1}
                   onClick={(e) => {
@@ -155,20 +163,22 @@ export function SubjectsList({
                     dialog.openEdit(s);
                   }}
                   aria-label={`${s.code} ${s.name}, ${s.units} units.${s.editable ? " Press Enter to edit." : ""}`}
-                  className={cn(s.editable ? "cursor-pointer" : "bg-muted/40", isDragging && "bg-card shadow-lg")}
+                  className={s.editable ? "cursor-pointer" : "bg-muted/40"}
                 >
-                  <TableCell>
-                    <DragHandle {...handleProps} />
-                  </TableCell>
                   <TableCell className="font-medium">{s.code}</TableCell>
                   <TableCell>
                     {s.name}
                     {s.classes > 0 && <span className="block text-xs text-muted-foreground">{s.classes} scheduled classes</span>}
                   </TableCell>
+                  {isCollege && (
+                    <TableCell>
+                      <Badge variant="outline">{semesterLabel(s.semester)}</Badge>
+                    </TableCell>
+                  )}
                   {showStrand && <TableCell>{s.strand ? <Badge variant="secondary">{s.strand}</Badge> : <span className="text-xs text-muted-foreground">Core</span>}</TableCell>}
                   <TableCell className="text-right">{s.units}</TableCell>
                   <TableCell className="text-right">
-                    {s.lectureHours} / {s.labHours}
+                    {s.lectureHours + s.labHours}
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">{ROOM_TYPES.find((r) => r.value === s.requiredRoomType)?.label ?? s.requiredRoomType}</Badge>
@@ -186,14 +196,8 @@ export function SubjectsList({
                     )}
                   </TableCell>
                 </TableRow>
-              )}
-            >
-              {(rows) => (
-                <TableBody ref={ref} onKeyDown={onKeyDown} onFocus={onFocus}>
-                  {rows}
-                </TableBody>
-              )}
-            </SortableList>
+              ))}
+            </TableBody>
           </Table>
         </div>
         }>
@@ -209,8 +213,9 @@ export function SubjectsList({
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {showStrand && <Badge variant="secondary">{s.strand ?? "Core"}</Badge>}
+                  {isCollege && <Badge variant="outline">{semesterLabel(s.semester)}</Badge>}
                   <Badge variant="outline">{s.units} units</Badge>
-                  <Badge variant="outline">{s.lectureHours} lecture / {s.labHours} laboratory hours</Badge>
+                  <Badge variant="outline">{s.lectureHours + s.labHours} hours per week</Badge>
                   <Badge variant="outline">{ROOM_TYPES.find((r) => r.value === s.requiredRoomType)?.label ?? s.requiredRoomType}</Badge>
                 </div>
                 {s.classes > 0 && <p className="mt-2 text-xs text-muted-foreground">{s.classes} scheduled classes</p>}
@@ -220,13 +225,16 @@ export function SubjectsList({
         </CollectionView>
       )}
 
-      <FormDialog
+      <SubjectFormDialog
+        key={`${editing?.id ?? "new"}:${calendar?.id ?? ""}:${!!dialog.state}`}
+        calendar={calendar}
+        editing={!!editing}
         open={!!dialog.state}
         onOpenChange={(o) => !o && dialog.close()}
         title={editing ? `Edit ${editing.code}` : "Add subject"}
         description={heading}
         fields={fields}
-        values={editing ?? { ...context, units: isCollege ? 3 : 1, lectureHours: isCollege ? 3 : 4, labHours: 0, requiredRoomType: "LECTURE_ROOM" }}
+        values={editing ? { ...editing, semester: editing.semester ?? "", hoursPerWeek: editing.lectureHours + editing.labHours } : { ...context, semester: defaultSemester, units: isCollege ? 3 : 1, hoursPerWeek: isCollege ? 3 : 4, requiredRoomType: "LECTURE_ROOM" }}
         submitLabel={editing ? "Save changes" : "Add subject"}
         successMessage={editing ? "Subject updated" : "Subject added"}
         onSubmit={(fd) => saveSubjectAction(editing?.id ?? null, fd)}

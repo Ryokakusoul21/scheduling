@@ -15,6 +15,7 @@ import {
   type Session,
 } from "./engine";
 import { loadPlan, type LoadedPlan } from "./load";
+import { publishedScheduleIds } from "@/lib/scheduler/published";
 
 export interface Placement {
   date: string;
@@ -168,11 +169,14 @@ export async function planRoomUnavailable(roomId: string, req: UnavailableReques
   return { items, blockers: [], notes };
 }
 
-/** Classes suspended for the dates (all sections, or only the listed ones) are cancelled; make-up options are offered per class. */
-export async function planSuspension(sectionIds: string[], req: UnavailableRequest): Promise<AdjustmentPlan> {
-  const p = await loadPlan(req.start, req.end);
-  const items = p.sessions
-    .filter((s) => (sectionIds.length === 0 || sectionIds.includes(s.sectionId)) && overlaps(s, req.startMin, req.endMin))
+/** Plans changes to published meetings of explicitly authorized sections, optionally narrowed to individual classes. */
+export async function planSuspension(sectionIds: string[], req: UnavailableRequest, scheduleIds?: string[]): Promise<AdjustmentPlan> {
+  if (!sectionIds.length) return { items: [], blockers: [], notes: ["No authorized sections were selected."] };
+  const p = await loadPlan(req.start, req.end, { publishedOnly: true });
+  const selected = p.sessions.filter((s) => sectionIds.includes(s.sectionId) && (!scheduleIds || scheduleIds.includes(s.scheduleId)) && overlaps(s, req.startMin, req.endMin));
+  const changed = selected.filter((session) => session.status !== "REGULAR");
+  if (changed.length) return { items: [], blockers: ["Some selected meetings already have a dated schedule change. Restore that change before issuing another order for the same meetings."], notes: [] };
+  const items = selected
     .map((s) => item(p, s, null, "Classes are suspended; choose a make-up class option."));
   return { items, blockers: [], notes: [] };
 }
@@ -224,11 +228,12 @@ export async function applyPlan(plan: AdjustmentPlan, cause: AdjustmentCause, su
 
 /** Tells every faculty member in the plan where their class went. */
 export async function notifyPlan(plan: Pick<AdjustmentPlan, "items">) {
+  const live = await publishedScheduleIds(plan.items.map((i) => i.scheduleId));
   await notifyFacultyEach(
-    plan.items.map((i) => ({
+    plan.items.filter((i) => live.has(i.scheduleId)).map((i) => ({
       facultyIds: [i.before.facultyId, ...(i.after ? [i.after.facultyId] : [])],
       msg: {
-        title: i.after ? "Class rescheduled" : "Class cancelled",
+        title: i.kind === "ONLINE" ? "Class moved online" : i.after ? "Class rescheduled" : "Class cancelled",
         message: i.after
           ? `${i.label} on ${when(i.before)} now meets ${when(i.after)}${i.after.facultyId !== i.before.facultyId ? ` with ${i.after.facultyName}` : ""}. ${i.reason}`
           : `${i.label} on ${when(i.before)} is cancelled. ${i.reason}`,
@@ -252,7 +257,7 @@ export async function addMakeUp(batchId: string, scheduleId: string, date: strin
       roomId: choice.roomId, startMin: choice.startMin, endMin: choice.endMin, reason: `Make-up class for the meeting on ${date}.`,
     },
   });
-  await notifyFaculty([schedule.facultyId], {
+  if (schedule.status === "PUBLISHED") await notifyFaculty([schedule.facultyId], {
     title: "Make-up class scheduled",
     message: `A make-up class for ${date} is set on ${choice.date}, ${formatRange(choice.startMin, choice.endMin)} in ${p.roomName.get(choice.roomId) ?? "a room"}.`,
     link: "/calendar",
@@ -296,11 +301,11 @@ export async function undoBatch(batchId: string, ignoreRefIds: string[] = []): P
 
   await prisma.adjustmentBatch.update({ where: { id: batchId }, data: { undoneAt: new Date() } });
   const schedules = await prisma.schedule.findMany({
-    where: { id: { in: batch.adjustments.map((a) => a.scheduleId) } },
-    select: { facultyId: true },
+    where: { id: { in: batch.adjustments.map((a) => a.scheduleId) }, status: "PUBLISHED" },
+    select: { id: true, facultyId: true },
   });
   await notifyFaculty(
-    [...schedules.map((s) => s.facultyId), ...batch.adjustments.flatMap((a) => (a.facultyId ? [a.facultyId] : []))],
+    [...schedules.map((s) => s.facultyId), ...batch.adjustments.flatMap((a) => (a.facultyId && schedules.some((s) => s.id === a.scheduleId) ? [a.facultyId] : []))],
     { title: "Schedule change undone", message: `This change was undone and classes are back in their original slots: ${batch.summary}`, link: "/calendar" }
   );
   return null;

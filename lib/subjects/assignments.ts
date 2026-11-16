@@ -8,10 +8,10 @@ const day = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "n
 
 /** Active faculty with their load (from the workload engine) and any reported unavailability overlapping the term. */
 export async function assignableFaculty(semesterId: string): Promise<{ measure: "HOURS" | "UNITS"; faculty: AssignableFaculty[] }> {
-  const term = await prisma.semester.findUnique({ where: { id: semesterId }, select: { startDate: true, endDate: true } });
+  const term = await prisma.semester.findUnique({ where: { id: semesterId }, select: { startDate: true, endDate: true, level: true } });
   const [rows, data, away] = await Promise.all([
     prisma.faculty.findMany({
-      where: { status: "ACTIVE", archivedAt: null },
+      where: { status: "ACTIVE", archivedAt: null, ...(term ? { teachingLevels: { has: term.level } } : {}) },
       orderBy: { fullName: "asc" },
       select: { id: true, fullName: true, email: true, employeeId: true, departmentId: true, specialization: true, employmentType: true, department: { select: { name: true } } },
     }),

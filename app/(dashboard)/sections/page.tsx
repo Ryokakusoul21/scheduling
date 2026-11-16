@@ -7,6 +7,7 @@ import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { flowHref, isComplete, parseFlow } from "@/lib/academics/flow";
 import { PROGRAM_CATALOG_FILTER, LEVELS, gradeLabel, levelLabel, termLabel, yearLabel } from "@/lib/academics/levels";
 import { LevelFlow } from "@/components/academics/level-flow";
+import { headLevels } from "@/lib/academics/department-levels";
 import { DEFAULT_LEVEL, LevelTabs } from "@/components/academics/level-tabs";
 import { PageHeader } from "@/components/ux/states";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,10 @@ export default async function SectionsPage({ searchParams }: { searchParams: Pro
   const termType = semesterType(filters.semester);
   const legacyYearLevel = ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH"].includes(params.year ?? "") ? params.year : undefined;
   // Levels are never combined: the page always shows exactly one level, College by default.
-  const flow = parseFlow({ ...params, level: params.level ?? DEFAULT_LEVEL, year: params.yearLevel ?? legacyYearLevel });
+  // A Head of Department with a single-level department gets no level tabs.
+  const own = await headLevels(scope);
+  const single = own?.length === 1 ? own[0] : null;
+  const flow = parseFlow({ ...params, level: single ?? params.level ?? DEFAULT_LEVEL, year: params.yearLevel ?? legacyYearLevel });
 
   const hasBasicPrograms = scope.role === "HEAD_OF_DEPARTMENT" && await prisma.program.count({ where: { ...departmentWhere.program(scope), level: "SENIOR_HIGH" } }) > 0;
   if (scope.role === "HEAD_OF_DEPARTMENT" && params.other !== "1" && !hasBasicPrograms && (!flow.level || flow.level === "COLLEGE")) {
@@ -44,7 +48,7 @@ export default async function SectionsPage({ searchParams }: { searchParams: Pro
     ]);
     const sections = program && term ? await prisma.section.findMany({ where: { programId: program.id, yearLevel: selectedYear as never, semesterId: term.id, archivedAt: filters.status === "ACTIVE" ? null : { not: null } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { program: { select: { code: true, name: true } }, semester: { include: { academicYear: true } }, schedules: { where: { status: { not: "ARCHIVED" } }, select: { subjectId: true, component: true, room: { select: { capacity: true } } } }, classPlaceholders: { select: { subjectId: true, component: true } } } }) : [];
     const q = (patch: Record<string, string>) => { const next = new URLSearchParams({ year: filters.year, semester: filters.semester, status: filters.status, program: program?.id ?? "", yearLevel: selectedYear, ...patch }); return `/sections?${next}`; };
-    return <div className="space-y-4"><PageHeader title="Sections" description="Manage your department's sections for one academic term at a time." actions={<Link href={q({ other: "1" })} className="inline-flex h-8 items-center rounded-md border px-3 text-sm font-medium hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">View other departments (read-only)</Link>} /><SectionTermFilters years={academicYears.map((row) => row.name)} selectedYear={filters.year} selectedSemester={filters.semester} status={filters.status} />
+    return <div className="space-y-4"><PageHeader title="Sections" description="Your department's sections, one term at a time." actions={<Link href={q({ other: "1" })} className="inline-flex h-8 items-center rounded-md border px-3 text-sm font-medium hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">View other departments (read-only)</Link>} /><SectionTermFilters years={academicYears.map((row) => row.name)} selectedYear={filters.year} selectedSemester={filters.semester} status={filters.status} />
       <nav className="flex flex-wrap gap-2" aria-label="Program and year level">{programs.map((row) => <Link key={row.id} href={q({ program: row.id })} title={row.name} aria-current={row.id === program?.id ? "page" : undefined} className={cn("rounded-full border px-3 py-1.5 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring", row.id === program?.id && "border-primary bg-primary text-primary-foreground")}>{row.code}</Link>)}<span className="mx-1 border-l" />{years.map((year) => <Link key={year} href={q({ yearLevel: year })} aria-current={year === selectedYear ? "page" : undefined} className={cn("rounded px-2.5 py-1.5 text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring", year === selectedYear && "bg-muted font-semibold")}>{yearLabel(year)}</Link>)}</nav>
       {program && term ? <SectionsGrid heading={`${program.code} · ${yearLabel(selectedYear)}`} context={{ level: "COLLEGE", programId: program.id, yearLevel: selectedYear, gradeLevel: "", semesterId: term.id }} strands={[]} terms={[{ value: term.id, label: `Academic Year ${term.academicYear.name} · ${termLabel(term.type)}` }]} canManage currentTerm={{ id: term.id, label: `${term.academicYear.name} · ${termLabel(term.type)}` }} generation={{ program: { id: program.id, code: program.code, name: program.name }, yearNumber: years.indexOf(selectedYear as never) + 1, curriculumClasses: curriculum.reduce((count, subject) => count + Number(subject.lectureHours > 0) + Number(subject.labHours > 0), 0), largestRoomCapacity: largestRoom._max.capacity ?? 0 }} sections={sections.map((section) => { const scheduled = new Set(section.schedules.map((row) => `${row.subjectId}:${row.component}`)).size; const total = Math.max(section.classPlaceholders.length, scheduled); const assignedCapacity = Math.max(0, ...section.schedules.map((row) => row.room.capacity)); return { id: section.id, name: section.name, studentCount: section.studentCount, level: section.level, programId: section.programId ?? "", program: section.program?.code ?? null, programName: section.program?.name ?? null, yearLevel: section.yearLevel ?? "", gradeLevel: section.gradeLevel ?? "", semesterId: section.semesterId ?? "", term: `${section.semester?.academicYear.name} · ${termLabel(section.semester!.type)}`, classes: total, scheduled, assignedCapacity, editable: canManageSection({ role: scope.role, departmentId: scope.departmentId }, section) }; })} /> : <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No academic term is configured for this program and semester.</div>}
     </div>;
@@ -138,9 +142,9 @@ export default async function SectionsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Sections" description="Pick a level and year or grade to create and manage its class sections." />
+      <PageHeader title="Sections" description="Create and manage class sections by level and year." />
       <SectionTermFilters years={academicYears.map((row) => row.name)} selectedYear={filters.year} selectedSemester={filters.semester} status={filters.status} showSemester={flow.level === "COLLEGE"} />
-      <LevelTabs basePath="/sections" active={flow.level ?? DEFAULT_LEVEL} params={params} noun="sections" counts={Object.fromEntries(Object.keys(LEVELS).map((l) => [l, all.filter((r) => r.level === l).length]))} />
+      {!single && <LevelTabs basePath="/sections" active={flow.level ?? DEFAULT_LEVEL} params={params} noun="sections" counts={Object.fromEntries(Object.keys(LEVELS).map((l) => [l, all.filter((r) => r.level === l).length]))} />}
       <LevelFlow basePath="/sections" rootLabel="Sections" noun="sections" flow={flow} rows={all} programs={programs} />
       {list}
     </div>

@@ -16,22 +16,29 @@ import { assignmentWarnings, type AssignableFaculty } from "@/lib/subjects/assig
 import { specializationMatch } from "@/lib/subjects/match";
 import { projectedLoads, type PlanChange } from "@/lib/subjects/plan";
 import { assignmentConflictsAction, saveAssignmentPlanAction, subjectDetailsAction } from "./assignment-actions";
+import { createAssignmentProposalsAction } from "./assignment-proposal-actions";
+import { facultyAssignmentRoute } from "@/lib/subjects/assignment-access";
 import type { AssignContext, SubjectInfo } from "./types";
 
 const EMPLOYMENT = { FULL_TIME: "Full-time", PART_TIME: "Part-time" } as const;
 const when = (iso: string) => new Date(iso).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Manila" });
 
 /** Assign, replace, or remove teachers for one or more subjects: pick sections, pick faculty, review, then save. */
-export function AssignFacultyModal({ subjects, context, onClose }: { subjects: SubjectInfo[]; context: AssignContext; onClose: (saved: boolean) => void }) {
+export function AssignFacultyModal({ subjects, context, proposal = false, onClose }: { subjects: SubjectInfo[]; context: AssignContext; proposal?: boolean; onClose: (saved: boolean) => void }) {
   const { faculty, measure, sections, term } = context;
   const unit = measure === "HOURS" ? "hrs" : "units";
   const single = subjects.length === 1 ? subjects[0] : null;
-  const keys = useMemo(() => [{ key: "", name: "All sections" }, ...sections.map((s) => ({ key: s.id, name: s.name }))], [sections]);
+  const keys = useMemo(() => sections.filter((s) => subjects.every((subject) => !subject.eligibleSectionIds || subject.eligibleSectionIds.includes(s.id))).map((s) => ({ key: s.id, name: s.name })), [sections, subjects]);
+  const pendingFor = (key: string) => subjects.flatMap((s) => s.pendingApprovals ?? []).find((p) => p.sectionId === key);
+  const availableKeys = keys.filter((k) => !pendingFor(k.key));
   const nameOf = (key: string) => keys.find((k) => k.key === key)?.name ?? "Section";
   const people = useMemo(() => new Map(faculty.map((f) => [f.id, f])), [faculty]);
+  const routeFor = (f: AssignableFaculty) => context.assignmentScope
+    ? facultyAssignmentRoute({ role: "HEAD_OF_DEPARTMENT", departmentIds: context.assignmentScope.departmentIds }, f.departmentId)
+    : proposal ? "APPROVAL" : "DIRECT";
 
   const [plan, setPlan] = useState<Map<string, string | null>>(new Map());
-  const [target, setTarget] = useState<Set<string>>(new Set([""]));
+  const [target, setTarget] = useState<Set<string>>(() => new Set());
   const [filters, setFilters] = useState({ query: "", department: "", employment: "", available: false, matches: false });
   const [step, setStep] = useState<"edit" | "review">("edit");
   const [ack, setAck] = useState(false);
@@ -40,7 +47,9 @@ export function AssignFacultyModal({ subjects, context, onClose }: { subjects: S
   const [last, setLast] = useState<{ who: string; at: string } | null>(null);
   const [pending, start] = useTransition();
 
-  const changes: PlanChange[] = useMemo(() => [...plan].map(([key, facultyId]) => ({ sectionId: key || null, facultyId })), [plan]);
+  const changes: PlanChange[] = useMemo(() => [...plan].map(([sectionId, facultyId]) => ({ sectionId, facultyId })), [plan]);
+  const approvalCount = changes.filter((c) => c.facultyId && routeFor(people.get(c.facultyId)!) === "APPROVAL").length;
+  const directCount = changes.length - approvalCount;
   const subjectIds = useMemo(() => subjects.map((s) => s.id), [subjects]);
   const loads = useMemo(() => projectedLoads(faculty, subjects, changes, measure), [faculty, subjects, changes, measure]);
 
@@ -60,16 +69,13 @@ export function AssignFacultyModal({ subjects, context, onClose }: { subjects: S
     return () => { live = false; };
   }, [changes, subjectIds, term.id]);
 
-  const current = (key: string) => (single ? single.assignments.find((a) => (a.sectionId ?? "") === key) ?? null : null);
+  const current = (key: string) => single?.assignments.find((a) => a.sectionId === key) ?? null;
   const coveredCount = (key: string) => subjects.filter((s) => s.assignments.some((a) => (a.sectionId ?? "") === key)).length;
   const effective = (key: string) => (plan.has(key) ? plan.get(key) ?? null : current(key)?.facultyId ?? null);
 
-  /** "All sections" excludes specific ones, and picking a specific section clears "All sections". */
   function toggleSection(key: string) {
     setTarget((prev) => {
-      if (key === "") return prev.has("") ? new Set() : new Set([""]);
       const next = new Set(prev);
-      next.delete("");
       if (prev.has(key)) next.delete(key);
       else next.add(key);
       return next;
@@ -82,12 +88,12 @@ export function AssignFacultyModal({ subjects, context, onClose }: { subjects: S
   }
 
   function removeTeacher(facultyId: string) {
-    const held = subjects.flatMap((s) => s.assignments.filter((a) => a.facultyId === facultyId).map((a) => a.sectionId ?? ""));
+    const held = subjects.flatMap((s) => s.assignments.filter((a) => a.facultyId === facultyId && keys.some((k) => k.key === a.sectionId)).map((a) => a.sectionId!));
     setPlan((prev) => new Map([...prev, ...[...new Set(held)].map((k) => [k, null] as const)]));
   }
 
   function replaceTeacher(facultyId: string) {
-    const held = subjects.flatMap((s) => s.assignments.filter((a) => a.facultyId === facultyId).map((a) => a.sectionId ?? ""));
+    const held = subjects.flatMap((s) => s.assignments.filter((a) => a.facultyId === facultyId && keys.some((k) => k.key === a.sectionId)).map((a) => a.sectionId!));
     setTarget(new Set(held));
     document.getElementById("faculty-search")?.focus();
   }
@@ -107,29 +113,40 @@ export function AssignFacultyModal({ subjects, context, onClose }: { subjects: S
   const currentTeachers = [...subjects.flatMap((s) => s.assignments).reduce((m, a) => m.set(a.facultyId, [...(m.get(a.facultyId) ?? []), a]), new Map<string, SubjectInfo["assignments"]>())];
   const plannedTo = (id: string) => [...plan].filter(([, f]) => f === id).map(([k]) => nameOf(k));
   const overLimit = [...loads].filter(([, l]) => l.after > l.limit && l.after > l.before).map(([id]) => people.get(id)!);
-  const reviewWarnings = [...new Set(changes.flatMap((c) => (c.facultyId ? [c.facultyId] : [])))].flatMap((id) => assignmentWarnings(people.get(id)!, subjects, measure));
+  const reviewWarnings = [...new Set([...loads.keys(), ...changes.flatMap((c) => c.facultyId ? [c.facultyId] : [])])].flatMap((id) => {
+    const projected = loads.get(id);
+    return assignmentWarnings(people.get(id)!, subjects, measure, [], projected ? projected.after - projected.before : 0);
+  });
   const allConflicts = [...conflicts.values()].flat();
-  const exceeds = (f: AssignableFaculty) => { const l = loads.get(f.id); return l ? l.after > l.limit : false; };
+  const candidateLoad = (f: AssignableFaculty) => projectedLoads(faculty, subjects, [...changes, ...[...target].map((sectionId) => ({ sectionId, facultyId: f.id }))], measure).get(f.id)?.after ?? f.load;
+  const exceeds = (f: AssignableFaculty) => candidateLoad(f) > f.limit;
 
   function save() {
     setError(null);
     start(async () => {
-      const result = await saveAssignmentPlanAction({ subjectIds, semesterId: term.id, changes });
+      const input = { subjectIds, semesterId: term.id, changes };
+      const result = proposal && !context.assignmentScope ? await createAssignmentProposalsAction(input) : await saveAssignmentPlanAction(input);
       if (!result.ok) return setError(result.error);
-      toast.success(result.changed ? `${result.changed} assignment${result.changed > 1 ? "s" : ""} saved.` : "No changes needed.");
+      const assigned = "assigned" in result ? result.assigned ?? 0 : directCount;
+      const proposed = "proposed" in result ? result.proposed ?? 0 : approvalCount;
+      toast.success(result.changed ? `${assigned} assignment${assigned === 1 ? "" : "s"} saved; ${proposed} sent for department approval.` : "No changes needed.");
       result.warnings.forEach((w) => toast.warning(w));
       onClose(true);
     });
   }
 
-  const title = single ? `${single.assignments.length ? "Reassign" : "Assign"} ${single.code}` : `Assign ${subjects.length} subjects`;
+  const title = proposal
+    ? `Propose assignment${single ? ` for ${single.code}` : ` for ${subjects.length} subjects`}`
+    : single ? `${single.assignments.length ? "Reassign" : "Assign"} ${single.code}` : `Assign ${subjects.length} subjects`;
   return (
     <Dialog open onOpenChange={(open) => !open && !pending && onClose(false)}>
       <DialogContent className="flex max-h-[90vh] flex-col gap-4 overflow-hidden sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle className="text-lg">{title}</DialogTitle>
           <DialogDescription className="text-sm">
-            {single ? `${single.name} · ${single.units} units · ${single.lectureHours + single.labHours} hrs/week` : subjects.map((s) => s.code).join(", ")} · {term.label}
+            {single ? `${single.name} · ${single.units} units · ${single.lectureHours + single.labHours} hrs/week per section` : subjects.map((s) => s.code).join(", ")} · {term.label}
+            {proposal && " · The faculty member's department must approve before teaching begins."}
+            {context.assignmentScope && " · Own-department faculty are assigned directly. Other departments approve their faculty before the assignment becomes active."}
           </DialogDescription>
           {last && <p className="text-sm text-muted-foreground">Last updated by {last.who} on {when(last.at)}</p>}
         </DialogHeader>
@@ -140,6 +157,9 @@ export function AssignFacultyModal({ subjects, context, onClose }: { subjects: S
             <div className="space-y-5">
               <section aria-labelledby="sec-h" className="space-y-2">
                 <h3 id="sec-h" className="text-sm font-semibold">1. Choose sections</h3>
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={availableKeys.length > 0 && target.size === availableKeys.length} disabled={!availableKeys.length} onChange={() => setTarget(target.size === availableKeys.length ? new Set() : new Set(availableKeys.map((s) => s.key)))} className="size-4 accent-primary" /> Select all matching sections ({availableKeys.length})</label>
+                {keys.length === 0 && <p className="text-sm text-muted-foreground">No sections match every selected subject in this term. Create matching sections or choose subjects from the same curriculum.</p>}
+                {target.size > 0 && <p className="text-sm text-muted-foreground">{target.size} section{target.size === 1 ? "" : "s"} × {subjects.reduce((sum, s) => sum + s.lectureHours + s.labHours, 0)} hrs/week = {target.size * subjects.reduce((sum, s) => sum + s.lectureHours + s.labHours, 0)} hrs/week of curriculum. Existing scheduled hours stay with their teacher.</p>}
                 <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                   {keys.map(({ key, name }) => {
                     const cur = current(key);
@@ -148,7 +168,7 @@ export function AssignFacultyModal({ subjects, context, onClose }: { subjects: S
                     return (
                       <li key={key || "all"}>
                         <label className={cn("flex cursor-pointer items-start gap-2 rounded-lg border bg-card p-2 text-sm transition-colors", target.has(key) ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted")}>
-                          <input type="checkbox" checked={target.has(key)} onChange={() => toggleSection(key)} className="mt-0.5 size-4 accent-primary" />
+                          <input type="checkbox" checked={target.has(key)} disabled={!!pendingFor(key)} onChange={() => toggleSection(key)} className="mt-0.5 size-4 accent-primary" />
                           <span className="min-w-0 flex-1">
                             <span className="block font-medium">{name}</span>
                             <span className="block text-sm text-muted-foreground">
@@ -159,6 +179,8 @@ export function AssignFacultyModal({ subjects, context, onClose }: { subjects: S
                                 </span>
                               ) : single ? (cur ? cur.facultyName : <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400"><Warning className="size-3.5" aria-hidden /> No teacher yet</span>) : `${coveredCount(key)} of ${subjects.length} have a teacher`}
                             </span>
+                            {single && <span className="block text-xs text-muted-foreground">{single.lectureHours + single.labHours} hrs required · {single.progress?.find((p) => p.sectionId === key)?.scheduledHours ?? 0} scheduled · {Math.max(0, single.lectureHours + single.labHours - (single.progress?.find((p) => p.sectionId === key)?.scheduledHours ?? 0))} remaining</span>}
+                            {pendingFor(key) && <span className="block text-xs font-medium text-amber-700">Pending approval: {pendingFor(key)!.facultyName} · {pendingFor(key)!.departmentName}. The current teacher stays assigned until approval.</span>}
                           </span>
                         </label>
                       </li>
@@ -186,7 +208,7 @@ export function AssignFacultyModal({ subjects, context, onClose }: { subjects: S
                           {f && <FacultyLoadBar load={f.load} limit={f.limit} after={loads.get(id)?.after} unit={unit} />}
                           <div className="flex gap-1.5">
                             <Button size="sm" variant="outline" onClick={() => replaceTeacher(id)}>Replace</Button>
-                            <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => removeTeacher(id)} disabled={gone}>Remove</Button>
+                            {!proposal && (!f || routeFor(f) === "DIRECT") && <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => removeTeacher(id)} disabled={gone}>Remove</Button>}
                           </div>
                         </li>
                       );
@@ -198,6 +220,7 @@ export function AssignFacultyModal({ subjects, context, onClose }: { subjects: S
 
             <section aria-labelledby="fac-h" className="min-w-0 space-y-3 border-t pt-4">
               <h3 id="fac-h" className="text-sm font-semibold">2. Choose faculty {target.size === 0 && <span className="font-normal text-muted-foreground">(select sections first)</span>}</h3>
+              {!!context.assignmentScope?.inactiveFacultyCount && <p className="rounded-lg border bg-muted/40 p-3 text-sm">{context.assignmentScope.inactiveFacultyCount} inactive faculty profiles in your department are unavailable for assignment. Verify their employee and contact details and activate them in Faculty first.</p>}
               <label className="relative block">
                 <span className="sr-only">Search faculty</span>
                 <MagnifyingGlass className="absolute left-2.5 top-3 size-4 text-muted-foreground" aria-hidden />
@@ -212,16 +235,17 @@ export function AssignFacultyModal({ subjects, context, onClose }: { subjects: S
               <ul className="grid gap-2 sm:grid-cols-2 lg:max-h-[26rem] lg:overflow-y-auto lg:pr-1" aria-label="Available faculty">
                 {shown.length === 0 && <li className="p-4 text-sm text-muted-foreground">No faculty match these filters.</li>}
                 {shown.map((f) => {
-                  const l = loads.get(f.id);
+                  const after = candidateLoad(f);
                   const planned = plannedTo(f.id);
                   const hasConflict = [...conflicts.keys()].some((k) => k.startsWith(`${f.id}|`));
                   return (
                     <li key={f.id}>
-                      <button type="button" disabled={target.size === 0} onClick={() => assign(f.id)} className={cn("flex h-full w-full items-start gap-3 rounded-lg border p-3 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60", planned.length > 0 && "border-primary bg-primary/5")}>
+                      <button type="button" disabled={target.size === 0 || routeFor(f) === "DENIED"} onClick={() => assign(f.id)} className={cn("flex h-full w-full items-start gap-3 rounded-lg border p-3 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60", planned.length > 0 && "border-primary bg-primary/5")}>
                         <UserAvatar name={f.name} className="size-9 text-xs" />
                         <span className="min-w-0 flex-1 space-y-1.5">
                           <span className="flex flex-wrap items-center gap-1.5">
                             <span className="text-sm font-medium">{f.name}</span>
+                            <Badge variant="outline">{routeFor(f) === "DIRECT" ? "Assign directly" : routeFor(f) === "APPROVAL" ? "Requires department approval" : "Department required"}</Badge>
                             {matchOf(f) && <Badge variant="secondary" className="bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100">Matches subject</Badge>}
                             {planned.length > 0 && <Badge>Selected for {planned.join(", ")}</Badge>}
                           </span>
@@ -229,7 +253,7 @@ export function AssignFacultyModal({ subjects, context, onClose }: { subjects: S
                           {f.unavailability.length > 0 && <span className="flex items-start gap-1 text-sm text-amber-700 dark:text-amber-400"><Warning className="mt-0.5 size-3.5 shrink-0" aria-hidden /> Reported unavailable: {f.unavailability.join("; ")}</span>}
                           {hasConflict && <span className="flex items-center gap-1.5 text-sm text-red-700 dark:text-red-400"><ConflictTag /> Class time overlap. See the review step.</span>}
                           {exceeds(f) && <span className="block text-sm font-medium text-red-700 dark:text-red-400">Would exceed the maximum load</span>}
-                          <FacultyLoadBar load={f.load} limit={f.limit} after={l?.after} unit={unit} />
+                          <FacultyLoadBar load={f.load} limit={f.limit} after={after} unit={unit} />
                         </span>
                       </button>
                     </li>
@@ -241,15 +265,20 @@ export function AssignFacultyModal({ subjects, context, onClose }: { subjects: S
         ) : (
           <div className="space-y-4" aria-live="polite">
             <h3 className="text-sm font-semibold">Review changes</h3>
+            <p className="text-sm font-medium">{directCount} section change{directCount === 1 ? "" : "s"} saved directly · {approvalCount} sent for department approval. Only active assignments are added to Unscheduled with a teacher.</p>
+            <p className="text-sm text-muted-foreground">Each section below is a separate class offering. Projected loads include existing scheduled hours and the remaining assigned hours.</p>
             <ul className="divide-y rounded-lg border text-sm">
               {changes.map((c) => {
-                const before = [...new Set(subjects.flatMap((s) => s.assignments.filter((a) => (a.sectionId ?? "") === (c.sectionId ?? "")).map((a) => a.facultyName)))];
+                const before = [...new Set(single && proposal
+                  ? [current(c.sectionId ?? "")?.facultyName].filter((name): name is string => !!name)
+                  : subjects.flatMap((s) => s.assignments.filter((a) => (a.sectionId ?? "") === (c.sectionId ?? "")).map((a) => a.facultyName)))];
                 return (
                   <li key={c.sectionId ?? "all"} className="flex flex-wrap items-center gap-2 p-3">
                     <span className="font-medium">{single ? `${single.code} · ` : `${subjects.length} subjects · `}{nameOf(c.sectionId ?? "")}</span>
                     <span className="text-muted-foreground">{before.join(", ") || "No teacher"}</span>
                     <ArrowRight className="size-4" aria-hidden />
                     <span className={cn("font-medium", !c.facultyId && "text-destructive")}>{c.facultyId ? people.get(c.facultyId)?.name : "Removed"}</span>
+                    <Badge variant="outline">{c.facultyId && routeFor(people.get(c.facultyId)!) === "APPROVAL" ? "Submit for department approval" : "Save directly"}</Badge>
                   </li>
                 );
               })}
@@ -278,7 +307,7 @@ export function AssignFacultyModal({ subjects, context, onClose }: { subjects: S
             {step === "review" ? <Button variant="outline" disabled={pending} onClick={() => setStep("edit")}>Back</Button> : <Button variant="outline" onClick={() => onClose(false)}>Cancel</Button>}
             {step === "edit"
               ? <Button disabled={!changes.length} onClick={() => { setAck(false); setStep("review"); }}>Review changes</Button>
-              : <Button disabled={pending || (overLimit.length > 0 && !ack)} onClick={save}>{pending ? "Saving..." : "Confirm and save"}</Button>}
+              : <Button disabled={pending || (overLimit.length > 0 && !ack)} onClick={save}>{pending ? "Saving..." : approvalCount && directCount ? "Save and submit proposals" : approvalCount ? "Submit for approval" : "Confirm assignments"}</Button>}
           </div>
         </DialogFooter>
       </DialogContent>

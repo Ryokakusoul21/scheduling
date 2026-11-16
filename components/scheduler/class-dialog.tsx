@@ -3,7 +3,7 @@ import { effectiveTimetable, timetableTimeError, timetableDisplayDays } from "@/
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { CircleNotch, Copy, Trash } from "@phosphor-icons/react/ssr";
+import { CircleNotch, Copy, Minus, Plus, Trash } from "@phosphor-icons/react/ssr";
 import { ConflictAlert, NoConflict } from "@/components/ux/conflict";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ux/native-select";
 import { detectConflicts, isOverlapConflict } from "@/lib/scheduler/conflictDetector";
-import { DAY_LONG, defaultDuration, formatTime, subjectAppliesToSection } from "@/lib/scheduler/timetable";
+import { DAY_LONG, collegeLengthError, formatTime, subjectAppliesToSection } from "@/lib/scheduler/timetable";
 import type { DetectedConflict } from "@/lib/scheduler/types";
 import { rankFaculty, rankRooms } from "@/lib/scheduler/suggest";
 import { assignedFor } from "@/lib/subjects/assignment-rules";
@@ -20,6 +20,10 @@ import { projectionWarning } from "@/lib/workload/projection";
 import type { ClassInput } from "@/app/(dashboard)/scheduler/actions";
 import type { SchedulerData, SchedulerEntry, ScheduleStatus } from "./types";
 import type { ConflictContextBuilder } from "./scheduler-workspace";
+
+const LENGTH_STEP = 30;
+const LENGTH_CHIPS = [60, 90, 120, 180];
+const hours = (min: number) => (min / 60).toFixed(1);
 
 export interface ClassDraft {
   id?: string;
@@ -156,7 +160,7 @@ function ClassForm({
     const byId = new Map(pool.map((f) => [f.id, f]));
     return rankFaculty(pool, slot, concurrent, section?.level).map((r) => {
       const f = byId.get(r.id)!;
-      const name = `${f.foreign ? `${f.fullName} (another department, needs approval)` : f.fullName}${f.id === assignedId ? " (assigned)" : ""}`;
+      const name = `${f.foreign ? `${f.fullName} (${f.id === assignedId ? "approved assignment" : "another department, needs approval"})` : f.fullName}${f.id === assignedId ? " (assigned)" : ""}`;
       return { value: r.id, label: r.notes.length ? `${name} — ${r.notes.join(", ")}` : `${name} ✓` };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- slot fields listed individually
@@ -170,6 +174,10 @@ function ClassForm({
       component: form.component,
       requiredRoomType: subject?.requiredRoomType,
       programId: section?.programId,
+      departmentId: section?.departmentId,
+      level: section?.level,
+      preferredRoomIds: data.faculty.find((f) => f.id === form.facultyId)?.preferredRoomIds,
+      sameRoomId: entries.find((e) => e.id !== form.id && !e.busy && e.sectionId === form.sectionId && e.subjectId === form.subjectId && e.semesterId === form.semesterId)?.roomId,
     }).map((r) => {
       const room = byId.get(r.id)!;
       return {
@@ -178,7 +186,7 @@ function ClassForm({
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- slot fields listed individually
-  }, [data.rooms, form.roomId, section?.studentCount, subject?.requiredRoomType, form.component, concurrent, slot.dayOfWeek, slot.startMin, slot.endMin]);
+  }, [data.rooms, data.faculty, entries, form.id, form.sectionId, form.subjectId, form.semesterId, form.facultyId, form.roomId, section?.studentCount, section?.programId, section?.departmentId, section?.level, subject?.requiredRoomType, form.component, concurrent, slot.dayOfWeek, slot.startMin, slot.endMin]);
 
   // Live conflict preview for the candidate placement.
   // Projected teaching loads: the new teacher gains this meeting, a replaced teacher loses it.
@@ -212,13 +220,17 @@ function ClassForm({
   const remainingMinutes = requiredMinutes === null ? null : Math.max(0, requiredMinutes - otherMinutes);
   const meetingMinutes = form.endMin - form.startMin;
   const weeklyChanged = timeChanged || form.subjectId !== draft.subjectId || form.component !== draft.component;
+  const lengthChanged = !draft.id || draft.endMin - draft.startMin !== meetingMinutes || form.subjectId !== draft.subjectId || form.component !== draft.component;
+  const lengthError = lengthChanged ? collegeLengthError(section?.level ?? "", meetingMinutes, remainingMinutes, timeConfig.classSession) : null;
   const weeklyError = remainingMinutes !== null && meetingMinutes > remainingMinutes ? "This meeting would exceed the subject’s required weekly hours." : null;
-  const preferredMinutes = defaultDuration(form.component, section?.level ?? "COLLEGE", timeConfig);
+  const lengthFits = (min: number) => min >= LENGTH_STEP && form.startMin + min <= 1440 && (remainingMinutes === null || min <= remainingMinutes);
+  const setLength = (min: number) => set("endMin", form.startMin + min);
   const statusOptions = STATUS_OPTIONS.filter((o) => canPublish || o.value !== "PUBLISHED" || draft.status === "PUBLISHED");
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (weeklyChanged && weeklyError) { toast.error(weeklyError); return; }
+    if (lengthError) { toast.error(lengthError); return; }
     if (timeChanged && timeError) { toast.error(timeError); return; }
     if (form.endMin <= form.startMin) {
       toast.error("End time must be after start time.");
@@ -302,11 +314,17 @@ function ClassForm({
           />
         </Field>
         <Field className="sm:col-span-2">
-          <FieldLabel htmlFor="cls-length">Meeting length</FieldLabel>
-          <NativeSelect id="cls-length" value={String(meetingMinutes)} onChange={(e) => set("endMin", form.startMin + Number(e.target.value))}
-            options={[90, 180, ...(meetingMinutes !== 90 && meetingMinutes !== 180 ? [meetingMinutes] : [])].map((min) => ({ value: String(min), label: `${min / 60} hours${min !== 90 && min !== 180 ? " · custom" : min === 90 ? " · split meeting" : " · continuous block"}`, disabled: min !== meetingMinutes && ((remainingMinutes !== null && min > remainingMinutes) || form.startMin + min > 1440) }))} />
-          <p className="text-xs text-muted-foreground">Department default: {preferredMinutes / 60} hours. {requiredMinutes !== null && `Weekly target: ${requiredMinutes / 60} hours · Other meetings: ${otherMinutes / 60} hours · Remaining after this meeting: ${Math.max(0, (requiredMinutes - otherMinutes - meetingMinutes) / 60)} hours.`}</p>
-          {weeklyError && <p className="text-xs text-amber-700">{weeklyError}</p>}
+          <FieldLabel>Meeting length</FieldLabel>
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Meeting length">
+            <Button type="button" variant="outline" size="icon-sm" aria-label="Shorter by 30 minutes" disabled={meetingMinutes <= LENGTH_STEP} onClick={() => setLength(meetingMinutes - LENGTH_STEP)}><Minus className="size-4" /></Button>
+            <span className="min-w-14 text-center text-sm font-semibold tabular-nums">{hours(meetingMinutes)} h</span>
+            <Button type="button" variant="outline" size="icon-sm" aria-label="Longer by 30 minutes" disabled={!lengthFits(meetingMinutes + LENGTH_STEP)} onClick={() => setLength(meetingMinutes + LENGTH_STEP)}><Plus className="size-4" /></Button>
+            {LENGTH_CHIPS.map((min) => <Button key={min} type="button" size="sm" variant={min === meetingMinutes ? "default" : "outline"} disabled={min !== meetingMinutes && !lengthFits(min)} onClick={() => setLength(min)}>{hours(min)}</Button>)}
+            {remainingMinutes !== null && remainingMinutes > 0 && remainingMinutes !== meetingMinutes && lengthFits(remainingMinutes) && <Button type="button" size="sm" variant="ghost" onClick={() => setLength(remainingMinutes)}>Fill remaining</Button>}
+          </div>
+          {requiredMinutes !== null && requiredMinutes > 0 && <p className="text-xs text-muted-foreground">{hours(requiredMinutes)} h needed · {hours(Math.max(0, requiredMinutes - otherMinutes - meetingMinutes))} left</p>}
+          {weeklyError && <p className="text-xs text-amber-700">Over by {hours(meetingMinutes - (remainingMinutes ?? 0))} h</p>}
+          {lengthError && <p className="text-xs text-destructive">{lengthError}</p>}
         </Field>
         <Field>
           <FieldLabel htmlFor="cls-start">Start</FieldLabel>

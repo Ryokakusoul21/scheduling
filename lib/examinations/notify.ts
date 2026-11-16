@@ -1,3 +1,4 @@
+import { roomLabel } from "@/lib/rooms/label";
 import "server-only";
 import type { ExaminationType, NotificationType } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
@@ -43,7 +44,7 @@ export async function notifyExamParticipants(exam: ExamDetails, notice: ExamNoti
   const [subject, section, room, proctor, teaching] = await Promise.all([
     prisma.subject.findUnique({ where: { id: exam.subjectId }, select: { code: true, name: true } }),
     prisma.section.findUnique({ where: { id: exam.sectionId }, select: { name: true, departmentId: true } }),
-    prisma.room.findUnique({ where: { id: exam.roomId }, select: { roomName: true } }),
+    prisma.room.findUnique({ where: { id: exam.roomId }, select: { roomNumber: true, roomName: true } }),
     prisma.faculty.findUnique({ where: { id: exam.proctorId }, select: { fullName: true } }),
     prisma.schedule.findMany({
       where: { semesterId: exam.semesterId, sectionId: exam.sectionId, subjectId: exam.subjectId, status: { not: "ARCHIVED" } },
@@ -56,7 +57,7 @@ export async function notifyExamParticipants(exam: ExamDetails, notice: ExamNoti
     select: { userId: true },
   });
   const what = `${subject?.code} ${subject?.name} ${TYPE_WORD[exam.type]} examination of ${section?.name}`;
-  const when = `${formatLongDate(exam.date)}, ${formatRange(exam.startMin, exam.endMin)} in ${room?.roomName}`;
+  const when = `${formatLongDate(exam.date)}, ${formatRange(exam.startMin, exam.endMin)} in ${roomLabel(room)}`;
   const verb = notice === "CANCELLED" ? "was cancelled. It was set for" : notice === "UPDATED" ? "now takes place on" : "is on";
   const type: NotificationType = notice === "CANCELLED" ? "WARNING" : "INFO";
   const reason = opts.reason?.trim() ? ` Reason: ${opts.reason.trim()}` : "";

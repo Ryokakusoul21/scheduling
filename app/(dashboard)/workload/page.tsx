@@ -14,6 +14,7 @@ export default async function WorkloadPage() {
 
   return (
     <div className="space-y-4">
+      <LiveRefresh />
       <PageHeader
         title={staff ? "Faculty Workload" : "My Teaching Load"}
         description={
@@ -21,7 +22,6 @@ export default async function WorkloadPage() {
             ? `Active-term loads · Allowed: ${range}.`
             : `Your active-term classes · Allowed: ${range}.`
         }
-        actions={<LiveRefresh />}
       />
       <WorkloadBoard
         canReview={scope.role === "HEAD_OF_DEPARTMENT"}

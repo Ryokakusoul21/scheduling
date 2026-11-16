@@ -1,3 +1,4 @@
+import { roomAllowsSection } from "@/lib/rooms/designation";
 import { timetableStarts } from "@/lib/timetable/config";
 /**
  * Deterministic repair solver. It turns issues into tasks, works on the hardest first, and tries the least
@@ -84,7 +85,7 @@ function subjectOf(run: Run, id: string) {
   return run.input.subjects.find((s) => s.id === id);
 }
 
-/** Rooms that can hold the class: right type, enough seats, open to the section's program; exact laboratory type first. */
+/** Rooms that can hold the class: right type, enough seats, designated for the section's department; exact laboratory type first. */
 function roomsFor(run: Run, section: ResolverSection, subjectId: string, component: "LECTURE" | "LABORATORY") {
   const lab = component === "LABORATORY";
   const required = subjectOf(run, subjectId)?.requiredRoomType;
@@ -92,12 +93,16 @@ function roomsFor(run: Run, section: ResolverSection, subjectId: string, compone
   return run.input.rooms
     .filter((r) => r.assignable && r.status === "AVAILABLE" && r.capacity >= section.studentCount)
     .filter((r) => (lab ? isLabRoom(r.roomType) : !isLabRoom(r.roomType) && r.roomType !== "CONFERENCE_ROOM"))
-    .filter((r) => !r.programIds || (!!section.programId && r.programIds.includes(section.programId)))
+    .filter((r) => roomAllowsSection(r, section))
     .sort((a, b) => Number(!!exact && b.roomType === exact) - Number(!!exact && a.roomType === exact) || a.capacity - b.capacity || a.id.localeCompare(b.id));
 }
 
 /** The section's current teacher of the subject when assignments are kept; otherwise the least loaded who teach the level. */
 function facultyFor(run: Run, section: ResolverSection, subjectId: string) {
+  if (run.input.assignments) {
+    const assignment = run.input.assignments.find((a) => a.sectionId === section.id && a.subjectId === subjectId && a.semesterId === section.termId);
+    return assignment ? run.input.faculty.filter((f) => f.id === assignment.facultyId && f.assignable && f.teachingLevels.includes(section.level)) : [];
+  }
   if (run.options.keepFaculty) {
     const current = [...run.state.values()]
       .filter((e) => e.status !== "ARCHIVED" && e.sectionId === section.id && e.subjectId === subjectId && e.facultyId)
@@ -136,14 +141,23 @@ function movedType(before: ResolverEntry, after: ResolverEntry): ChangeType {
 
 const valid = (f: Finding[] | null): f is Finding[] => !!f && !f.some((x) => x.hard);
 
+/** Rooms with the faculty member's preferred ones first, in their order; the rest keep the fit order. */
+function preferredFirst<T extends { id: string }>(rooms: T[], preferred?: string[]) {
+  if (!preferred?.length) return rooms;
+  const rank = (r: T) => { const i = preferred.indexOf(r.id); return i < 0 ? preferred.length : i; };
+  return [...rooms].sort((a, b) => rank(a) - rank(b));
+}
+
 /** Up to `limit` valid placements for a new class, fewest soft problems first. */
 function placeCandidates(run: Run, task: Extract<Task, { kind: "place" }>, limit = 3): Candidate[] {
   const found: Candidate[] = [];
   const rooms = roomsFor(run, task.section, task.subjectId, task.component);
   const faculty = facultyFor(run, task.section, task.subjectId);
+  // The room this subject already uses for the section comes right after the faculty member's preferences.
+  const sameRoom = run.input.entries.find((e) => e.sectionId === task.section.id && e.subjectId === task.subjectId && rooms.some((r) => r.id === e.roomId))?.roomId;
   for (const slot of slots(run, task.section.id, task.duration)) {
     for (const f of faculty) {
-      for (const r of rooms) {
+      for (const r of preferredFirst(rooms, sameRoom ? [...(f.preferredRoomIds ?? []), sameRoom] : f.preferredRoomIds)) {
         const e: ResolverEntry = {
           id: `new-${task.issue.id}-${slot.dayOfWeek}-${slot.startMin}-${r.id}`,
           semesterId: task.section.termId, sectionId: task.section.id, subjectId: task.subjectId, facultyId: f.id, roomId: r.id,
@@ -207,6 +221,7 @@ function withTemp<T>(run: Run, add: ResolverEntry[], remove: ResolverEntry[], fn
 
 /** A class may be moved to make room only in an editable, in-scope section (complete ones only when allowed). */
 function movable(run: Run, e: ResolverEntry) {
+  if (run.options.placementOnly || e.status === "PUBLISHED" || e.status === "REVIEW") return false;
   const section = sectionOf(run, e.sectionId);
   if (e.busy || !section?.editable || !run.scope.has(e.sectionId)) return false;
   const complete = section.curriculum.every((n) => plotted([...run.state.values()], section.id, n.subjectId, n.component) >= n.requiredMin);
@@ -370,6 +385,11 @@ function plan(run: Run, issues: Issue[], unresolved: Unresolved[]): Task[] {
       const required = Math.round(((issue.component === "LECTURE" ? subject?.lectureHours : subject?.labHours) ?? 0) * 60);
       const have = plotted([...run.state.values()], section.id, issue.subjectId!, issue.component!);
       if (have < required) {
+        if (input.assignments && !facultyFor(run, section, issue.subjectId!).length) {
+          const assigned = input.assignments.some((a) => a.sectionId === section.id && a.subjectId === issue.subjectId && a.semesterId === section.termId);
+          unresolved.push(explain(issue, assigned ? "ASSIGNED_UNAVAILABLE" : "MISSING_ASSIGNMENT", input));
+          continue;
+        }
         let remaining = required - have;
         const chunk = defaultDuration(issue.component!, section.level, input.timetables?.[section.id]);
         while (remaining > 0) {
@@ -379,7 +399,8 @@ function plan(run: Run, issues: Issue[], unresolved: Unresolved[]): Task[] {
         }
         continue;
       }
-      if (have > required) tasks.push({ kind: "trim", issue, excessMin: have - required });
+      if (have > required && !options.placementOnly) tasks.push({ kind: "trim", issue, excessMin: have - required });
+      else if (have > required) unresolved.push(explain(issue, "DATA", input));
       continue;
     }
     if (issue.kind === "HOURS") {

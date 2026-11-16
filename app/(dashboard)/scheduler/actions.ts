@@ -9,7 +9,6 @@ import { prisma } from "@/lib/db/prisma";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { PUBLISH_ROLES, STAFF_ROLES } from "@/lib/permissions/roles";
 import { LOCKED_MESSAGE, createSubmission, decideSubmissions, lockingSubmission, notifyScheduleApprovers, withdrawSubmission } from "@/lib/scheduler/submissions";
-import { submissionPeriodError } from "@/lib/scheduler/periods";
 import { requireScope, type Scope } from "@/lib/permissions/scope";
 import { refuseSection, sectionAccess } from "@/lib/permissions/section-access";
 import { departmentWhere, logBlocked } from "@/lib/permissions/department";
@@ -73,7 +72,7 @@ async function saveScoped(scope: Scope, d: ClassData, overrideSoft: boolean, act
   }
   const problem = await checkClass(d, { userId: scope.userId }, { overrideSoft, viewerDepartmentId: scope.isAdmin ? undefined : scope.departmentId });
   if (problem) return problem;
-  const foreign = await foreignDepartments(scope, d.facultyId, d.roomId);
+  const foreign = await foreignDepartments(scope, d.facultyId, d.roomId, { subjectId: d.subjectId, sectionId: d.sectionId, semesterId: d.semesterId });
   if (foreign.length) return requestCrossDepartment(scope, d, foreign);
   return writeClass(d, { userId: scope.userId, role: scope.role }, action, changeReason);
 }
@@ -86,6 +85,9 @@ async function validateCurriculumQueue(scope: Scope, d: ClassData & { source?: "
     select: { subject: { select: { lectureHours: true, labHours: true } } },
   });
   if (!placeholder) return "That subject component is not in this section's approved curriculum for the selected term.";
+  const assignment = await prisma.subjectAssignment.findFirst({ where: { sectionId: d.sectionId, subjectId: d.subjectId, semesterId: d.semesterId, status: "ACTIVE" }, select: { facultyId: true } });
+  if (!assignment) return "Needs teacher: assign this section's subject in Subjects before scheduling it.";
+  if (assignment.facultyId !== d.facultyId) return "Use this section's assigned teacher. Reassign the subject in Subjects before choosing another teacher.";
   const requiredMin = Math.round((d.component === "LECTURE" ? placeholder.subject.lectureHours : placeholder.subject.labHours) * 60);
   const existing = await prisma.schedule.findMany({
     where: { sectionId: d.sectionId, subjectId: d.subjectId, component: d.component, semesterId: d.semesterId, status: { not: "ARCHIVED" } },
@@ -102,6 +104,8 @@ export async function saveClassAction(input: ClassInput, overrideSoft = false): 
   const queueProblem = await validateCurriculumQueue(scope, parsed.data);
   if (queueProblem) { await logBlocked(scope, "create an ad-hoc class outside the approved curriculum queue", "Schedule"); return { ok: false, error: queueProblem }; }
   const { changeReason, ...classData } = parsed.data;
+  // Queue provenance is validated above; it is not a Schedule database column.
+  delete classData.source;
   if (scope.role === "REGISTRAR" && !changeReason?.trim()) return { ok: false, error: "Explain the reason for this Registrar correction." };
   return saveScoped(scope, classData, overrideSoft, parsed.data.id ? "Edited class schedule" : "Created class schedule", changeReason);
 }
@@ -227,10 +231,6 @@ export async function submitClassesAction(ids: string[], overrideReason?: string
     const where = [...new Set(incomplete.map((item) => `${item.subject.code} (${names.get(item.sectionId) ?? "section"})`))];
     return { ok: false, error: `The whole timetable must be complete before submitting. Missing hours: ${where.slice(0, 8).join(", ")}${where.length > 8 ? `, and ${where.length - 8} more` : ""}.` };
   }
-  for (const semesterId of termIds) {
-    const closed = await submissionPeriodError(semesterId, "CLASS_TIMETABLE");
-    if (closed) return { ok: false, error: closed };
-  }
   const workload = await loadWorkload(await activeTermIds(), null);
   const unit = workload.limits.measure === "HOURS" ? "hours" : "units";
   const off = loadReport(workload.faculty.filter((f) => scope.departmentIds.includes(f.departmentId ?? "")), workload.assignments, workload.limits).filter((r) => r.status !== "BALANCED");
@@ -268,7 +268,7 @@ export async function submitClassesAction(ids: string[], overrideReason?: string
 export async function constraintReportAction(termId: string): Promise<Result<Violation[]>> {
   const scope = await requireScope(...STAFF_ROLES);
   if (!termId) return { ok: false, error: "Choose a term first." };
-  return { ok: true, data: await termConstraintReport(termId, scope.manageDepartmentId) };
+  return { ok: true, data: await termConstraintReport(termId, scope.manageDepartmentId, scope.role) };
 }
 
 /** Pulls back a class or examination timetable that is still waiting for a decision, so it can be edited again. */

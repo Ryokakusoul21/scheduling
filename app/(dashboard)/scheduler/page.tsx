@@ -1,3 +1,5 @@
+import { roomLabel } from "@/lib/rooms/label";
+import { publishedFilter } from "@/lib/scheduler/visibility";
 import { loadTimetableBundle } from "@/lib/timetable/service";
 import { getScope, policyUserFromScope } from "@/lib/permissions/scope";
 import { can } from "@/lib/permissions/policy";
@@ -48,6 +50,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
     return (
       <div data-viewport-lock className="flex flex-col gap-2 lg:h-full lg:min-h-0 lg:overflow-hidden">
         {role === "HEAD_OF_DEPARTMENT" && <HeadNotices departmentIds={scope.departmentIds} academicYearId={academicYear.id} kind="EXAMINATION" />}
+        {scope.isAdmin && <p className="shrink-0 rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">Examination timetables appear here after the Head of Department submits them for approval. Unsubmitted drafts remain private to the department.</p>}
         <div className="lg:min-h-0 lg:flex-1">
           <ExamMode scope={scope} academicYearId={academicYear.id} modes={<ModeSwitch mode={mode} academicYearId={academicYear.id} />} academicYearControl={<AcademicYearSwitcher key="academic-year-switcher" years={academicYears.map((y) => ({ id: y.id, name: y.name, isActive: y.isActive }))} currentId={academicYear.id} />} />
         </div>
@@ -58,11 +61,9 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
   // A Head of Department (and a faculty member) gets their own department's records only. Other departments'
   // faculty and rooms come marked as foreign (choosing one sends a request), and their classes arrive only
   // as anonymous busy blocks so conflicts are still caught.
-  const scheduleScope = scope.isAdmin
-    ? {}
-    : scope.role === "HEAD_OF_DEPARTMENT"
+  const scheduleScope = scope.isAdmin || scope.role === "HEAD_OF_DEPARTMENT"
       ? departmentWhere.schedule(scope)
-      : { facultyId: scope.facultyId ?? "__none__" };
+      : { facultyId: scope.facultyId ?? "__none__", ...publishedFilter(scope.role) };
   const inYear = { semester: { academicYearId: academicYear.id, level: { in: [...ACADEMIC_LEVELS] } }, status: { not: "ARCHIVED" as const } };
   // Everything that does not depend on the visible classes loads in one round.
   const [allEntries, busyRows, programs, allTerms, departments, faculty, rooms, rules, assignmentRows, workload] = await Promise.all([
@@ -74,23 +75,25 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
     prisma.program.findMany({ where: { AND: [PROGRAM_CATALOG_FILTER, departmentWhere.program(scope)] }, orderBy: [{ level: "asc" }, { sortOrder: "asc" }, { code: "asc" }] }),
     prisma.semester.findMany({ where: { academicYearId: academicYear.id, level: { in: [...ACADEMIC_LEVELS] } }, include: { program: { select: { code: true } } }, orderBy: [{ level: "asc" }, { startDate: "asc" }] }),
     prisma.department.findMany({ where: departmentWhere.department(scope), orderBy: { code: "asc" } }),
-    prisma.faculty.findMany({ where: departmentWhere.faculty(scope), include: { availability: true }, orderBy: { fullName: "asc" } }),
+    prisma.faculty.findMany({ where: departmentWhere.faculty(scope), include: { availability: true, roomPreferences: { orderBy: { rank: "asc" }, select: { roomId: true } } }, orderBy: { fullName: "asc" } }),
     prisma.room.findMany({
       // Rooms stay campus-wide for availability; other departments' rooms are marked and only ever show as busy.
       where: { archivedAt: null },
-      include: { availability: true, programs: { select: { id: true } }, floor: { select: { name: true, building: { select: { name: true } } } } },
-      orderBy: [{ sortOrder: "asc" }, { roomName: "asc" }],
+      include: { availability: true, department: { select: { code: true } }, programs: { select: { id: true } }, floor: { select: { name: true, building: { select: { name: true } } } } },
+      orderBy: [{ sortOrder: "asc" }, { roomNumber: "asc" }],
     }),
     // Rules the Resolve issues solver checks in the browser: school-wide ones and the viewer's department's.
     STAFF_ROLES.includes(role) ? activeRules() : Promise.resolve([]),
-    prisma.subjectAssignment.findMany({ where: { status: "ACTIVE", semester: { academicYearId: academicYear.id } }, select: { subjectId: true, sectionId: true, facultyId: true } }),
+    prisma.subjectAssignment.findMany({ where: { status: "ACTIVE", semester: { academicYearId: academicYear.id } }, select: { subjectId: true, sectionId: true, facultyId: true, semesterId: true } }),
     // Loads come from the workload engine so the warnings match the Faculty Workload page exactly.
-    STAFF_ROLES.includes(role) ? activeTermIds().then((ids) => loadWorkload(ids, null)) : Promise.resolve(null),
+    STAFF_ROLES.includes(role) ? activeTermIds().then((ids) => loadWorkload(ids, null, { visibilityRole: role })) : Promise.resolve(null),
   ]);
   // A Head of Department restricted to programs sees only those programs' classes.
   const inProgramScope = (programId: string | null) => !scope.programIds.length || (!!programId && scope.programIds.includes(programId));
   const visible = (e: (typeof allEntries)[number]) => scope.isAdmin || (scope.role === "HEAD_OF_DEPARTMENT" && scope.departmentIds.includes(e.section.departmentId ?? "") && inProgramScope(e.section.programId)) || (!!scope.facultyId && e.facultyId === scope.facultyId);
   const entries = allEntries.filter(visible);
+  // A faculty member sees nothing until the Registrar publishes the timetable.
+  if (role === "FACULTY" && !entries.length) return <EmptyState title="Your timetable is not published yet" description="Your classes appear here once the Registrar publishes the timetable." />;
   const shownSections = new Set(entries.map((e) => e.sectionId));
   const shownSubjects = new Set(entries.map((e) => e.subjectId));
   const facultyIds = new Set(faculty.map((f) => f.id));
@@ -100,11 +103,11 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
   // Second round: records that depend on which classes are visible.
   const [sections, subjects, outsideFaculty] = await Promise.all([
     prisma.section.findMany({
-      where: { level: { in: [...ACADEMIC_LEVELS] }, AND: [{ OR: [departmentWhere.section(scope), { id: { in: [...shownSections] } }] }, { OR: [{ semester: { academicYearId: academicYear.id } }, { semesterId: null, level: { not: "COLLEGE" } }] }] },
+      where: { level: { in: [...ACADEMIC_LEVELS] }, ...(scope.isAdmin ? { id: { in: [...shownSections] } } : {}), AND: [{ OR: [departmentWhere.section(scope), { id: { in: [...shownSections] } }] }, { OR: [{ semester: { academicYearId: academicYear.id } }, { semesterId: null, level: { not: "COLLEGE" } }] }] },
       include: { classPlaceholders: { select: { subjectId: true, component: true } } },
       orderBy: [{ level: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
     }),
-    prisma.subject.findMany({ where: { level: { in: [...ACADEMIC_LEVELS] }, OR: [departmentWhere.subject(scope), { id: { in: [...shownSubjects] } }] }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }] }),
+    prisma.subject.findMany({ where: { level: { in: [...ACADEMIC_LEVELS] }, OR: [departmentWhere.subject(scope), { id: { in: [...shownSubjects] } }] }, include: { sharedPrograms: { select: { id: true } } }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }] }),
     outsideIds.length
       ? prisma.faculty.findMany({ where: { id: { in: outsideIds }, archivedAt: null }, select: { id: true, fullName: true, department: { select: { name: true } } } })
       : Promise.resolve([]),
@@ -160,6 +163,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
       name: s.name,
       level: s.level,
       programId: s.programId,
+      sharedProgramIds: s.sharedPrograms.map((program) => program.id),
       yearLevel: s.yearLevel,
       gradeLevel: s.gradeLevel,
       lectureHours: s.lectureHours,
@@ -178,17 +182,21 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
       // Archived faculty count as inactive: kept on existing classes, never suggested.
       status: f.archivedAt ? "ARCHIVED" : f.status,
       foreign: isForeign(scope, f.departmentId),
+      // Room preferences are for the Head of Department and the Registrar only.
+      preferredRoomIds: scope.role === "HEAD_OF_DEPARTMENT" || scope.role === "REGISTRAR" ? f.roomPreferences.map((p) => p.roomId) : [],
       availability: f.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })),
     })),
     rooms: rooms.map((r) => ({
       id: r.id,
       roomNumber: r.roomNumber,
-      roomName: r.roomName,
+      roomName: roomLabel(r),
       capacity: r.capacity,
       roomType: r.roomType,
       status: r.status,
       location: location(r),
       availability: r.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })),
+      departmentId: r.departmentId,
+      departmentCode: r.department?.code,
       programIds: r.isGeneralShared ? null : r.programs.map((p) => p.id),
       archived: !!r.archivedAt,
       foreign: isForeign(scope, r.departmentId),
@@ -218,6 +226,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
   return (
     <div data-viewport-lock className="flex flex-col gap-2 lg:h-full lg:min-h-0 lg:overflow-hidden">
       {role === "HEAD_OF_DEPARTMENT" && <HeadNotices departmentIds={scope.departmentIds} academicYearId={academicYear.id} kind="CLASS" />}
+      {scope.isAdmin && <p className="shrink-0 rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">Timetables appear here after the Head of Department submits them for approval. Unsubmitted drafts remain private to the department.</p>}
       <div className="lg:min-h-0 lg:flex-1">
       <SchedulerWorkspace
         // Remount when switching academic year so filters reset to that year's terms.

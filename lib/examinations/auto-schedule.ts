@@ -1,3 +1,4 @@
+import { roomAllowsSection, type RoomDesignation } from "@/lib/rooms/designation";
 import { timetableStarts, type TimetableConfig } from "@/lib/timetable/config";
 import { ACADEMIC_LEVELS, GRADE_LEVELS, YEAR_LEVELS, gradeLabel, levelLabel, yearLabel } from "@/lib/academics/levels";
 import { DEFAULT_EXAM_RULES, type ExamContext, type ExamIssue, type ExamSlot } from "./rules";
@@ -9,6 +10,7 @@ export interface AutoScheduleClass {
   sectionId: string;
   sectionName: string;
   sectionLevel: string;
+  departmentId?: string | null;
   yearLevel: string | null;
   gradeLevel: string | null;
   studentCount: number;
@@ -23,7 +25,7 @@ export interface AutoScheduleClass {
   endMin: number;
 }
 
-export interface AutoScheduleRoom {
+export interface AutoScheduleRoom extends RoomDesignation {
   id: string;
   roomName: string;
   capacity: number;
@@ -180,7 +182,7 @@ export function generateExaminationSchedule(
     const duration = item.endMin - item.startMin;
     const timeConfig = timetables?.[item.sectionId];
     const suitableRooms = rooms
-      .filter((room) => room.capacity >= item.studentCount)
+      .filter((room) => room.capacity >= item.studentCount && roomAllowsSection(room, { departmentId: item.departmentId, level: item.sectionLevel }))
       .sort((a, b) => Number(b.id === item.roomId) - Number(a.id === item.roomId) || a.capacity - b.capacity || a.roomName.localeCompare(b.roomName));
     if (!item.proctorId || !item.proctorName) {
       unscheduled.push({ ...label, reason: "The scheduled class teacher is inactive or unavailable to serve as a proctor." });

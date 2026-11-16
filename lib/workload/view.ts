@@ -5,7 +5,7 @@ import type { Scope } from "@/lib/permissions/scope";
 import { departmentWhere } from "@/lib/permissions/department";
 import { loadWorkload } from "./load";
 import { amountOf, balanceSummary, loadReport, nearLimit, validateRows, type LoadRow, type Move } from "./optimizer";
-import { activeTermIds, getWorkloadStatus } from "./auto";
+import { activeTermIds, getWorkloadStatus, proposalBasis } from "./auto";
 import { awaitingLabel, canApprove, canEdit, canReject, type ReviewRow } from "./approval";
 
 export interface FacultyLoadView extends LoadRow {
@@ -40,6 +40,9 @@ export interface ProposalRowView {
   id: string;
   key: string;
   label: string;
+  subject: string;
+  section: string;
+  fromInactive: boolean;
   amount: number;
   fromFacultyId: string;
   toFacultyId: string;
@@ -72,11 +75,12 @@ export interface ProposalView {
   reviewNote: string | null;
   department: string;
   canReview: boolean;
+  needsRefresh: boolean;
   rows: ProposalRowView[];
 }
 
 /** Current load of everyone a proposal touches, for the before-and-after preview. */
-export type PreviewLoads = Record<string, { name: string; load: number; minimum: number; maximum: number }>;
+export type PreviewLoads = Record<string, { name: string; load: number; minimum: number; maximum: number; inactive?: boolean }>;
 
 /**
  * Everything the workload screens show for the viewer: loads across the active terms (own load for Faculty,
@@ -94,7 +98,7 @@ export async function workloadView(scope: Scope, opts: { history?: number } = {}
     getWorkloadStatus(),
     prisma.department.findMany({ select: { id: true, name: true } }),
     // Every department loads, so cross-department rows and alternative receivers can be checked.
-    loadWorkload(termIds, null),
+    loadWorkload(termIds, null, { visibilityRole: scope.role }),
   ]);
   const { limits, faculty, assignments } = data;
   const department = scope.isAdmin || scope.role === "FACULTY" ? null : scope.manageDepartmentId;
@@ -104,52 +108,61 @@ export async function workloadView(scope: Scope, opts: { history?: number } = {}
   const facultyName = new Map(faculty.map((f) => [f.id, f.name]));
 
   const actor = { isAdmin: scope.isAdmin, departmentIds: scope.departmentIds };
-  const toView = (p: (typeof proposalRows)[number]): ProposalView => ({
-    id: p.id,
-    version: p.version,
-    status: p.status,
-    automatic: p.automatic,
-    createdAt: p.createdAt.toISOString(),
-    reviewedAt: p.reviewedAt?.toISOString() ?? null,
-    explanation: p.explanation,
-    reviewNote: p.reviewNote,
-    department: deptName(p.departmentId),
-    canReview: p.status === "PENDING" && p.rows.some((r) => canApprove(actor, r as ReviewRow) || canReject(actor, r as ReviewRow)),
-    rows: p.rows.map((r) => {
-      const stored = r.move as unknown as Move;
-      const open = p.status === "PENDING" && (r.status === "PENDING" || r.status === "APPROVED");
-      // Open rows show today's loads; closed rows keep the numbers they were decided on.
-      const live = open ? validateRows(data, [{ key: r.key, fromFacultyId: r.fromFacultyId, toFacultyId: r.toFacultyId }]) : null;
-      const m = live?.ok ? live.moves[0] : stored;
-      const editable = open && canEdit(actor, r as ReviewRow);
-      const view = r as ReviewRow;
-      return {
-        id: r.id, key: r.key, label: stored.label, amount: m.amount, fromFacultyId: r.fromFacultyId, toFacultyId: r.toFacultyId,
-        from: facultyName.get(r.fromFacultyId) ?? data.inactiveNames.get(r.fromFacultyId) ?? "A former faculty member",
-        to: facultyName.get(r.toFacultyId) ?? "A former faculty member",
-        fromBefore: m.fromBefore, fromAfter: m.fromAfter, toBefore: m.toBefore, toAfter: m.toAfter, reason: stored.reason,
-        status: r.status, edited: r.edited,
-        awaiting: awaitingLabel(view, { from: deptName(r.fromDepartmentId), to: deptName(r.toDepartmentId) }),
-        problem: live && !live.ok ? live.problems.join(" ") : null,
-        canApprove: open && canApprove(actor, view),
-        canReject: open && canReject(actor, view),
-        candidates: editable
-          ? faculty
-              .filter((f) => f.id !== r.fromFacultyId)
-              .flatMap((f) => {
-                const v = validateRows(data, [{ key: r.key, fromFacultyId: r.fromFacultyId, toFacultyId: f.id }]);
-                return v.ok ? [{ id: f.id, name: f.name, after: v.moves[0].toAfter }] : [];
-              })
-          : null,
-      };
-    }),
-  });
+  const toView = (p: (typeof proposalRows)[number]): ProposalView => {
+    const needsRefresh = p.status === "PENDING" && p.basis !== proposalBasis(data, p.departmentId, p.rows);
+    return {
+      id: p.id,
+      version: p.version,
+      status: p.status,
+      automatic: p.automatic,
+      createdAt: p.createdAt.toISOString(),
+      reviewedAt: p.reviewedAt?.toISOString() ?? null,
+      explanation: p.explanation,
+      reviewNote: p.reviewNote,
+      department: deptName(p.departmentId),
+      canReview: p.status === "PENDING" && p.rows.some((r) => canApprove(actor, r as ReviewRow) || canReject(actor, r as ReviewRow)),
+      needsRefresh,
+      rows: p.rows.map((r) => {
+        const stored = r.move as unknown as Move;
+        const open = p.status === "PENDING" && (r.status === "PENDING" || r.status === "APPROVED");
+        // Open rows show today's loads; closed rows keep the numbers they were decided on.
+        const live = open ? validateRows(data, [{ key: r.key, fromFacultyId: r.fromFacultyId, toFacultyId: r.toFacultyId, reason: stored.reason.split(" Moves ")[0] }]) : null;
+        const m = live?.ok ? live.moves[0] : stored;
+        const assignment = [...assignments, ...data.unassigned].find((a) => a.key === r.key);
+        const separator = stored.label.lastIndexOf(", ");
+        const editable = open && canEdit(actor, r as ReviewRow);
+        const view = r as ReviewRow;
+        return {
+          id: r.id, key: r.key, label: stored.label, amount: m.amount, fromFacultyId: r.fromFacultyId, toFacultyId: r.toFacultyId,
+          subject: assignment?.subjectName ?? (separator < 0 ? stored.label : stored.label.slice(0, separator)),
+          section: assignment?.sectionName ?? (separator < 0 ? "" : stored.label.slice(separator + 2)),
+          fromInactive: data.inactiveNames.has(r.fromFacultyId),
+          from: facultyName.get(r.fromFacultyId) ?? data.inactiveNames.get(r.fromFacultyId) ?? "A former faculty member",
+          to: facultyName.get(r.toFacultyId) ?? "A former faculty member",
+          fromBefore: m.fromBefore, fromAfter: m.fromAfter, toBefore: m.toBefore, toAfter: m.toAfter, reason: m.reason,
+          status: r.status, edited: r.edited,
+          awaiting: awaitingLabel(view, { from: deptName(r.fromDepartmentId), to: deptName(r.toDepartmentId) }),
+          problem: live && !live.ok ? live.problems.join(" ") : null,
+          canApprove: open && !needsRefresh && !!live?.ok && canApprove(actor, view),
+          canReject: open && canReject(actor, view),
+          candidates: editable
+            ? faculty
+                .filter((f) => f.id !== r.fromFacultyId)
+                .flatMap((f) => {
+                  const v = validateRows(data, [{ key: r.key, fromFacultyId: r.fromFacultyId, toFacultyId: f.id }]);
+                  return v.ok ? [{ id: f.id, name: f.name, after: v.moves[0].toAfter }] : [];
+                })
+            : null,
+        };
+      }),
+    };
+  };
   const proposals = proposalRows.filter((p) => p.status === "PENDING").map(toView);
   const history = proposalRows.filter((p) => p.status !== "PENDING").map(toView);
 
   const report = loadReport(faculty, assignments, limits);
   const pending = new Map<string, number>();
-  for (const r of proposals.flatMap((p) => p.rows).filter((r) => r.status === "PENDING" || r.status === "APPROVED")) {
+  for (const r of proposals.filter((p) => !p.needsRefresh).flatMap((p) => p.rows).filter((r) => !r.problem && (r.status === "PENDING" || r.status === "APPROVED"))) {
     pending.set(r.fromFacultyId, (pending.get(r.fromFacultyId) ?? 0) - r.amount);
     pending.set(r.toFacultyId, (pending.get(r.toFacultyId) ?? 0) + r.amount);
   }
@@ -175,6 +188,13 @@ export async function workloadView(scope: Scope, opts: { history?: number } = {}
     report.filter((r) => proposals.some((p) => p.rows.some((x) => x.fromFacultyId === r.facultyId || x.toFacultyId === r.facultyId)))
       .map((r) => [r.facultyId, { name: r.name, load: r.load, minimum: r.minimum, maximum: r.maximum }]),
   );
+  for (const [id, name] of data.inactiveNames) {
+    if (!proposals.some((p) => p.rows.some((r) => r.fromFacultyId === id))) continue;
+    preview[id] = {
+      name, load: Math.round(data.unassigned.filter((a) => a.facultyId === id).reduce((sum, a) => sum + amountOf(a, limits), 0) * 10) / 10,
+      minimum: 0, maximum: limits.maximum, inactive: true,
+    };
+  }
 
   // Faculty of other departments are not named to a Head of Department in the fix log.
   const names = new Map(nameRows.map((f) => [f.id, f.fullName]));

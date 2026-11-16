@@ -54,7 +54,7 @@ export function proposalFaculty(data: WorkloadData, departmentId: string | null,
 }
 
 export const proposalBasis = (data: WorkloadData, departmentId: string | null, rows: { fromFacultyId: string; toFacultyId: string }[]) =>
-  basisOf([...data.assignments, ...data.unassigned], proposalFaculty(data, departmentId, rows), data.limits);
+  basisOf([...data.assignments, ...data.unassigned], proposalFaculty(data, departmentId, rows), data.limits, data);
 
 /** Checks every load and proposes fixes for Head of Department approval; nothing is ever applied here. */
 async function check(trigger: string, actorId: string | null): Promise<WorkloadStatus> {

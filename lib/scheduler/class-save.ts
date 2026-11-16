@@ -1,14 +1,15 @@
+import { roomAllowsSection } from "@/lib/rooms/designation";
 import { getTimetableConfig } from "@/lib/timetable/service";
 import { timetableTimeError } from "@/lib/timetable/config";
 import "server-only";
 import { revalidatePath } from "next/cache";
-import type { ScheduleStatus } from "@prisma/client";
+import type { Prisma, ScheduleStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { DIRECT_EDIT_ROLES, PUBLISH_ROLES, type AppRole } from "@/lib/permissions/roles";
-import { weeklyDoubleBooking } from "./term-conflicts";
+import { concurrentTermIds, weeklyDoubleBooking } from "./term-conflicts";
 import { dayOfWeek, isoDate } from "@/lib/occupancy/engine";
-import { formatRange } from "./timetable";
+import { collegeLengthError, formatRange } from "./timetable";
 import { checkClassConstraints } from "./constraints-server";
 import type { Violation } from "./constraints";
 import type { SchedulerEntry } from "@/components/scheduler/types";
@@ -71,8 +72,7 @@ async function enforceConstraints(entry: Parameters<typeof checkClassConstraints
 }
 
 export function revalidateScheduler() {
-  revalidatePath("/scheduler");
-  revalidatePath("/dashboard");
+  for (const path of ["/scheduler", "/dashboard", "/subjects", "/sections", "/workload", "/my-subjects", "/analytics"]) revalidatePath(path);
 }
 
 /**
@@ -104,11 +104,14 @@ export async function checkClass(d: ClassData, actor: { userId: string }, opts: 
     prisma.section.findUnique({ where: { id: d.sectionId }, select: { id: true, archivedAt: true, departmentId: true, level: true } }),
     prisma.subject.findUnique({ where: { id: d.subjectId }, select: { id: true, archivedAt: true, lectureHours: true, labHours: true, level: true } }),
     prisma.faculty.findUnique({ where: { id: d.facultyId }, select: { id: true, archivedAt: true, teachingLevels: true } }),
-    prisma.room.findUnique({ where: { id: d.roomId }, select: { id: true, archivedAt: true } }),
+    prisma.room.findUnique({ where: { id: d.roomId }, select: { id: true, archivedAt: true, isGeneralShared: true, departmentId: true, department: { select: { code: true } } } }),
     prisma.semester.findUnique({ where: { id: d.semesterId }, select: { id: true, level: true } }),
   ]);
   if (!section || !subject || !faculty || !room || !term) {
     return { ok: false as const, error: "The section, subject, faculty, room, or term no longer exists. Refresh and try again." };
+  }
+  if (!roomAllowsSection({ ...room, departmentCode: room.department?.code }, section)) {
+    return { ok: false as const, error: "This room is designated for another department. Choose a General / Shared room or your department\'s room." };
   }
   // Academic levels are never mixed: section, subject, and term must share one level.
   if (subject.level !== section.level || term.level !== section.level) {
@@ -129,7 +132,12 @@ export async function checkClass(d: ClassData, actor: { userId: string }, opts: 
   if (timeChanged || before?.subjectId !== d.subjectId || before?.component !== d.component) {
     const required = Math.round((d.component === "LECTURE" ? subject.lectureHours : subject.labHours) * 60);
     const meetings = await prisma.schedule.findMany({ where: { semesterId: d.semesterId, sectionId: d.sectionId, subjectId: d.subjectId, component: d.component, status: { not: "ARCHIVED" }, ...(d.id ? { id: { not: d.id } } : {}) }, select: { startMin: true, endMin: true } });
-    const total = meetings.reduce((sum, e) => sum + e.endMin - e.startMin, 0) + d.endMin - d.startMin;
+    const others = meetings.reduce((sum, e) => sum + e.endMin - e.startMin, 0);
+    const total = others + d.endMin - d.startMin;
+    // Only a new class or a changed length is held to the College meeting length; older classes can still move.
+    const lengthChanged = !before || before.endMin - before.startMin !== d.endMin - d.startMin || before.subjectId !== d.subjectId || before.component !== d.component;
+    const lengthError = lengthChanged ? collegeLengthError(section.level, d.endMin - d.startMin, required - others, (await getTimetableConfig(d.semesterId, section.departmentId)).classSession) : null;
+    if (lengthError) return { ok: false as const, error: lengthError };
     if (required <= 0 || total > required) return { ok: false as const, error: `This placement would exceed the required ${required / 60} weekly hours for this subject component.` };
   }
   const archived = [
@@ -145,9 +153,37 @@ export async function checkClass(d: ClassData, actor: { userId: string }, opts: 
 }
 
 /** Writes a class that already passed checkClass and records it in the audit log. */
+class QueuePlacementChanged extends Error {}
+
+/** Manual placements and Auto-Schedule share the same lock and re-check remaining hours before inserting. */
+async function createQueuedClass(data: Prisma.ScheduleUncheckedCreateInput) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(90812026)`;
+    const [need, teacher] = await Promise.all([
+      tx.sectionClassPlaceholder.findFirst({ where: { sectionId: data.sectionId, subjectId: data.subjectId, component: data.component, section: { semesterId: data.semesterId, archivedAt: null }, subject: { archivedAt: null } }, select: { subject: { select: { lectureHours: true, labHours: true } } } }),
+      tx.subjectAssignment.findFirst({ where: { sectionId: data.sectionId, subjectId: data.subjectId, semesterId: data.semesterId, status: "ACTIVE", faculty: { status: "ACTIVE", archivedAt: null } }, select: { facultyId: true } }),
+    ]);
+    if (!need || teacher?.facultyId !== data.facultyId) throw new QueuePlacementChanged("The queue or assigned teacher changed. Refresh Unscheduled before placing this class.");
+    const required = Math.round((data.component === "LECTURE" ? need.subject.lectureHours : need.subject.labHours) * 60);
+    const meetings = await tx.schedule.findMany({ where: { sectionId: data.sectionId, subjectId: data.subjectId, component: data.component, semesterId: data.semesterId, status: { not: "ARCHIVED" } }, select: { startMin: true, endMin: true } });
+    const plotted = meetings.reduce((sum, e) => sum + Math.max(0, e.endMin - e.startMin), 0);
+    if (plotted + data.endMin - data.startMin > required) throw new QueuePlacementChanged("The remaining hours changed. Refresh Unscheduled to avoid duplicate meetings.");
+    const terms = await concurrentTermIds(data.semesterId, tx);
+    const overlap = await tx.schedule.findFirst({ where: { semesterId: { in: terms }, status: { not: "ARCHIVED" }, dayOfWeek: data.dayOfWeek, startMin: { lt: data.endMin }, endMin: { gt: data.startMin }, OR: [{ sectionId: data.sectionId }, { facultyId: data.facultyId }, { roomId: data.roomId }] }, select: { id: true } });
+    if (overlap) throw new QueuePlacementChanged("The teacher, room, or section was booked while placing this class. Choose another time.");
+    return tx.schedule.create({ data });
+  }, { maxWait: 10_000, timeout: 60_000, isolationLevel: "Serializable" });
+}
+
 export async function writeClass(d: ClassData, actor: { userId: string; role: AppRole }, action: string, changeReason?: string): Promise<SaveResult> {
-  if (actor.role === "SUPER_ADMINISTRATOR") return { ok: false, error: "The Super Administrator cannot edit class schedules. Contact the Registrar for an emergency correction." };
-  const { id, status, notes, ...data } = d;
+  if (actor.role === "SUPER_ADMINISTRATOR") return { ok: false, error: "The Super Administrator cannot edit class schedules. Contact the Registrar." };
+  const { id, status, notes } = d;
+  // Persist placement columns explicitly; request provenance must never become a database field.
+  const data = {
+    semesterId: d.semesterId, sectionId: d.sectionId, subjectId: d.subjectId, facultyId: d.facultyId,
+    roomId: d.roomId, component: d.component, dayOfWeek: d.dayOfWeek, startMin: d.startMin, endMin: d.endMin,
+    doNotMove: d.doNotMove,
+  };
   const owner = await prisma.section.findUnique({ where: { id: data.sectionId }, select: { departmentId: true } });
   if (!owner) return { ok: false, error: "Choose an existing section." };
   const existing = id ? await prisma.schedule.findUnique({ where: { id }, select: { status: true, facultyId: true, sectionId: true, departmentId: true, submissionId: true, subjectId: true, roomId: true, dayOfWeek: true, startMin: true, endMin: true } }) : null;
@@ -162,9 +198,15 @@ export async function writeClass(d: ClassData, actor: { userId: string; role: Ap
   if (actor.role === "REGISTRAR" && (!existing || existing.status !== "PUBLISHED")) {
     return { ok: false, error: "The Registrar may correct published classes. New or draft schedules must be submitted by the department." };
   }
-  const saved = id
+  let saved;
+  try { saved = id
     ? await prisma.schedule.update({ where: { id }, data: { ...data, departmentId: owner.departmentId, notes: notes || null, status: actor.role === "REGISTRAR" && existing!.status === "PUBLISHED" ? "PUBLISHED" : resolveStatus(actor.role, status, existing!.status) } })
-    : await prisma.schedule.create({ data: { ...data, departmentId: owner.departmentId, notes: notes || null, status: resolveStatus(actor.role, status, undefined), generatedBy: actor.userId } });
+    : await createQueuedClass({ ...data, departmentId: owner.departmentId, notes: notes || null, status: resolveStatus(actor.role, status, undefined), generatedBy: actor.userId });
+  } catch (error) {
+    if (error instanceof QueuePlacementChanged) return { ok: false, error: error.message };
+    if (error && typeof error === "object" && "code" in error && error.code === "P2034") return { ok: false, error: "The timetable changed while placing this class. Refresh Unscheduled and try again." };
+    throw error;
+  }
   await prisma.auditLog.create({
     data: {
       userId: actor.userId,

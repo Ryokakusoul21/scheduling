@@ -1,7 +1,9 @@
+import { roomLabel } from "@/lib/rooms/label";
 import "server-only";
 import type { RoomType } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { stageLabel } from "@/lib/academics/levels";
+import { submittedTimetableFilter } from "@/lib/scheduler/visibility";
 import {
   addDays,
   expandSessions,
@@ -42,7 +44,7 @@ export interface LoadedPlan {
  * Loads everything that occupies rooms, faculty, and sections between two dates
  * (classes with their adjustments, examinations, bookings) plus holidays and unavailability.
  */
-export async function loadPlan(from: string, to: string, opts: { excludeBatchId?: string } = {}): Promise<LoadedPlan> {
+export async function loadPlan(from: string, to: string, opts: { excludeBatchId?: string; publishedOnly?: boolean; visibilityRole?: string } = {}): Promise<LoadedPlan> {
   const wideFrom = new Date(`${addDays(from, -7)}T00:00:00Z`);
   const wideTo = new Date(`${addDays(to, 7)}T00:00:00Z`);
   const rangeFrom = new Date(`${from}T00:00:00Z`);
@@ -56,7 +58,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
 
   const [schedules, adjustments, holidays, exams, bookings, rooms, faculty, unavailable, sections, subjects] = await Promise.all([
     prisma.schedule.findMany({
-      where: { semesterId: { in: terms.map((t) => t.id) }, status: { not: "ARCHIVED" } },
+      where: { semesterId: { in: terms.map((t) => t.id) }, status: opts.publishedOnly ? "PUBLISHED" : { not: "ARCHIVED" }, ...submittedTimetableFilter(opts.visibilityRole ?? "") },
       include: {
         subject: { select: { code: true, name: true } },
         section: { select: { name: true, departmentId: true, level: true, yearLevel: true, gradeLevel: true, department: { select: { name: true } } } },
@@ -70,14 +72,14 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
       select: { startDate: true, endDate: true },
     }),
     prisma.examination.findMany({
-      where: { date: { gte: rangeFrom, lte: rangeTo }, status: { not: "ARCHIVED" } },
+      where: { date: { gte: rangeFrom, lte: rangeTo }, status: opts.publishedOnly ? "PUBLISHED" : { not: "ARCHIVED" }, ...submittedTimetableFilter(opts.visibilityRole ?? "") },
       include: { subject: { select: { code: true } }, section: { select: { name: true } } },
     }),
     prisma.roomBooking.findMany({ where: { status: "CONFIRMED", date: { gte: rangeFrom, lte: rangeTo } } }),
-    prisma.room.findMany({ include: { floor: { select: { buildingId: true } }, programs: { select: { id: true } } } }),
+    prisma.room.findMany({ include: { floor: { select: { buildingId: true } }, department: { select: { code: true } }, programs: { select: { id: true } } } }),
     prisma.faculty.findMany({ where: { status: "ACTIVE", archivedAt: null }, include: { availability: true } }),
     prisma.unavailability.findMany({ where: { status: { not: "DISMISSED" }, startDate: { lte: wideTo }, endDate: { gte: wideFrom } } }),
-    prisma.section.findMany({ select: { id: true, studentCount: true, level: true, programId: true } }),
+    prisma.section.findMany({ select: { id: true, studentCount: true, level: true, departmentId: true, programId: true } }),
     prisma.subject.findMany({ select: { id: true, requiredRoomType: true } }),
   ]);
 
@@ -123,7 +125,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
 
   const ctx: PlanContext = {
     // Archived rooms keep their names for past classes but are never offered as new rooms.
-    rooms: rooms.filter((r) => !r.archivedAt).map((r) => ({ id: r.id, name: r.roomName, capacity: r.capacity, roomType: r.roomType, status: r.status, buildingId: r.floor?.buildingId ?? null, programIds: r.isGeneralShared ? null : r.programs.map((p) => p.id) })),
+    rooms: rooms.filter((r) => !r.archivedAt).map((r) => ({ id: r.id, name: roomLabel(r), capacity: r.capacity, roomType: r.roomType, status: r.status, buildingId: r.floor?.buildingId ?? null, departmentId: r.departmentId, departmentCode: r.department?.code, programIds: r.isGeneralShared ? null : r.programs.map((p) => p.id) })),
     faculty: new Map(
       faculty.map((f) => [
         f.id,
@@ -135,6 +137,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
     holidays: holidaySet,
     sectionSize: new Map(sections.map((s) => [s.id, s.studentCount])),
     sectionLevel: new Map(sections.map((s) => [s.id, s.level])),
+    sectionDepartment: new Map(sections.map((s) => [s.id, s.departmentId])),
     sectionProgram: new Map(sections.map((s) => [s.id, s.programId])),
     subjectRoomType: new Map(subjects.map((s) => [s.id, s.requiredRoomType as RoomType])),
   };
@@ -144,7 +147,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
     sessions,
     bookings: bookings.map((b) => ({ id: b.id, roomId: b.roomId, date: isoDate(b.date), startMin: b.startMin, endMin: b.endMin, priority: b.priority as Priority, purpose: b.purpose, attendees: b.attendees, bookedById: b.bookedById })),
     classInfo,
-    roomName: new Map(rooms.map((r) => [r.id, r.roomName])),
+    roomName: new Map(rooms.map((r) => [r.id, roomLabel(r)])),
     facultyName: new Map(faculty.map((f) => [f.id, f.fullName])),
     label,
   };

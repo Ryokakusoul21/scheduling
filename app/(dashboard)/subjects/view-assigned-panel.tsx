@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { CaretDown } from "@phosphor-icons/react/ssr";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,27 +39,38 @@ export function ViewAssignedPanel({ subject, term, onClose }: { subject: Subject
           <SheetTitle className="text-lg">{subject.code} assigned faculty</SheetTitle>
           <SheetDescription className="text-sm">{subject.name} · {term.label}</SheetDescription>
         </SheetHeader>
-        <div className="space-y-6 px-4 pb-6">
+        <div className="space-y-3 px-4 pb-6">
           {groups.length === 0 && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nobody is assigned to this subject for the term.</p>}
           {groups.map((g) => {
             const meetings = details && details !== "error" ? details.meetings.filter((m) => m.facultyId === g[0].facultyId) : [];
+            const allSections = g.some((a) => !a.sectionId);
+            const sections = [...new Set(allSections ? meetings.map((m) => m.sectionName) : g.map((a) => a.sectionName))];
             return (
-              <section key={g[0].facultyId} aria-label={g[0].facultyName} className="space-y-2 rounded-lg border p-3">
-                <div className="flex items-center gap-2">
+              <details key={g[0].facultyId} open={groups.length === 1} className="group rounded-lg border">
+                <summary className="flex cursor-pointer list-none items-center gap-3 p-3">
                   <UserAvatar name={g[0].facultyName} className="size-9 text-xs" />
-                  <div>
-                    <p className="text-sm font-medium">{g[0].facultyName}</p>
-                    <p className="text-sm text-muted-foreground">{hours} hrs/week</p>
-                  </div>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{g[0].facultyName}</span>
+                    <span className="block text-xs text-muted-foreground">{hours * sections.length} hrs/week · {hours} per section · {allSections ? "All sections" : `${sections.length} ${sections.length === 1 ? "section" : "sections"}`}</span>
+                  </span>
+                  <CaretDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="space-y-3 border-t p-3">
+                  {details === null && <Skeleton className="h-4 w-48" />}
+                  {details !== null && sections.map((name) => {
+                    const own = meetings.filter((m) => m.sectionName === name);
+                    return (
+                      <div key={name}>
+                        <p className="text-sm font-medium">{name}</p>
+                        {own.length === 0 ? <p className="text-xs text-muted-foreground">Not scheduled yet.</p> : (
+                          <ul className="mt-1 space-y-1">{own.map((m, i) => <li key={i} className="flex items-baseline justify-between gap-3 text-xs"><span><span className="font-medium">{m.day.slice(0, 3)}</span> <span className="text-muted-foreground">{m.time}</span></span><Badge variant="secondary" className="shrink-0">Room {m.room}</Badge></li>)}</ul>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {details !== null && sections.length === 0 && <p className="text-xs text-muted-foreground">Not scheduled yet.</p>}
                 </div>
-                <p className="text-sm"><span className="text-muted-foreground">Sections: </span>{g.some((a) => !a.sectionId) ? "All sections" : g.map((a) => a.sectionName).join(", ")}</p>
-                <div className="text-sm">
-                  <p className="text-muted-foreground">Schedule</p>
-                  {details === null ? <Skeleton className="mt-1 h-4 w-48" /> : meetings.length === 0 ? <p>Not scheduled yet.</p> : (
-                    <ul className="mt-1 space-y-0.5">{meetings.map((m, i) => <li key={i}>{m.sectionName} · {m.day} {m.time} · Room {m.room}</li>)}</ul>
-                  )}
-                </div>
-              </section>
+              </details>
             );
           })}
 

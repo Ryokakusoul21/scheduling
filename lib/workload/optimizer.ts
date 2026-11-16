@@ -39,7 +39,7 @@ export interface Assignment {
   sectionLevel: string;
   departmentId: string | null;
   meetings: WMeeting[];
-  /** Assigned but not yet scheduled: weekly hours from the curriculum, moved by changing the assignment. */
+  /** Remaining curriculum hours in addition to the scheduled meetings of this offering. */
   plannedHours?: number;
   assignmentId?: string;
 }
@@ -108,7 +108,7 @@ export interface LoadRow {
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
-const hoursOf = (a: Assignment) => (a.meetings.length ? a.meetings.reduce((s, m) => s + (m.endMin - m.startMin), 0) / 60 : (a.plannedHours ?? 0));
+export const hoursOf = (a: Assignment) => a.meetings.reduce((s, m) => s + (m.endMin - m.startMin), 0) / 60 + (a.plannedHours ?? 0);
 
 export function amountOf(a: Assignment, limits: WorkloadLimits) {
   return limits.measure === "HOURS" ? round1(hoursOf(a)) : a.subjectUnits;
@@ -209,6 +209,11 @@ export function optimize(faculty: WFaculty[], assignments: Assignment[], limits:
   const report = loadReport(faculty, assignments, limits);
   const load = new Map(report.map((r) => [r.facultyId, r.load]));
   const units = new Map(report.map((r) => [r.facultyId, r.units]));
+  // Inactive faculty still own these classes until an approved reassignment is applied.
+  for (const a of assignments.filter((a) => !byId.has(a.facultyId))) {
+    load.set(a.facultyId, round1((load.get(a.facultyId) ?? 0) + amountOf(a, limits)));
+    units.set(a.facultyId, round1((units.get(a.facultyId) ?? 0) + a.subjectUnits));
+  }
   const schedule = new Map([...busy.entries()].map(([k, v]) => [k, [...v]]));
   const max = (id: string) => maximumFor(byId.get(id)!, limits);
   const min = (id: string) => minimumFor(byId.get(id)!, limits);
@@ -378,12 +383,18 @@ function describeMove(a: Assignment, donorId: string, donorName: string, donorDe
  * earlier rows. Returns the moves with current before and after loads, or every problem found.
  */
 export function validateRows(
-  data: { faculty: WFaculty[]; assignments: Assignment[]; busy: Map<string, WMeeting[]>; limits: WorkloadLimits },
+  data: { faculty: WFaculty[]; assignments: Assignment[]; unassigned?: Assignment[]; inactiveNames?: Map<string, string>; busy: Map<string, WMeeting[]>; limits: WorkloadLimits },
   rows: { key: string; fromFacultyId: string; toFacultyId: string; reason?: string }[],
 ): { ok: true; moves: Move[] } | { ok: false; problems: string[] } {
-  const { faculty, assignments, limits } = data;
+  const { faculty, limits } = data;
+  const assignments = [...data.assignments, ...(data.unassigned ?? [])];
   const byId = new Map(faculty.map((f) => [f.id, f]));
   const loads = new Map(loadReport(faculty, assignments, limits).map((r) => [r.facultyId, { load: r.load, units: r.units }]));
+  for (const a of assignments.filter((a) => !byId.has(a.facultyId))) {
+    const current = loads.get(a.facultyId) ?? { load: 0, units: 0 };
+    loads.set(a.facultyId, { load: round1(current.load + amountOf(a, limits)), units: round1(current.units + a.subjectUnits) });
+  }
+  const owners = new Map(assignments.map((a) => [a.key, a.facultyId]));
   const schedule = new Map([...data.busy.entries()].map(([k, v]) => [k, [...v]]));
   const cap = unitCap(limits);
   const problems: string[] = [];
@@ -392,8 +403,9 @@ export function validateRows(
     const a = assignments.find((x) => x.key === row.key);
     const r = byId.get(row.toFacultyId);
     const donor = byId.get(row.fromFacultyId);
-    if (!a || a.facultyId !== row.fromFacultyId) { problems.push(`${a ? `${a.subjectName}, ${a.sectionName}` : "A class"} changed since it was proposed.`); continue; }
+    if (!a || owners.get(row.key) !== row.fromFacultyId) { problems.push(`${a ? `${a.subjectName}, ${a.sectionName}` : "A class"} changed since it was proposed.`); continue; }
     const label = `${a.subjectName}, ${a.sectionName}`;
+    if (row.fromFacultyId === row.toFacultyId) { problems.push(`${label}: choose someone other than the current teacher.`); continue; }
     if (!r) { problems.push(`${label}: the receiving faculty member is no longer active.`); continue; }
     const amount = amountOf(a, limits);
     const now = loads.get(r.id) ?? { load: 0, units: 0 };
@@ -401,18 +413,31 @@ export function validateRows(
     if (!isFree(r, a, schedule.get(r.id) ?? [])) { problems.push(`${label}: ${r.name} does not teach this level or is not free at every meeting time.`); continue; }
     if (!qualifies(r, a, a.departmentId ?? donor?.departmentId, limits)) { problems.push(`${label}: ${r.name} is in another department and their specialization does not match${limits.crossDepartment === "DISALLOWED" ? ", and cross-department moves are turned off" : ""}.`); continue; }
     const from = loads.get(row.fromFacultyId) ?? { load: 0, units: 0 };
-    moves.push(describeMove(a, row.fromFacultyId, donor?.name ?? "An inactive faculty member", donor?.departmentId ?? null, r, from.load, now.load, limits, row.reason ?? "Reviewed by the Head of Department."));
+    moves.push(describeMove(a, row.fromFacultyId, donor?.name ?? data.inactiveNames?.get(row.fromFacultyId) ?? "An inactive faculty member", donor?.departmentId ?? a.departmentId, r, from.load, now.load, limits, row.reason ?? "Reviewed by the Head of Department."));
     loads.set(row.fromFacultyId, { load: round1(from.load - amount), units: round1(from.units - a.subjectUnits) });
     loads.set(r.id, { load: round1(now.load + amount), units: round1(now.units + a.subjectUnits) });
     schedule.set(r.id, [...(schedule.get(r.id) ?? []), ...a.meetings]);
+    schedule.set(row.fromFacultyId, (schedule.get(row.fromFacultyId) ?? []).filter((meeting) => !a.meetings.some((m) => m.scheduleId === meeting.scheduleId)));
+    owners.set(row.key, r.id);
   }
   return problems.length ? { ok: false, problems } : { ok: true, moves };
 }
 
-/** Fingerprint of who teaches what among the given faculty; any reassignment or class change alters it. */
-export function basisOf(assignments: Assignment[], facultyIds: Iterable<string>, limits: WorkloadLimits) {
+/** Fingerprint of the assignments and live constraints on which a reviewed proposal depends. */
+export function basisOf(assignments: Assignment[], facultyIds: Iterable<string>, limits: WorkloadLimits, constraints?: { faculty: WFaculty[]; busy: Map<string, WMeeting[]> }) {
   const ids = new Set(facultyIds);
-  const text = assignments.filter((a) => ids.has(a.facultyId)).map((a) => `${a.key}@${a.facultyId}=${amountOf(a, limits)}`).sort().join(";");
+  const meetings = (rows: WMeeting[]) => rows.map((m) => [m.scheduleId, m.dayOfWeek, m.startMin, m.endMin]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  const text = JSON.stringify([
+    [limits.measure, limits.minimum, limits.maximum, limits.partTimeMinimum, limits.partTimeMaximum, limits.maxUnits, limits.tolerance, limits.crossDepartment],
+    assignments.filter((a) => ids.has(a.facultyId)).map((a) => [a.key, a.facultyId, amountOf(a, limits), a.subjectUnits, a.subjectName, a.departmentId, a.sectionLevel, a.plannedHours ?? 0, meetings(a.meetings)])
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    constraints ? [...ids].sort().map((id) => {
+      const f = constraints.faculty.find((candidate) => candidate.id === id);
+      return [id, f ? [f.departmentId, f.specialization, [...f.teachingLevels].sort(), f.maxHours, f.employmentType,
+        f.availability.map((a) => [a.dayOfWeek, a.startMin, a.endMin]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+      ] : null, meetings(constraints.busy.get(id) ?? [])];
+    }) : null,
+  ]);
   let h = 5381;
   for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
   return `${ids.size}:${(h >>> 0).toString(36)}`;

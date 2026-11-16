@@ -135,11 +135,21 @@ export function indexConflicts(conflicts: DetectedConflict[], isOverlap: (c: Det
 export function defaultDuration(component: "LECTURE" | "LABORATORY", level: string, config?: { classSession?: "DEFAULT" | "SPLIT_90" | "BLOCK_180" }) {
   if (config?.classSession === "SPLIT_90") return 90;
   if (config?.classSession === "BLOCK_180") return 180;
-  if (level === "COLLEGE") return component === "LABORATORY" ? 180 : 90;
+  // College classes are one 3-hour block by default.
+  if (level === "COLLEGE") return 180;
   return component === "LABORATORY" ? 120 : 60;
 }
 
+/** Hard rule: a College meeting is 3 hours, or 1.5 when the department chose split meetings, except the last meeting of a subject, which takes the hours left. */
+export function collegeLengthError(level: string, lengthMin: number, leftMin: number | null, classSession?: string) {
+  if (level !== "COLLEGE" || lengthMin === 180 || (classSession === "SPLIT_90" && lengthMin === 90)) return null;
+  if (leftMin !== null && leftMin > 0 && leftMin < 180 && lengthMin === leftMin) return null;
+  return leftMin !== null && leftMin > 0 && leftMin < 180 ? `Last meeting must be ${leftMin / 60} h.` : "College classes meet for 3 hours.";
+}
+
 export interface SubjectNeed {
+  facultyId?: string | null;
+  blockedReason?: string;
   subjectId: string;
   sectionId: string;
   component: "LECTURE" | "LABORATORY";
@@ -198,11 +208,13 @@ export function remainingNeeds(
 
 /** Whether a subject is part of a section's curriculum. */
 export function subjectAppliesToSection(
-  subject: { level: string; programId: string | null; yearLevel: string | null; gradeLevel: string | null },
+  subject: { level: string; programId: string | null; sharedProgramIds?: readonly string[]; yearLevel: string | null; gradeLevel: string | null },
   section: { level: string; programId: string | null; yearLevel: string | null; gradeLevel: string | null }
 ) {
   if (subject.level !== section.level) return false;
-  if (subject.programId && subject.programId !== section.programId) return false;
+  const shared = !!section.programId && !!subject.sharedProgramIds?.includes(section.programId);
+  if (subject.programId && subject.programId !== section.programId && !shared) return false;
+  if (!subject.programId && subject.sharedProgramIds?.length && !shared) return false;
   if (section.level === "COLLEGE") return !subject.yearLevel || subject.yearLevel === section.yearLevel;
   return !subject.gradeLevel || subject.gradeLevel === section.gradeLevel;
 }

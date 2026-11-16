@@ -10,11 +10,13 @@ import { Card } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArchiveButton } from "@/components/ux/archive-button";
-import { FormDialog, useDialogState, type FormField } from "@/components/ux/form-dialog";
+import { useDialogState, type FormField } from "@/components/ux/form-dialog";
+import { SubjectFormDialog } from "./subject-form-dialog";
+import type { SubjectCalendar } from "@/lib/subjects/terms";
 import { EmptyState } from "@/components/ux/states";
 import { NativeSelect } from "@/components/ux/native-select";
 import { usePersisted } from "@/hooks/use-persisted";
-import { attentionReason, matchesStatus, STATUS_LABELS, type StatusFilter } from "@/lib/subjects/status";
+import { attentionReason, matchesStatus, offeringCoverage, STATUS_LABELS, type StatusFilter } from "@/lib/subjects/status";
 import { saveSubjectAction } from "./actions";
 import { AssignFacultyModal } from "./assign-faculty-modal";
 import { BulkBar } from "./bulk-bar";
@@ -29,10 +31,11 @@ import type { AssignContext, CurriculumRow } from "./types";
 const PAGE_SIZES = [10, 25, 50];
 const CATEGORY_LABEL: Record<string, string> = { MAJOR: "Major", MINOR: "Minor / General Education", JOINED: "Shared by programs" };
 
-export function CurriculumList({ heading, context, subjects, category, owner, allSemesters, status, canCreate, programOptions, assign, otherLevelsHref }: {
+export function CurriculumList({ heading, context, subjects, category, owner, allSemesters, status, canCreate, programOptions, assign, otherLevelsHref, calendar }: {
   heading: string; context: { level: string; programId: string; yearLevel: string; gradeLevel: string }; subjects: CurriculumRow[];
   category: string; owner: string; allSemesters: boolean; status: StatusFilter; canCreate: boolean; programOptions: { value: string; label: string }[];
   assign: AssignContext | null; otherLevelsHref: string;
+  calendar: SubjectCalendar | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -45,9 +48,9 @@ export function CurriculumList({ heading, context, subjects, category, owner, al
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [view, setView] = useCollectionView("subjects:view", "table");
   const [hidden, setHidden] = usePersisted<ColumnKey[]>("subjects:hidden-columns", []);
-  const [assigning, setAssigning] = useState<string[] | null>(null);
+  const [assigning, setAssigning] = useState<{ ids: string[]; proposal: boolean } | null>(null);
   const [viewing, setViewing] = useState<CurriculumRow | null>(null);
-  const [requesting, setRequesting] = useState<{ row: CurriculumRow; assignment: boolean } | null>(null);
+  const [requesting, setRequesting] = useState<{ row: CurriculumRow } | null>(null);
   const [archiving, setArchiving] = useState<CurriculumRow | null>(null);
 
   const people = useMemo(() => new Map((assign?.faculty ?? []).map((f) => [f.id, { load: f.load, limit: f.limit, unavailability: f.unavailability }])), [assign]);
@@ -64,9 +67,10 @@ export function CurriculumList({ heading, context, subjects, category, owner, al
   const disabledReason = "Only the department that owns this curriculum category can add or import subjects.";
 
   const counts = useMemo(() => {
-    const assigned = subjects.filter((s) => s.assignments.length).length;
+    const assigned = subjects.filter((s) => matchesStatus("ASSIGNED", s, people)).length;
+    const coverage = subjects.map(offeringCoverage);
     return {
-      total: subjects.length, units: subjects.reduce((n, s) => n + s.units, 0), assigned, unassigned: subjects.length - assigned,
+      total: subjects.length, offerings: coverage.reduce((sum, c) => sum + c.total, 0), assigned, unassigned: coverage.reduce((sum, c) => sum + c.total - c.assigned, 0),
       attention: subjects.filter((s) => attentionReason(s, people) !== null).length,
     };
   }, [subjects, people]);
@@ -99,13 +103,13 @@ export function CurriculumList({ heading, context, subjects, category, owner, al
   ];
 
   const toggle = (id: string, on: boolean) => setSelected((prev) => { const next = new Set(prev); if (on) next.add(id); else next.delete(id); return next; });
-  const selectPage = (on: boolean) => setSelected((prev) => { const next = new Set(prev); pageRows.filter((r) => r.editable).forEach((r) => (on ? next.add(r.id) : next.delete(r.id))); return next; });
+  const selectPage = (on: boolean) => setSelected((prev) => { const next = new Set(prev); pageRows.filter((r) => r.editable || (hasContext && !!r.eligibleSectionIds?.length)).forEach((r) => (on ? next.add(r.id) : next.delete(r.id))); return next; });
   const refresh = () => { setSelected(new Set()); router.refresh(); };
 
   function act(action: RowAction, row: CurriculumRow) {
-    if (action === "assign") setAssigning([row.id]);
-    else if (action === "request-assignment") setRequesting({ row, assignment: true });
-    else if (action === "request-change") setRequesting({ row, assignment: false });
+    if (action === "assign") setAssigning({ ids: [row.id], proposal: false });
+    else if (action === "propose-assignment") setAssigning({ ids: [row.id], proposal: true });
+    else if (action === "request-change") setRequesting({ row });
     else if (action === "edit") dialog.openEdit(row);
     else if (action === "archive") setArchiving(row);
     else setViewing(row);
@@ -116,9 +120,8 @@ export function CurriculumList({ heading, context, subjects, category, owner, al
     { name: "level", label: "", type: "hidden" }, { name: "programId", label: "Program", type: "select", required: true, options: programOptions },
     { name: "yearLevel", label: "Year level", type: "hidden" }, { name: "code", label: "Subject code", type: "text", required: true },
     { name: "name", label: "Subject title", type: "text", required: true }, { name: "category", label: "Category", type: "select", options: [{ value: "MAJOR", label: "Major" }, { value: "MINOR", label: "Minor / General Education" }] },
-    { name: "semester", label: "Semester", type: "select", options: [{ value: "FIRST", label: "1st Semester" }, { value: "SECOND", label: "2nd Semester" }, { value: "SUMMER", label: "Midyear" }] },
-    { name: "units", label: "Units", type: "number", required: true, min: 0, step: "0.5" }, { name: "lectureHours", label: "Lecture hours per week", type: "number", required: true, min: 0, step: "0.5" },
-    { name: "labHours", label: "Laboratory hours per week", type: "number", required: true, min: 0, step: "0.5" }, { name: "requiredRoomType", label: "Room needed", type: "hidden" },
+    { name: "semester", label: "Semester", type: "select" },
+    { name: "units", label: "Units", type: "number", required: true, min: 0, step: "0.5" }, { name: "hoursPerWeek", label: "Hours per week", type: "number", required: true, min: 0.5, step: "0.5" }, { name: "requiredRoomType", label: "Room needed", type: "hidden" },
     { name: "description", label: "Description", type: "textarea", wide: true },
   ];
 
@@ -131,9 +134,9 @@ export function CurriculumList({ heading, context, subjects, category, owner, al
         {hasContext && (
           <SummaryCards cards={[
             { key: "total", label: "Total subjects", value: counts.total, active: status === "ALL", onClick: () => update({ status: null }) },
-            { key: "units", label: "Total units", value: counts.units },
-            { key: "assigned", label: "Assigned", value: counts.assigned, active: status === "ASSIGNED", onClick: () => update({ status: "ASSIGNED" }) },
-            { key: "unassigned", label: "Unassigned", value: counts.unassigned, tone: "warn", active: status === "UNASSIGNED", onClick: () => update({ status: "UNASSIGNED" }) },
+            { key: "offerings", label: "Section offerings", value: counts.offerings },
+            { key: "assigned", label: "Fully assigned subjects", value: counts.assigned, active: status === "ASSIGNED", onClick: () => update({ status: "ASSIGNED" }) },
+            { key: "unassigned", label: "Sections needing a teacher", value: counts.unassigned, tone: "warn", active: status === "UNASSIGNED", onClick: () => update({ status: "UNASSIGNED" }) },
             { key: "attention", label: "Needs attention", value: counts.attention, tone: "warn", active: status === "ATTENTION", onClick: () => update({ status: "ATTENTION" }) },
           ]} />
         )}
@@ -152,12 +155,10 @@ export function CurriculumList({ heading, context, subjects, category, owner, al
             </div>
             <SubjectsToolbar
               query={query} onQuery={(v) => { setQuery(v); setPage(0); }}
-              terms={assign?.terms ?? []} termId={assign?.term.id ?? null} onTerm={(id) => update({ term: id, semester: allSemesters ? "ALL" : null })}
               category={category} onCategory={(v) => update({ category: v === "ALL" ? null : v })}
               status={status} onStatus={(v) => update({ status: v === "ALL" ? null : v })}
               sort={sort} onSort={(v) => setSort(SORTS.some((s) => s.value === v) ? v : "code")}
               mineOnly={owner === "ME"} onMineOnly={(on) => update({ owner: on ? "ME" : null })}
-              allSemesters={allSemesters} onAllSemesters={(on) => update({ semester: on ? "ALL" : null })}
               otherLevelsHref={otherLevelsHref}
               chips={chips} onClear={() => { setQuery(""); update({ category: null, status: null, owner: null, semester: null }); }}
               trailing={
@@ -192,14 +193,14 @@ export function CurriculumList({ heading, context, subjects, category, owner, al
               </div>
             </>
           )}
-          {chosen.length > 0 && <BulkBar rows={chosen} canAssign={hasContext} onAssign={() => setAssigning(chosen.map((s) => s.id))} onClear={() => setSelected(new Set())} onDone={refresh} />}
+          {chosen.length > 0 && <BulkBar rows={chosen} canAssign={hasContext} onAssign={() => setAssigning({ ids: chosen.map((s) => s.id), proposal: false })} onClear={() => setSelected(new Set())} onDone={refresh} />}
         </Card>
 
-        <FormDialog open={!!dialog.state} onOpenChange={(open) => !open && dialog.close()} title={editing ? `Edit ${editing.code}` : "Add subject"} description={heading} fields={fields} values={editing ?? { ...context, category: "MAJOR", semester: "FIRST", units: 3, lectureHours: 3, labHours: 0, requiredRoomType: "LECTURE_ROOM" }} submitLabel={editing ? "Save changes" : "Add subject"} successMessage={editing ? "Subject updated" : "Subject added"} onSubmit={(fd) => saveSubjectAction(editing?.id ?? null, fd)} />
+        <SubjectFormDialog key={`${editing?.id ?? "new"}:${calendar?.id ?? ""}:${!!dialog.state}`} calendar={calendar} editing={!!editing} open={!!dialog.state} onOpenChange={(open) => !open && dialog.close()} title={editing ? `Edit ${editing.code}` : "Add subject"} description={heading} fields={fields} values={editing ? { ...editing, hoursPerWeek: editing.lectureHours + editing.labHours } : { ...context, category: "MAJOR", semester: calendar?.semesters.find((t) => t.id === assign?.term.id)?.type, units: 3, hoursPerWeek: 3, requiredRoomType: "LECTURE_ROOM" }} submitLabel={editing ? "Save changes" : "Add subject"} successMessage={editing ? "Subject updated" : "Subject added"} onSubmit={(fd) => saveSubjectAction(editing?.id ?? null, fd)} />
         {archiving && <ArchiveButton hideTrigger open kind="SUBJECT" id={archiving.id} name={archiving.code} onOpenChange={(o) => !o && setArchiving(null)} onDone={refresh} />}
-        {assign && assigning && <AssignFacultyModal subjects={subjects.filter((s) => assigning.includes(s.id))} context={assign} onClose={(saved) => { setAssigning(null); if (saved) refresh(); }} />}
+        {assign && assigning && <AssignFacultyModal subjects={subjects.filter((s) => assigning.ids.includes(s.id))} context={assign} proposal={assigning.proposal} onClose={(saved) => { setAssigning(null); if (saved) refresh(); }} />}
         {assign && viewing && <ViewAssignedPanel subject={viewing} term={assign.term} onClose={() => setViewing(null)} />}
-        {requesting && <RequestChangeModal subject={requesting.row} faculty={assign?.faculty ?? []} assignment={requesting.assignment} onClose={(sent) => { setRequesting(null); if (sent) router.refresh(); }} />}
+        {requesting && <RequestChangeModal subject={requesting.row} faculty={assign?.faculty ?? []} onClose={(sent) => { setRequesting(null); if (sent) router.refresh(); }} />}
       </div>
     </TooltipProvider>
   );

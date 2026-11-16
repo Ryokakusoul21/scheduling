@@ -43,7 +43,7 @@ function Secondary({ row }: { row: CurriculumRow }) {
     <>
       {(!row.editable || shared) && (
         <span className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground" title={row.sharedPrograms.map((p) => p.name).join(", ")}>
-          {!row.editable && <span className="flex items-center gap-1"><Lock className="size-3.5 shrink-0" aria-hidden /> {row.departmentName ? `Managed by ${row.departmentName}` : "Read-only"}</span>}
+          {!row.editable && <span className="flex items-center gap-1"><Lock className="size-3.5 shrink-0" aria-hidden /> {row.departmentName ? `Managed by ${row.departmentName}` : "Catalog managed by Registrar"}</span>}
           {shared}
         </span>
       )}
@@ -56,7 +56,8 @@ const CategoryBadge = ({ row }: { row: CurriculumRow }) => <Badge variant={row.c
 function Faculty({ row, onView, hasContext }: { row: CurriculumRow; onView: (row: CurriculumRow) => void; hasContext: boolean }) {
   if (!hasContext) return null;
   if (!row.assignments.length) return <Badge variant="outline" className="border-amber-600/50 bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-100">Unassigned</Badge>;
-  return <FacultyPopover assignments={row.assignments} hours={row.lectureHours + row.labHours} onView={() => onView(row)} />;
+  const covered = row.eligibleSectionIds?.filter((id) => row.assignments.some((a) => a.sectionId === id)).length;
+  return <div className="space-y-1"><FacultyPopover assignments={row.assignments} hours={row.lectureHours + row.labHours} onView={() => onView(row)} />{covered !== undefined && <p className="text-xs text-muted-foreground">{covered} / {row.eligibleSectionIds!.length} sections assigned</p>}</div>;
 }
 
 type Shared = {
@@ -73,7 +74,7 @@ const rowTone = (row: CurriculumRow, hasContext: boolean) =>
 
 /** Table with a sticky header and sticky checkbox and code columns for horizontal scrolling. */
 export function SubjectsTable({ rows, selected, onSelect, onSelectAll, actions, onView, hasContext, visible }: Shared & { onSelectAll: (on: boolean) => void; visible: Set<ColumnKey> }) {
-  const selectable = rows.filter((r) => r.editable);
+  const selectable = rows.filter((r) => r.editable || (hasContext && !!r.eligibleSectionIds?.length));
   const all = selectable.length > 0 && selectable.every((r) => selected.has(r.id));
   const th = "h-11 px-3 text-left text-sm font-medium text-muted-foreground";
   return (
@@ -82,7 +83,7 @@ export function SubjectsTable({ rows, selected, onSelect, onSelectAll, actions, 
         <thead className="sticky top-0 z-20 bg-card">
           <tr className="border-b">
             <th className={cn(th, "sticky left-0 z-30 w-12 bg-card border-b")}>
-              <Checkbox aria-label="Select all subjects you can manage on this page" checked={all} disabled={!selectable.length} onCheckedChange={(on) => onSelectAll(!!on)} />
+              <Checkbox aria-label="Select all subjects you can assign or edit on this page" checked={all} disabled={!selectable.length} onCheckedChange={(on) => onSelectAll(!!on)} />
             </th>
             <th className={cn(th, "sticky left-12 z-30 bg-card border-b")}>Code</th>
             <th className={cn(th, "border-b")}>Subject</th>
@@ -100,7 +101,7 @@ export function SubjectsTable({ rows, selected, onSelect, onSelectAll, actions, 
             return (
               <tr key={r.id} className="group hover:bg-muted/40" data-state={selected.has(r.id) ? "selected" : undefined}>
                 <td className={cn("sticky left-0 z-10 border-b px-3 py-2", bg, rowTone(r, hasContext))}>
-                  {r.editable && <Checkbox aria-label={`Select ${r.code}`} checked={selected.has(r.id)} onCheckedChange={(on) => onSelect(r.id, !!on)} />}
+                  {(r.editable || (hasContext && !!r.eligibleSectionIds?.length)) && <Checkbox aria-label={`Select ${r.code}`} checked={selected.has(r.id)} onCheckedChange={(on) => onSelect(r.id, !!on)} />}
                 </td>
                 <td className={cn("sticky left-12 z-10 whitespace-nowrap border-b px-3 py-2 font-medium", bg)}>{r.code}</td>
                 <td className={cn("border-b px-3 py-2", !r.editable && "bg-muted/30")}>
@@ -129,7 +130,7 @@ export function SubjectCards({ rows, selected, onSelect, actions, onView, hasCon
       {rows.map((r) => (
         <li key={r.id} className={cn("flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs", rowTone(r, hasContext), !r.editable && "bg-muted/40")}>
           <div className="flex items-start gap-3">
-            {r.editable && <Checkbox className="mt-1" aria-label={`Select ${r.code}`} checked={selected.has(r.id)} onCheckedChange={(on) => onSelect(r.id, !!on)} />}
+            {(r.editable || (hasContext && !!r.eligibleSectionIds?.length)) && <Checkbox className="mt-1" aria-label={`Select ${r.code}`} checked={selected.has(r.id)} onCheckedChange={(on) => onSelect(r.id, !!on)} />}
             <div className="min-w-0 flex-1">
               <p className="font-semibold">{r.code}</p>
               <p className="text-base md:text-sm">{r.name}</p>

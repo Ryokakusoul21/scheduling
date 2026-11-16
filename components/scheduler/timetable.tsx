@@ -1,8 +1,8 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useDndContext, useDraggable, useDroppable } from "@dnd-kit/core";
-import { Lock, PushPin, Warning } from "@phosphor-icons/react/ssr";
+import { Lock, PushPin, Star, Warning } from "@phosphor-icons/react/ssr";
 import { cn } from "@/lib/utils";
 import { ConflictTag } from "@/components/ux/conflict";
 import {
@@ -45,6 +45,8 @@ export interface BlockInfo {
   override?: string;
   /** Part of a Resolve issues proposal being previewed. */
   proposed?: boolean;
+  /** The class is in one of its faculty member's preferred rooms (shown to the Head of Department and the Registrar only). */
+  preferredRoom?: boolean;
 }
 
 export interface DropPreview {
@@ -68,6 +70,7 @@ export function Timetable({
   slots,
   onOpen,
   onEmptySlot,
+  onResize,
   grid = DEFAULT_GRID,
 }: {
   days: DayOfWeek[];
@@ -82,6 +85,8 @@ export function Timetable({
   slots?: Map<DayOfWeek, SlotStatus[]>;
   onOpen: (entry: SchedulerEntry) => void;
   onEmptySlot?: (day: DayOfWeek, startMin: number) => void;
+  /** Drag the bottom edge, or press Shift+Up or Shift+Down, to change a class's end time. */
+  onResize?: (entry: SchedulerEntry, endMin: number) => void;
   grid?: GridConfig;
 }) {
   const height = gridHeight(grid);
@@ -190,6 +195,7 @@ export function Timetable({
                   highlighted={highlightId === entry.id}
                   tabbable={entry.id === firstId}
                   onOpen={onOpen}
+                  onResize={onResize}
                   onKeyDown={onBlockKeyDown}
                 />
               ));
@@ -305,6 +311,7 @@ const Block = memo(function Block({
   highlighted,
   tabbable,
   onOpen,
+  onResize,
   onKeyDown,
 }: {
   entry: SchedulerEntry;
@@ -316,6 +323,7 @@ const Block = memo(function Block({
   highlighted: boolean;
   tabbable: boolean;
   onOpen: (e: SchedulerEntry) => void;
+  onResize?: (entry: SchedulerEntry, endMin: number) => void;
   onKeyDown: (e: React.KeyboardEvent, entry: SchedulerEntry) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -325,6 +333,10 @@ const Block = memo(function Block({
   });
   const { active } = useDndContext();
   const ref = useRef<HTMLButtonElement | null>(null);
+  const [liveEnd, setLiveEnd] = useState<number | null>(null);
+  const resizable = !!onResize && editable && !info.ghost && !info.pinned && !info.proposed;
+  const stepMin = grid.snapStep ?? grid.slot;
+  const shownEnd = liveEnd ?? entry.endMin;
 
   useEffect(() => {
     if (highlighted) {
@@ -334,7 +346,7 @@ const Block = memo(function Block({
   }, [highlighted]);
 
   const top = minutesToY(entry.startMin, grid);
-  const height = Math.max(minutesToY(entry.endMin, grid) - top, 22);
+  const height = Math.max(minutesToY(shownEnd, grid) - top, 22);
   const width = 100 / lane.lanes;
   const compact = height < 56;
 
@@ -367,6 +379,12 @@ const Block = memo(function Block({
       onClick={() => !info.ghost && !info.proposed && onOpen(entry)}
       onKeyDown={(e) => {
         // While a keyboard drag is active, dnd-kit owns the arrow keys.
+        if (resizable && e.shiftKey && (e.key === "ArrowDown" || e.key === "ArrowUp") && !active) {
+          e.preventDefault();
+          const next = entry.endMin + (e.key === "ArrowDown" ? 1 : -1) * Math.max(stepMin, 30);
+          if (next - entry.startMin >= Math.max(stepMin, 30)) onResize?.(entry, next);
+          return;
+        }
         if (!active) onKeyDown(e, entry);
         if (!e.defaultPrevented) listeners?.onKeyDown?.(e);
       }}
@@ -386,12 +404,35 @@ const Block = memo(function Block({
         highlighted && "animate-pulse ring-4 ring-red-500/60"
       )}
     >
+      {resizable && <span
+        aria-hidden
+        title="Drag to change the length"
+        className="absolute inset-x-0 bottom-0 z-10 h-2 cursor-ns-resize after:absolute after:inset-x-1/3 after:bottom-0.5 after:h-0.5 after:rounded after:bg-current after:opacity-40 hover:after:opacity-80"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          const startY = e.clientY, startEnd = entry.endMin, min = entry.startMin + Math.max(stepMin, 30);
+          const el = e.currentTarget;
+          el.setPointerCapture(e.pointerId);
+          const to = (y: number) => Math.min(Math.max(startEnd + Math.round(((y - startY) / grid.rowHeight * grid.slot) / stepMin) * stepMin, min), grid.dayEnd);
+          const move = (ev: PointerEvent) => setLiveEnd(to(ev.clientY));
+          const up = (ev: PointerEvent) => {
+            el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
+            const end = to(ev.clientY);
+            setLiveEnd(null);
+            if (ev.type === "pointerup" && end !== startEnd) onResize?.(entry, end);
+          };
+          el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
+        }}
+        onClick={(e) => e.stopPropagation()}
+      />}
+      {liveEnd !== null && <span className="absolute right-1 top-1 z-10 rounded bg-foreground px-1 text-[10px] font-semibold text-background">{(shownEnd - entry.startMin) / 60} h</span>}
       {info.proposed && <span className="mb-0.5 inline-block rounded bg-info px-1 text-[10px] font-semibold text-white dark:text-background">Proposed</span>}
       <span className="flex items-center gap-1 font-semibold">
         {info.ghost && <Lock className="size-3.5 shrink-0" weight="fill" />}
         {info.pinned && <PushPin className="size-3.5 shrink-0 text-primary" weight="fill" />}
         {info.doNotMove && <Lock className="size-3.5 shrink-0 text-primary" weight="fill" aria-label="Do not move for urgent bookings" />}
         <span className="truncate">{info.title}</span>
+        {info.preferredRoom && <Star className="size-3 shrink-0 text-amber-600" weight="fill" aria-label="Preferred room" />}
         {conflict && <ConflictTag severity={conflict.severity} className="ml-auto" />}
         {statusLabel && <span className="ml-auto shrink-0 rounded bg-black/10 px-1 text-[9px] font-medium uppercase dark:bg-white/15">{statusLabel}</span>}
       </span>

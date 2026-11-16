@@ -1,5 +1,8 @@
 "use server";
 
+import { roomAllowsSection } from "@/lib/rooms/designation";
+import { roomLabel } from "@/lib/rooms/label";
+
 import { getTimetableConfig } from "@/lib/timetable/service";
 import { timetableTimeError } from "@/lib/timetable/config";
 import { z } from "zod";
@@ -14,7 +17,6 @@ import { dayOfWeek, describeClash, findClashes } from "@/lib/occupancy/engine";
 import { loadExamContext } from "@/lib/examinations/context";
 import { checkExaminations, hasHardConflict, type ExamSlot } from "@/lib/examinations/rules";
 import { LOCKED_MESSAGE, createSubmission, lockingSubmission, notifyScheduleApprovers } from "@/lib/scheduler/submissions";
-import { submissionPeriodError } from "@/lib/scheduler/periods";
 import { notifyExamParticipants } from "@/lib/examinations/notify";
 
 type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -62,7 +64,7 @@ async function examProblems(scope: Scope, d: ExamInput, excludeId?: string) {
   const [plan, section, room, context, subject, term] = await Promise.all([
     loadPlan(d.date, d.date),
     prisma.section.findUnique({ where: { id: d.sectionId }, select: { studentCount: true, name: true, level: true, archivedAt: true, departmentId: true } }),
-    prisma.room.findUnique({ where: { id: d.roomId }, select: { capacity: true, roomName: true, status: true, archivedAt: true } }),
+    prisma.room.findUnique({ where: { id: d.roomId }, select: { capacity: true, roomNumber: true, roomName: true, status: true, archivedAt: true, isGeneralShared: true, departmentId: true, department: { select: { code: true } } } }),
     loadExamContext(d.type, null, scope.isAdmin ? null : scope.departmentIds),
     prisma.subject.findUnique({ where: { id: d.subjectId }, select: { level: true } }),
     prisma.semester.findUnique({ where: { id: d.semesterId }, select: { level: true } }),
@@ -76,7 +78,8 @@ async function examProblems(scope: Scope, d: ExamInput, excludeId?: string) {
     (o) => o.kind === "EXAMINATION" && o.refId === excludeId
   ).map(describeClash);
   if (timeError) conflicts.push(timeError);
-  if (room?.status !== "AVAILABLE" || room?.archivedAt) conflicts.push(`${room?.roomName ?? "The room"} is not open for use.`);
+  if (room?.status !== "AVAILABLE" || room?.archivedAt) conflicts.push(`${roomLabel(room) || "The room"} is not open for use.`);
+  if (room && section && !roomAllowsSection({ ...room, departmentCode: room.department?.code }, section)) conflicts.push("This room is designated for another department.");
   if (section?.archivedAt) conflicts.push(`${section.name} is archived.`);
   // Academic levels are never mixed: section, subject, and term share one level.
   if (section && ((subject && subject.level !== section.level) || (term && term.level !== section.level))) conflicts.push("The section, subject, and term must belong to the same academic level.");
@@ -172,7 +175,7 @@ export async function saveGeneratedExamsAction(input: z.infer<typeof generatedBa
   const [sections, schedules, existing, rooms, proctors] = await Promise.all([
     prisma.section.findMany({
       where: { AND: [departmentWhere.section(scope), { id: { in: sectionIds }, semesterId: batch.semesterId, archivedAt: null }] },
-      select: { id: true, name: true, departmentId: true, studentCount: true },
+      select: { id: true, name: true, level: true, departmentId: true, studentCount: true },
     }),
     prisma.schedule.findMany({
       where: { AND: [departmentWhere.schedule(scope), { semesterId: batch.semesterId, sectionId: { in: sectionIds }, status: { not: "ARCHIVED" } }] },
@@ -184,7 +187,7 @@ export async function saveGeneratedExamsAction(input: z.infer<typeof generatedBa
     }),
     prisma.room.findMany({
       where: { id: { in: [...new Set(batch.exams.map((exam) => exam.roomId))] } },
-      select: { id: true, departmentId: true, capacity: true, status: true, archivedAt: true, availability: { select: { dayOfWeek: true, startMin: true, endMin: true } } },
+      select: { id: true, departmentId: true, isGeneralShared: true, department: { select: { code: true } }, capacity: true, status: true, archivedAt: true, availability: { select: { dayOfWeek: true, startMin: true, endMin: true } } },
     }),
     prisma.faculty.findMany({
       where: { id: { in: [...new Set(batch.exams.map((exam) => exam.proctorId))] }, status: "ACTIVE", archivedAt: null },
@@ -207,6 +210,9 @@ export async function saveGeneratedExamsAction(input: z.infer<typeof generatedBa
     const room = roomById.get(exam.roomId);
     if (!room || room.status !== "AVAILABLE" || room.archivedAt || isForeign(scope, room.departmentId)) {
       return { ok: false, error: "A proposed room is unavailable or belongs to another department. Refresh the schedule and generate again." };
+    }
+    if (!roomAllowsSection({ ...room, departmentCode: room.department?.code }, sectionById.get(exam.sectionId)!)) {
+      return { ok: false, error: "A proposed room is designated for another department." };
     }
     if (room.capacity < sectionById.get(exam.sectionId)!.studentCount) {
       return { ok: false, error: "A proposed room is too small for its section. Refresh the schedule and generate again." };
@@ -398,10 +404,6 @@ export async function submitExamsAction(ids: string[]): Promise<Result<{ count: 
     const g = groups.get(key) ?? { departmentId, semesterId: e.semesterId, examType: e.type, ids: [] };
     g.ids.push(e.id);
     groups.set(key, g);
-  }
-  for (const semesterId of new Set(selected.map((exam) => exam.semesterId))) {
-    const closed = await submissionPeriodError(semesterId, "EXAMINATION");
-    if (closed) return { ok: false, error: closed };
   }
   let count = 0;
   for (const g of groups.values()) {

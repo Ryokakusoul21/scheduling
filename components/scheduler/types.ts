@@ -74,6 +74,7 @@ export interface SubjectOption {
   name: string;
   level: string;
   programId: string | null;
+  sharedProgramIds?: string[];
   yearLevel: string | null;
   gradeLevel: string | null;
   lectureHours: number;
@@ -98,6 +99,8 @@ export interface FacultyOption {
   teachingLevels: string[];
   status: string;
   availability: Availability[];
+  /** Preferred rooms, best first; sent only to the Head of Department and the Registrar. */
+  preferredRoomIds?: string[];
   /** Belongs to another department: shown as free or busy, and choosing it sends a request for approval. */
   foreign?: boolean;
 }
@@ -111,7 +114,9 @@ export interface RoomOption {
   status: "AVAILABLE" | "UNDER_MAINTENANCE" | "UNAVAILABLE";
   location: string;
   availability: Availability[];
-  /** Designated programs and strands; null means General / Shared. */
+  departmentId?: string | null;
+  departmentCode?: string | null;
+  /** Legacy program restrictions. */
   programIds: string[] | null;
   archived: boolean;
   /** Owned by another department: shown as free or busy, and choosing it sends a request for approval. */
@@ -137,7 +142,7 @@ export interface SchedulerData {
   /** Enabled constraint rules that apply to the viewer's classes, for Resolve issues. */
   rules: ConstraintRule[];
   /** Active subject assignments for the visible sections; the scheduler offers the assigned faculty first. */
-  assignments: { subjectId: string; sectionId: string | null; facultyId: string }[];
+  assignments: { subjectId: string; sectionId: string | null; facultyId: string; semesterId?: string }[];
   /** Current teaching load of each listed faculty member in the active terms, for projected-load warnings. */
   workload: { measure: "HOURS" | "UNITS"; loads: { facultyId: string; name: string; load: number; minimum: number; maximum: number }[] };
 }

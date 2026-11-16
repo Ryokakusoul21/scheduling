@@ -10,6 +10,8 @@ import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { STAFF_ROLES } from "@/lib/permissions/roles";
 import { kindLabel, subjectRequestSchema, type SubjectRequestDetails, type SubjectRequestInput } from "@/lib/subjects/request-rules";
 import { ACADEMIC_LEVELS, GRADE_LEVELS, LEVELS, YEAR_LEVELS } from "@/lib/academics/levels";
+import { loadSubjectCalendar } from "@/lib/subjects/term-calendar";
+import { subjectSemesterError } from "@/lib/subjects/terms";
 
 type Result = { ok: boolean; error?: string };
 
@@ -19,8 +21,7 @@ const schema = z
     name: z.string().trim().min(1, "Name is required").max(150),
     description: z.string().max(500).optional(),
     units: z.coerce.number().min(0, "Units can't be negative").max(30),
-    lectureHours: z.coerce.number().min(0).max(40),
-    labHours: z.coerce.number().min(0).max(40),
+    hoursPerWeek: z.coerce.number().positive("Add the hours per week").max(40),
     requiredRoomType: z.enum(["LECTURE_ROOM", "COMPUTER_LABORATORY", "SCIENCE_LABORATORY", "CONFERENCE_ROOM", "OTHER"]),
     level: z.enum(ACADEMIC_LEVELS),
     programId: z.string().optional(),
@@ -28,13 +29,19 @@ const schema = z
     gradeLevel: z.enum(GRADE_LEVELS).optional().or(z.literal("")),
     category: z.enum(["MAJOR", "MINOR"]).default("MAJOR"),
     semester: z.enum(["FIRST", "SECOND", "SUMMER"]).optional().or(z.literal("")),
+    academicYearId: z.string().optional(),
   })
-  .refine((d) => d.lectureHours + d.labHours > 0, { message: "Add lecture or lab hours per week" })
   .refine((d) => d.level === "COLLEGE" || (!!d.gradeLevel && LEVELS[d.level].grades.includes(d.gradeLevel)), {
     message: "Choose a grade level that belongs to this academic level",
   });
 
-async function clean(d: z.infer<typeof schema>) {
+/** One weekly total is stored as lecture and laboratory hours: an existing laboratory share is kept, a laboratory room takes it all. */
+function splitHours(hours: number, roomType: string, existingLab = 0) {
+  if (existingLab > 0) { const labHours = Math.min(existingLab, hours); return { lectureHours: hours - labHours, labHours }; }
+  return roomType.endsWith("LABORATORY") ? { lectureHours: 0, labHours: hours } : { lectureHours: hours, labHours: 0 };
+}
+
+async function clean(d: z.infer<typeof schema>, existingLab = 0) {
   let programId = d.programId || null;
   if (d.level !== "COLLEGE" && d.level !== "SENIOR_HIGH") programId = null;
   if (programId) {
@@ -46,8 +53,7 @@ async function clean(d: z.infer<typeof schema>) {
     name: d.name,
     description: d.description || null,
     units: d.units,
-    lectureHours: d.lectureHours,
-    labHours: d.labHours,
+    ...splitHours(d.hoursPerWeek, d.requiredRoomType, existingLab),
     requiredRoomType: d.requiredRoomType,
     level: d.level,
     programId,
@@ -62,14 +68,18 @@ export async function saveSubjectAction(id: string | null, formData: FormData): 
   const scope = await requireScope(...STAFF_ROLES);
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
-  const data = await clean(parsed.data);
   // Subjects belong to their course or strand's department; General Education subjects (none) are the Registrar's.
-  const existing = id ? await prisma.subject.findUnique({ where: { id }, select: { departmentId: true } }) : null;
+  const existing = id ? await prisma.subject.findUnique({ where: { id }, select: { departmentId: true, labHours: true } }) : null;
+  const data = await clean(parsed.data, existing?.labHours);
   const departmentId = await recordDepartment(scope, data.programId, data.level, existing?.departmentId);
   const actor = scope;
   if (!canManageSubject(actor, { departmentId }) || (existing && !canManageSubject(actor, existing))) {
     await logBlocked(scope, "save a subject outside the department", "Subject", id);
     return { ok: false, error: OUTSIDE_DEPARTMENT };
+  }
+  if (data.level === "COLLEGE") {
+    const error = subjectSemesterError(await loadSubjectCalendar(parsed.data.academicYearId || undefined), data.programId, data.semester);
+    if (error) return { ok: false, error };
   }
   try {
     if (id) await prisma.subject.update({ where: { id }, data: { ...data, departmentId } });

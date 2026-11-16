@@ -6,12 +6,16 @@ export type AssignmentRow = { id: string; facultyId: string; facultyName: string
 export type SubjectInfo = {
   id: string; code: string; name: string; description: string; units: number; lectureHours: number; labHours: number;
   departmentId: string | null; departmentName: string | null; assignments: AssignmentRow[];
+  progress?: { sectionId: string; scheduledHours: number }[];
+  eligibleSectionIds?: string[];
+  pendingApprovals?: { sectionId: string; facultyName: string; departmentName: string }[];
 };
 
 /** Everything the panels need for the selected term; null when no term exists yet. */
 export type AssignContext = {
   faculty: AssignableFaculty[]; measure: "HOURS" | "UNITS"; sections: { id: string; name: string }[];
   term: { id: string; label: string }; terms: { value: string; label: string }[];
+  assignmentScope?: { departmentIds: string[]; inactiveFacultyCount: number };
 };
 
 export type RequestStatusValue = "PENDING" | "APPROVED" | "REJECTED" | "COMPLETED" | "CANCELLED";

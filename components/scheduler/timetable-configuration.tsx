@@ -51,7 +51,7 @@ export function TimetableConfiguration({ terms, departments, canManageSchool, te
     });
   }
   const timeField = (id: string, value: number, onChange: (v: number) => void) => <Input id={id} type="time" step={60} value={timeInputValue(value)} onChange={(e) => { if (e.target.value) onChange(timeInputMinutes(e.target.value)); }} />;
-  return <><Button variant="outline" onClick={launch}><SlidersHorizontal className="size-4" /> Timetable Configuration</Button>
+  return <><Button variant="ghost" size="icon-sm" onClick={launch} aria-label="Timetable Configuration" title="Timetable Configuration"><SlidersHorizontal className="size-4" /></Button>
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="sm:max-w-2xl">
       <DialogHeader><DialogTitle className="font-bold">Timetable Configuration</DialogTitle><DialogDescription>Set fixed slots or flexible times for classes and examinations. Preview the impact before saving.</DialogDescription></DialogHeader>
       <fieldset disabled={pending} className="grid gap-3 sm:grid-cols-2">
@@ -60,12 +60,12 @@ export function TimetableConfiguration({ terms, departments, canManageSchool, te
       </fieldset>
       {!loaded && !error && <p role="status">Loading configuration…</p>}
       {loaded && <>
-        {!!choice.termId && <p className="text-xs text-muted-foreground">Department and term settings must fit within the school’s enabled days and operating hours. The Registrar manages school defaults.</p>}
+        {!!choice.termId && <p className="text-xs text-muted-foreground">Settings must fit the school's enabled days and hours.</p>}
         {!!choice.termId && <label className="flex items-center gap-2"><input type="checkbox" checked={inherit} disabled={pending} onChange={(e) => { setInherit(e.target.checked); setPreview(null); }} /> Use inherited school settings</label>}
         <fieldset disabled={pending || inherit} className="grid gap-4 disabled:opacity-60">
           <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
             <label className="grid gap-1 font-semibold">Default class meeting length<NativeSelect aria-label="Default class meeting length" value={config.classSession} onChange={(e) => set("classSession", e.target.value as TimetableConfig["classSession"])} options={[{ value: "DEFAULT", label: "By level and component (current default)" }, { value: "SPLIT_90", label: "1.5 hours · split meetings" }, { value: "BLOCK_180", label: "3 hours · one continuous block" }]} /></label>
-            <p className="text-xs text-muted-foreground">For a 3-hour weekly subject: two 1.5-hour meetings or one 3-hour block. Auto-scheduling follows this default; the Head of Department can choose per meeting. A shorter final meeting fills only the remaining required hours.</p>
+            <p className="text-xs text-muted-foreground">For example, 3 hours: two 1.5-hour meetings or one 3-hour block.</p>
             <p className="text-xs text-muted-foreground">Applies to new class meetings. Existing schedules and examination durations stay unchanged.</p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -76,7 +76,7 @@ export function TimetableConfiguration({ terms, departments, canManageSchool, te
             <label className="grid gap-1">Flexible adjustment step<NativeSelect aria-label="Flexible adjustment step" disabled={config.mode === "STATIC"} value={String(config.adjustmentStep)} onChange={(e) => set("adjustmentStep", Number(e.target.value) as TimetableConfig["adjustmentStep"])} options={[5, 10, 15, 30].map((n) => ({ value: String(n), label: `${n} minutes` }))} /></label>
             <label className="grid gap-1">Row size<NativeSelect aria-label="Row size" value={config.zoom} onChange={(e) => set("zoom", e.target.value as TimetableConfig["zoom"])} options={[{ value: "COMPACT", label: "Compact" }, { value: "STANDARD", label: "Standard" }, { value: "LARGE", label: "Large" }]} /></label>
           </div>
-          <p className="text-xs text-muted-foreground">Static mode follows the grid interval. Dynamic mode uses the adjustment step independently of row size. Moving a class preserves its duration.</p>
+          <p className="text-xs text-muted-foreground">Static follows the grid interval; dynamic uses the adjustment step.</p>
           <div className="space-y-2"><p className="font-semibold">Teaching days</p><div className="flex flex-wrap gap-x-4 gap-y-2">{TIMETABLE_DAYS.map((day) => <label key={day} className="flex items-center gap-1.5"><input type="checkbox" checked={config.days.includes(day)} onChange={(e) => set("days", e.target.checked ? [...config.days, day] : config.days.filter((d) => d !== day))} />{DAY_LONG[day]}</label>)}</div></div>
           <div className="flex flex-wrap gap-4"><label className="flex items-center gap-2"><input type="checkbox" checked={config.hour12} onChange={(e) => set("hour12", e.target.checked)} />12-hour labels</label><label className="flex items-center gap-2"><input type="checkbox" checked={config.autoFit} onChange={(e) => set("autoFit", e.target.checked)} />Fit visible hours to classes</label></div>
           <details className="rounded-lg border p-3"><summary className="cursor-pointer font-semibold">Hours by day</summary><div className="mt-3 space-y-3">{config.days.map((day) => <div key={day} className="grid gap-2 sm:grid-cols-[1fr_120px_120px] items-center"><label className="flex items-center gap-2"><input type="checkbox" checked={!!config.dayHours[day]} onChange={(e) => { const hours = { ...config.dayHours }; if (e.target.checked) hours[day] = { startMin: config.dayStart, endMin: config.dayEnd }; else delete hours[day]; set("dayHours", hours); }} />{DAY_LONG[day]}</label>{config.dayHours[day] && <>{timeField(`tt-${day}-open`, config.dayHours[day]!.startMin, (v) => set("dayHours", { ...config.dayHours, [day]: { ...config.dayHours[day]!, startMin: v } }))}{timeField(`tt-${day}-close`, config.dayHours[day]!.endMin, (v) => set("dayHours", { ...config.dayHours, [day]: { ...config.dayHours[day]!, endMin: v } }))}</>}</div>)}</div></details>

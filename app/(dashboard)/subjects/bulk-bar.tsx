@@ -47,7 +47,7 @@ export function BulkBar({ rows, canAssign, onAssign, onClear, onDone }: { rows: 
       <p aria-live="polite" className="mr-auto text-sm font-medium">{rows.length} selected</p>
       {canAssign && <Button size="sm" onClick={onAssign}>Assign faculty</Button>}
       <Button size="sm" variant="outline" onClick={exportCsv}>Export</Button>
-      <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => setArchiving(true)}>Archive</Button>
+      {rows.every((r) => r.editable) && <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => setArchiving(true)}>Archive</Button>}
       <Button size="sm" variant="ghost" onClick={onClear}>Clear</Button>
 
       <Dialog open={archiving} onOpenChange={(o) => !pending && setArchiving(o)}>

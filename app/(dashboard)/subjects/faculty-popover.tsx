@@ -37,7 +37,7 @@ export function FacultyPopover({ assignments, hours, onView }: { assignments: As
               <UserAvatar name={g[0].facultyName} className="size-8 text-xs" />
               <div className="min-w-0">
                 <p className="text-sm font-medium">{g[0].facultyName}</p>
-                <p className="text-sm text-muted-foreground">{sectionsOf(g)} · {hours} hrs/week</p>
+                <p className="text-sm text-muted-foreground">{sectionsOf(g)} · {hours * new Set(g.map((a) => a.sectionId)).size} hrs/week ({hours} per section)</p>
               </div>
             </li>
           ))}

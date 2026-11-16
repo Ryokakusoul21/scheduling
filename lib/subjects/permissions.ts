@@ -10,7 +10,7 @@ export type SubjectPermissionUser = {
   actingDepartmentIds?: readonly string[];
 };
 
-export type SubjectPermissionRecord = { shared?: boolean; departmentId?: string | null; archivedAt?: Date | string | null };
+export type SubjectPermissionRecord = { id?: string; shared?: boolean; departmentId?: string | null; programId?: string | null; archivedAt?: Date | string | null };
 
 export function canManageSubject(user: SubjectPermissionUser, subject: SubjectPermissionRecord) {
   return policyCanManageSubject(user, subject);

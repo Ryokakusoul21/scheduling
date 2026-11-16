@@ -1,13 +1,14 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
+import type { Prisma } from "@prisma/client";
 import { detectConflicts, isOverlapConflict } from "./conflictDetector";
 import { toSchedEntry, toSchedFaculty, toSchedRoom, toSchedSubject } from "./mappers";
 
 /** Terms whose date range overlaps the given term (including itself). */
-export async function concurrentTermIds(termId: string) {
-  const term = await prisma.semester.findUnique({ where: { id: termId } });
+export async function concurrentTermIds(termId: string, db: Prisma.TransactionClient = prisma) {
+  const term = await db.semester.findUnique({ where: { id: termId } });
   if (!term) return [];
-  const rows = await prisma.semester.findMany({
+  const rows = await db.semester.findMany({
     where: { startDate: { lte: term.endDate }, endDate: { gte: term.startDate } },
     select: { id: true },
   });

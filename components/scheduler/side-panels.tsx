@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { CheckCircle, DotsSixVertical, MagicWand, Plus, WarningOctagon, Warning } from "@phosphor-icons/react/ssr";
+import { CaretDown, CheckCircle, DotsSixVertical, MagicWand, Plus, WarningOctagon, Warning } from "@phosphor-icons/react/ssr";
 import { cn } from "@/lib/utils";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
 import type { DetectedConflict, SchedEntry } from "@/lib/scheduler/types";
@@ -192,15 +192,15 @@ export function UnscheduledPanel({
     return (
       <EmptyState
         icon={CheckCircle}
-        title="Everything is scheduled"
-        description="All subjects for this section have their weekly hours placed."
+        title="No remaining curriculum hours"
+        description="No unscheduled hours were found in this section's loaded curriculum."
         className="py-8"
       />
     );
   }
   return (
     <div className="space-y-2">
-      {editable && onAutoAssign && <button type="button" onClick={onAutoAssign} className="inline-flex w-full items-center justify-center rounded-md border bg-card px-3 py-2 text-xs font-semibold outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50">Auto-Assign Remaining</button>}
+      {editable && onAutoAssign && <button type="button" onClick={onAutoAssign} className="inline-flex w-full items-center justify-center rounded-md border bg-card px-3 py-2 text-xs font-semibold outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50">Preview Auto-Schedule</button>}
       {editable && (
         <p className="text-xs text-muted-foreground">
           Drag a subject onto the timetable, or focus it and press <kbd className="rounded border px-1">Enter</kbd> to add it.
@@ -228,7 +228,7 @@ function NeedItem({
 }) {
   const { setNodeRef, listeners, isDragging } = useDraggable({
     id: needDraggableId(need),
-    disabled: !editable,
+    disabled: !editable || !!need.blockedReason,
     data: { kind: "need", need },
   });
   const pct = Math.round((need.scheduledMin / need.requiredMin) * 100);
@@ -242,7 +242,7 @@ function NeedItem({
         onKeyDown={undefined}
         data-roving=""
         tabIndex={-1}
-        disabled={!editable}
+        disabled={!editable || !!need.blockedReason}
         onClick={() => onAdd(need)}
         className={cn(
           "flex w-full touch-none items-center gap-2 rounded-lg border bg-card p-2 text-left text-sm outline-none transition-colors hover:border-primary/40",
@@ -256,7 +256,8 @@ function NeedItem({
           <span className="block truncate font-medium">{label.title}</span>
           <span className="block truncate text-xs text-muted-foreground">{label.subtitle}</span>
           {label.details && <span className="mt-0.5 block text-[11px] text-muted-foreground">{label.details}</span>}
-          {label.preferredFaculty && <span className="block truncate text-[11px] text-muted-foreground">Preferred faculty: {label.preferredFaculty}</span>}
+          {label.preferredFaculty && <span className="block truncate text-[11px] text-muted-foreground">Assigned teacher: {label.preferredFaculty}</span>}
+          {need.blockedReason && <span className="block text-[11px] text-amber-700">{need.blockedReason}</span>}
           <span className="mt-1 block h-1 overflow-hidden rounded-full bg-muted">
             <span className="block h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
           </span>
@@ -280,35 +281,64 @@ export function SectionNeedsSummary({
   sectionName: (id: string) => { short: string; full: string };
   onPick: (sectionId: string) => void;
 }) {
-  const { ref: rovingRef, onKeyDown: onRovingKeyDown, onFocus: onRovingFocus } = useRovingFocus<HTMLUListElement>();
+  const { ref: rovingRef, onKeyDown: onRovingKeyDown, onFocus: onRovingFocus } = useRovingFocus<HTMLDivElement>();
   if (needs.length === 0) {
-    return <EmptyState icon={CheckCircle} title="Everything is scheduled" description="Every section in the current filter has its weekly hours placed." className="py-8" />;
+    return <EmptyState icon={CheckCircle} title="No remaining curriculum hours" description="No unscheduled hours were found in the loaded curriculum for these sections." className="py-8" />;
   }
   const counts = new Map<string, number>();
   for (const n of needs) counts.set(n.sectionId, (counts.get(n.sectionId) ?? 0) + 1);
+  const groups = sectionGroups([...counts], (id) => sectionName(id).short);
+  const most = Math.max(...counts.values());
   return (
-    <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">
-        {needs.length} unscheduled across {counts.size} section{counts.size === 1 ? "" : "s"}. Choose a section to place them.
+    <div ref={rovingRef} onKeyDown={onRovingKeyDown} onFocus={onRovingFocus} aria-label="Sections with unscheduled subjects" className="space-y-3">
+      <p className="flex items-baseline gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2">
+        <span className="text-2xl font-semibold text-amber-700 tabular-nums dark:text-amber-300">{needs.length}</span>
+        <span className="text-xs text-muted-foreground">to place · {counts.size} section{counts.size === 1 ? "" : "s"}</span>
       </p>
-      <ul ref={rovingRef} onKeyDown={onRovingKeyDown} onFocus={onRovingFocus} aria-label="Sections with unscheduled subjects" className="space-y-1.5">
-        {[...counts].sort((a, b) => b[1] - a[1] || sectionName(a[0]).short.localeCompare(sectionName(b[0]).short)).map(([id, count]) => (
-          <li key={id}>
-            <button
-              type="button"
-              data-roving=""
-              tabIndex={-1}
-              onClick={() => onPick(id)}
-              className="flex w-full items-center justify-between gap-2 rounded-lg border bg-card p-2 text-left text-sm outline-none hover:border-primary/40 focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              <span className="truncate font-medium" title={sectionName(id).full}>{sectionName(id).short}</span>
-              <span className="shrink-0 text-xs text-amber-700 dark:text-amber-300">{count} unscheduled</span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      {groups.map((g) => (
+        <details key={g.name} open className="group">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md py-1 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+            <CaretDown className="size-3.5 shrink-0 -rotate-90 text-muted-foreground transition-transform group-open:rotate-0" aria-hidden />
+            <span className="min-w-0 flex-1 truncate">{g.name}</span>
+            <span className="rounded-full bg-muted px-2 py-0.5 font-medium tabular-nums">{g.total}</span>
+          </summary>
+          <ul className="mt-1.5 grid grid-cols-2 gap-1.5">
+            {g.items.map((s) => (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  data-roving=""
+                  tabIndex={-1}
+                  onClick={() => onPick(s.id)}
+                  title={sectionName(s.id).full}
+                  aria-label={`${sectionName(s.id).full}, ${s.count} unscheduled`}
+                  className="relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-lg border bg-card px-2.5 py-2 text-left text-sm outline-none transition-colors hover:border-amber-500/60 hover:bg-amber-500/5 focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  <span className="truncate font-medium">{s.label}</span>
+                  <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 text-xs font-semibold text-amber-700 tabular-nums dark:text-amber-300">{s.count}</span>
+                  <span aria-hidden className="absolute bottom-0 left-0 h-0.5 bg-amber-500/60" style={{ width: `${(s.count / most) * 100}%` }} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
     </div>
   );
+}
+
+/** Groups section counts by the name before the last space ("BSIT 2-A" under "BSIT"), busiest group first. */
+function sectionGroups(rows: [string, number][], short: (id: string) => string) {
+  const groups = new Map<string, { id: string; label: string; count: number }[]>();
+  for (const [id, count] of rows) {
+    const name = short(id);
+    const cut = name.lastIndexOf(" ");
+    const key = cut > 0 ? name.slice(0, cut) : "Sections";
+    groups.set(key, [...(groups.get(key) ?? []), { id, label: cut > 0 ? name.slice(cut + 1) : name, count }]);
+  }
+  return [...groups]
+    .map(([name, items]) => ({ name, total: items.reduce((sum, s) => sum + s.count, 0), items: items.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })) }))
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
 }
 
 /** "Suggest rooms" action under a room type mismatch; applying a room saves the class with it. */

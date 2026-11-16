@@ -17,9 +17,10 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import {
+  ArrowsIn,
+  ArrowsOut,
   CalendarDots,
   CheckCircle,
-  CircleNotch,
   FunnelSimple,
   Lightning,
   MagicWand,
@@ -30,7 +31,7 @@ import {
 } from "@phosphor-icons/react/ssr";
 
 import { TimetableConfiguration } from "./timetable-configuration";
-import { effectiveTimetable, timetableGrid, timetableDisplayDays, timetableStarts, timetableTimeError, snapTimetableTime, timetableHours } from "@/lib/timetable/config";
+import { effectiveTimetable, timetableGrid, timetableDisplayDays, timetableTimeError, snapTimetableTime, timetableHours } from "@/lib/timetable/config";
 import type { SlotReason } from "@/lib/scheduler/slot-check";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +46,7 @@ import { cn } from "@/lib/utils";
 import { detectConflicts, isOverlapConflict, type ConflictContext } from "@/lib/scheduler/conflictDetector";
 import {
   DAY_LONG,
+  collegeLengthError,
   defaultDuration,
   formatTime,
   indexConflicts,
@@ -72,6 +74,7 @@ import type { Change, ResolverEntry } from "@/lib/scheduler/resolver/types";
 import { allSectionNeeds, durationMismatches, facultyNotAssigned, sectionNeeds } from "@/lib/scheduler/summary";
 import { checkSlot, slotMap, suggestRooms } from "@/lib/scheduler/slot-check";
 import { UnscheduledTray } from "./unscheduled-tray";
+import { AutoScheduleDialog } from "./auto-schedule-dialog";
 import { ConstraintReportPanel, useOverridePrompt } from "./constraint-feedback";
 import { useWorkloadOverride } from "./workload-override";
 import type { RowInfo } from "./schedule-list";
@@ -127,16 +130,32 @@ export function SchedulerWorkspace({
   const [submitting, setSubmitting] = useState(false);
   // Open side panel sections and the hidden panel are remembered per browser.
   const [openPanels, setOpenPanels] = usePersisted<Partial<Record<PanelKey, boolean>>>("scheduler-panels", {});
-  const [panelHidden, setPanelHidden] = usePersisted("scheduler-panel-hidden", false);
-  const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const [panelHidden, setPanelHidden] = usePersisted("scheduler-panel-hidden", true);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [perspective, setPerspective] = useState<"section" | "faculty" | "room">("section");
   // Requests still being saved; together with an open class dialog these count as unsaved changes.
   const [pending, setPending] = useState(0);
-  const [autoScheduling, setAutoScheduling] = useState(false);
-  const autoSchedulingRef = useRef(false);
+  const [autoScheduleOpen, setAutoScheduleOpen] = useState(false);
   const { prompt: promptOverride, dialog: overrideDialog } = useOverridePrompt();
   const workloadOverride = useWorkloadOverride();
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+  const [fullScreen, setFullScreen] = useState(false);
+  // Leaving the browser's full screen (Escape included) also restores the normal layout.
+  useEffect(() => {
+    const sync = () => { if (!document.fullscreenElement) setFullScreen(false); };
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+  /** The timetable fills the window; the whole page goes full screen so dialogs still open on top. */
+  function toggleFullScreen() {
+    if (fullScreen) {
+      setFullScreen(false);
+      if (document.fullscreenElement) void document.exitFullscreen();
+    } else {
+      setFullScreen(true);
+      void document.documentElement.requestFullscreen?.().catch(() => undefined);
+    }
+  }
   const [dialog, setDialog] = useState<ClassDraft | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
@@ -243,6 +262,7 @@ export function SchedulerWorkspace({
   // ---------------------------------------------------------------------------
   // Labels
   // ---------------------------------------------------------------------------
+  const preferredRooms = useMemo(() => new Map(data.faculty.map((f) => [f.id, f.preferredRoomIds ?? []])), [data.faculty]);
   const blockInfo = useCallback(
     (e: SchedulerEntry): BlockInfo => {
       const subject = maps.subject.get(e.subjectId);
@@ -263,9 +283,10 @@ export function SchedulerWorkspace({
         doNotMove: e.doNotMove,
         override: e.notes?.match(/\[OVERRIDE:([^\]]+)\]/)?.[1],
         proposed: proposedIds.has(e.id),
+        preferredRoom: !e.busy && !!preferredRooms.get(e.facultyId)?.includes(e.roomId),
       };
     },
-    [maps, colorIndex, focus?.kind, ghostIds, contextualIds, proposedIds]
+    [maps, preferredRooms, colorIndex, focus?.kind, ghostIds, contextualIds, proposedIds]
   );
 
   const rowInfo = useCallback(
@@ -297,6 +318,7 @@ export function SchedulerWorkspace({
       if (filters.termId !== ACTIVE_TERMS) return filters.termId;
       const section = maps.section.get(sectionId);
       if (!section) return "";
+      if (section.semesterId) return section.semesterId;
       const candidates = data.terms.filter((t) => t.level === section.level && (!t.programId || t.programId === section.programId));
       const pick =
         candidates.find((t) => t.isActive && t.programId === section.programId) ??
@@ -312,26 +334,14 @@ export function SchedulerWorkspace({
 
   const focusedSection = focus?.kind === "section" ? maps.section.get(focus.id) : undefined;
   const needs = useMemo(
-    () => (focusedSection ? sectionNeeds(focusedSection, data.subjects, entries, termOf(focusedSection.id)) : []),
-    [focusedSection, data.subjects, entries, termOf]
+    () => (focusedSection ? sectionNeeds(focusedSection, data.subjects, entries, termOf(focusedSection.id), data.assignments) : []),
+    [focusedSection, data.subjects, entries, termOf, data.assignments]
   );
   // Totals across every section in the current filter, so the panel never shows a placeholder.
-  const allNeeds = useMemo(() => allSectionNeeds(options.sections, data.subjects, entries, termOf), [options.sections, data.subjects, entries, termOf]);
+  const allNeeds = useMemo(() => allSectionNeeds(options.sections, data.subjects, entries, termOf, data.assignments), [options.sections, data.subjects, entries, termOf, data.assignments]);
+  const queueSections = focusedSection ? [focusedSection] : options.sections;
+  const sectionsWithoutCurriculum = queueSections.filter((s) => !s.curriculum.length);
   const [ruleCount, setRuleCount] = useState<number | null>(null);
-  // Sections that need a look, busiest first, for the "Where to look" helper.
-  const conflictSections = useMemo(() => {
-    const sectionOf = new Map(scopeEntries.map((e) => [e.id, e.sectionId]));
-    const counts = new Map<string, number>();
-    for (const c of scopedConflicts.filter(isOverlapConflict)) {
-      for (const id of new Set([c.entryA.id, c.entryB?.id].map((x) => (x ? sectionOf.get(x) : undefined)).filter((x): x is string => !!x))) counts.set(id, (counts.get(id) ?? 0) + 1);
-    }
-    return [...counts].sort((a, b) => b[1] - a[1]);
-  }, [scopeEntries, scopedConflicts]);
-  const unscheduledSections = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const n of allNeeds) counts.set(n.sectionId, (counts.get(n.sectionId) ?? 0) + 1);
-    return [...counts].sort((a, b) => b[1] - a[1]);
-  }, [allNeeds]);
   const issueTotal = (focusedSection ? needs.length : allNeeds.length) + warningCount + overlapCount;
 
 
@@ -353,15 +363,14 @@ export function SchedulerWorkspace({
   );
 
   // Lets the toast's Undo button call the latest moveEntry without a self-reference.
-  const moveRef = useRef<(entry: SchedulerEntry, day: DayOfWeek, startMin: number, opts?: { undoable?: boolean }) => Promise<void>>(
+  const moveRef = useRef<(entry: SchedulerEntry, day: DayOfWeek, startMin: number, opts?: { undoable?: boolean; endMin?: number }) => Promise<void>>(
     async () => {}
   );
 
   const moveEntry = useCallback(
-    async (entry: SchedulerEntry, day: DayOfWeek, startMin: number, { undoable = true } = {}) => {
-      const duration = entry.endMin - entry.startMin;
-      const moved = { ...entry, dayOfWeek: day, startMin, endMin: startMin + duration };
-      if (moved.dayOfWeek === entry.dayOfWeek && moved.startMin === entry.startMin) return;
+    async (entry: SchedulerEntry, day: DayOfWeek, startMin: number, { undoable = true, endMin }: { undoable?: boolean; endMin?: number } = {}) => {
+      const moved = { ...entry, dayOfWeek: day, startMin, endMin: endMin ?? startMin + (entry.endMin - entry.startMin) };
+      if (moved.dayOfWeek === entry.dayOfWeek && moved.startMin === entry.startMin && moved.endMin === entry.endMin) return;
       if (entry.status === "PUBLISHED" || entry.status === "REVIEW") {
         toast.info("Open this submitted class to document a reason before changing it.");
         return;
@@ -383,21 +392,22 @@ export function SchedulerWorkspace({
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? res.data : e)));
 
       const code = maps.subject.get(entry.subjectId)?.code ?? "Class";
-      const where = `${DAY_LONG[day]} ${formatTime(startMin)}`;
+      const resized = moved.endMin - moved.startMin !== entry.endMin - entry.startMin;
+      const where = resized ? `${(moved.endMin - moved.startMin) / 60} h` : `${DAY_LONG[day]} ${formatTime(startMin)}`;
       const undo = undoable
-        ? { label: "Undo", onClick: () => void moveRef.current(res.data, entry.dayOfWeek, entry.startMin, { undoable: false }) }
+        ? { label: "Undo", onClick: () => void moveRef.current(res.data, entry.dayOfWeek, entry.startMin, { undoable: false, endMin: entry.endMin }) }
         : undefined;
       const clashes = conflictsFor(
         res.data,
         entriesRef.current.map((e) => (e.id === entry.id ? res.data : e))
       );
       if (clashes.length) {
-        toast.warning(`${code} moved to ${where} — ${clashes.length} conflict${clashes.length > 1 ? "s" : ""}`, {
+        toast.warning(`${code} ${resized ? "resized to" : "moved to"} ${where} — ${clashes.length} conflict${clashes.length > 1 ? "s" : ""}`, {
           description: clashes[0].description,
           action: undo,
         });
       } else {
-        toast.success(`${code} moved to ${where}`, { action: undo });
+        toast.success(`${code} ${resized ? "resized to" : "moved to"} ${where}`, { action: undo });
       }
       if (res.data.status !== entry.status) toast.info(`Status changed to ${res.data.status.toLowerCase()} for review.`);
     },
@@ -406,6 +416,18 @@ export function SchedulerWorkspace({
   useEffect(() => {
     moveRef.current = moveEntry;
   }, [moveEntry]);
+
+  // Changes only the end time; the subject's weekly hours cap the length.
+  const resizeEntry = useCallback((entry: SchedulerEntry, endMin: number) => {
+    const subject = maps.subject.get(entry.subjectId);
+    const required = subject ? Math.round((entry.component === "LECTURE" ? subject.lectureHours : subject.labHours) * 60) : null;
+    const others = entriesRef.current.filter((e) => e.id !== entry.id && !e.busy && e.status !== "ARCHIVED" && e.semesterId === entry.semesterId && e.sectionId === entry.sectionId && e.subjectId === entry.subjectId && e.component === entry.component).reduce((sum, e) => sum + e.endMin - e.startMin, 0);
+    const level = maps.section.get(entry.sectionId)?.level ?? "";
+    const lengthError = collegeLengthError(level, endMin - entry.startMin, required === null ? null : required - others, configurationFor(entry.sectionId, entry.semesterId).classSession);
+    if (lengthError) { toast.error(lengthError); return; }
+    if (required !== null && endMin > entry.endMin && others + endMin - entry.startMin > required) { toast.error("Over the weekly hours needed."); return; }
+    void moveRef.current(entry, entry.dayOfWeek, entry.startMin, { endMin });
+  }, [maps.subject, maps.section, configurationFor]);
 
   const saveClass = useCallback(
     async (input: ClassInput) => {
@@ -539,68 +561,34 @@ export function SchedulerWorkspace({
       const pool = data.faculty.filter((f) => f.status === "ACTIVE" && !f.foreign);
       // The subject's assigned professor is the only suggestion when there is one.
       const assigned = assignedFor(data.assignments, draft.subjectId, draft.sectionId);
-      const faculty = rankFaculty(pool.some((f) => f.id === assigned) ? pool.filter((f) => f.id === assigned) : pool, draft, concurrent, section?.level)[0];
+      const faculty = rankFaculty(pool.filter((f) => f.id === assigned), draft, concurrent, section?.level)[0];
       const room = rankRooms(data.rooms.filter((r) => !r.archived && !r.foreign), draft, concurrent, {
         studentCount: section?.studentCount,
         component: draft.component,
         requiredRoomType: subject?.requiredRoomType,
         programId: section?.programId,
+        departmentId: section?.departmentId,
+        level: section?.level,
+        preferredRoomIds: pool.find((f) => f.id === (draft.facultyId || faculty?.id))?.preferredRoomIds,
+        sameRoomId: entries.find((e) => !e.busy && e.sectionId === draft.sectionId && e.subjectId === draft.subjectId && e.semesterId === draft.semesterId)?.roomId,
       })[0];
       return { ...draft, facultyId: draft.facultyId || faculty?.id || "", roomId: draft.roomId || room?.id || "" };
     },
-    [maps, concurrentWith, data.faculty, data.rooms, data.assignments]
+    [maps, concurrentWith, data.faculty, data.rooms, data.assignments, entries]
   );
 
   /** Free rooms of the right type and size for a class, as panel options. */
   const roomOptions = useCallback(
     (entry: SchedEntry) =>
       suggestRooms(entry, data.rooms, concurrentWith(entry.semesterId ?? ""), {
+        departmentId: maps.section.get(entry.sectionId)?.departmentId,
+        level: maps.section.get(entry.sectionId)?.level,
+        programId: maps.section.get(entry.sectionId)?.programId,
         studentCount: maps.section.get(entry.sectionId)?.studentCount ?? 0,
         requiredRoomType: maps.subject.get(entry.subjectId)?.requiredRoomType,
       }).map((r) => ({ id: r.id, label: `${r.roomName} · ${r.capacity} seats` })),
     [data.rooms, concurrentWith, maps.section, maps.subject]
   );
-
-  const autoAssignRemaining = useCallback(async () => {
-    if (!focusedSection || needs.length === 0 || autoSchedulingRef.current) return;
-    autoSchedulingRef.current = true; setAutoScheduling(true); setPending((n) => n + 1);
-    try {
-      let placed = 0, incomplete = 0;
-      let working = [...entries];
-      const termId = termForSection(focusedSection.id);
-      const config = configurationFor(focusedSection.id, termId);
-      for (const need of needs) {
-        let remaining = need.requiredMin - need.scheduledMin;
-        while (remaining > 0) {
-          const duration = Math.min(defaultDuration(need.component, focusedSection.level, config), remaining);
-          let chosen: ClassDraft | null = null;
-          // Split meetings favor separate days, then the lightest teaching day.
-          const sameComponent = (day: DayOfWeek) => working.filter((e) => e.status !== "ARCHIVED" && e.semesterId === termId && e.sectionId === focusedSection.id && e.subjectId === need.subjectId && e.component === need.component && e.dayOfWeek === day).length;
-          const minutesOn = (day: DayOfWeek) => working.filter((e) => e.status !== "ARCHIVED" && e.semesterId === termId && e.sectionId === focusedSection.id && e.dayOfWeek === day).reduce((sum, e) => sum + e.endMin - e.startMin, 0);
-          const days = [...config.days].sort((a, b) => sameComponent(a) - sameComponent(b) || minutesOn(a) - minutesOn(b));
-          for (const day of days) {
-            for (const startMin of timetableStarts(config, day, duration)) {
-              const draft = suggest({ semesterId: termId, sectionId: focusedSection.id, subjectId: need.subjectId, facultyId: "", roomId: "", component: need.component, dayOfWeek: day, startMin, endMin: startMin + duration });
-              if (!draft.facultyId || !draft.roomId) continue;
-              const candidate: SchedulerEntry = { ...draft, id: `auto-${need.subjectId}-${day}-${startMin}`, status: "DRAFT", notes: "Generated automatically; review before submitting." };
-              const hard = detectConflicts([...working, ...data.busy, candidate], buildContext()).some((c) => isOverlapConflict(c) && (c.entryA.id === candidate.id || c.entryB?.id === candidate.id));
-              if (!hard) { chosen = draft; break; }
-            }
-            if (chosen) break;
-          }
-          if (!chosen) break;
-          const res = await saveClassAction({ ...chosen, source: "CURRICULUM_QUEUE", notes: "Generated automatically; review before submitting." });
-          if (!res.ok) break;
-          working = [...working, res.data]; placed++;
-          remaining -= res.data.endMin - res.data.startMin;
-        }
-        if (remaining > 0) incomplete++;
-      }
-      setEntries(working);
-      if (placed) toast.success(`${placed} meeting${placed === 1 ? "" : "s"} added as drafts.`, { description: "Review the meetings before submitting." });
-      if (incomplete) toast.warning(`${incomplete} subject component${incomplete === 1 ? "" : "s"} still need${incomplete === 1 ? "s" : ""} time.`, { description: "Check availability or choose a different meeting length." });
-    } finally { autoSchedulingRef.current = false; setAutoScheduling(false); setPending((n) => n - 1); }
-  }, [focusedSection, needs, entries, data.busy, suggest, termForSection, buildContext, configurationFor]);
 
   /** Opens Resolve issues for one panel finding, scoped to the sections it involves. */
   const fixIssue = useCallback(
@@ -671,6 +659,7 @@ export function SchedulerWorkspace({
 
   const openNeed = useCallback(
     (need: SubjectNeed, day: DayOfWeek = "MONDAY", startMin = 8 * 60) => {
+      if (need.blockedReason) { toast.error(need.blockedReason); return; }
       const level = maps.section.get(need.sectionId)?.level ?? "COLLEGE";
       const duration = Math.min(defaultDuration(need.component, level, configurationFor(need.sectionId, termForSection(need.sectionId))), need.requiredMin - need.scheduledMin);
       const config = configurationFor(need.sectionId, termForSection(need.sectionId));
@@ -815,7 +804,7 @@ export function SchedulerWorkspace({
     keys: "f",
     description: "Focus the filters",
     group: "Scheduler",
-    handler: () => filterBarRef.current?.querySelector<HTMLElement>("select")?.focus(),
+    handler: () => setFiltersExpanded(true),
   });
 
   // ---------------------------------------------------------------------------
@@ -878,6 +867,11 @@ export function SchedulerWorkspace({
   const configurationIssues = visibleEntries.filter((e) => timetableTimeError(configurationFor(e.sectionId, e.semesterId), e));
   const pendingPublish = visibleEntries.filter((e) => e.status === "DRAFT" || e.status === "REVIEW").length;
 
+  const fullScreenButton = (
+    <Button size="sm" variant="outline" onClick={toggleFullScreen} aria-pressed={fullScreen}>
+      {fullScreen ? <ArrowsIn className="size-4" /> : <ArrowsOut className="size-4" />} {fullScreen ? "Exit full screen" : "Full screen"}
+    </Button>
+  );
   const focusTitle = focus
     ? focus.kind === "section"
       ? maps.section.get(focus.id)?.name
@@ -890,9 +884,9 @@ export function SchedulerWorkspace({
   const printDoc = useMemo(() => {
     if (!focus || !focusTitle) return null;
     const kind = { section: "Class", faculty: "Teacher", room: "Room" }[focus.kind];
-    const termLabels = [...new Set(visibleTimetable.map((e) => maps.term.get(e.semesterId)?.label).filter(Boolean))];
+    const termLabels = [...new Set(visibleEntries.map((e) => maps.term.get(e.semesterId)?.label).filter(Boolean))];
     const term = filters.termId !== ACTIVE_TERMS ? maps.term.get(filters.termId)?.label : termLabels.join("; ");
-    const rows = visibleTimetable.map((e) => {
+    const rows = visibleEntries.map((e) => {
       const r = rowInfo(e);
       return { ...e, subject: `${r.subject} - ${r.subjectName}`, section: r.section, faculty: r.faculty, room: r.room, units: maps.subject.get(e.subjectId)?.units };
     });
@@ -903,7 +897,7 @@ export function SchedulerWorkspace({
       ? { course: program?.name, year: section ? stageLabel(section) : undefined, section: section?.shortName, studentCount: section?.studentCount, department }
       : { focus: focus.kind, focusName: focusTitle };
     return timetableDoc(`${kind} Timetable: ${focusTitle}`, term || "No term selected", rows, `${kind.toLowerCase()}-timetable-${focusTitle.replace(/\W+/g, "-").toLowerCase()}`, { ...details, timeConfig });
-  }, [focus, focusTitle, visibleTimetable, maps.term, maps.subject, maps.section, maps.program, filters.termId, rowInfo, data.departments, timeConfig]);
+  }, [focus, focusTitle, visibleEntries, maps.term, maps.subject, maps.section, maps.program, filters.termId, rowInfo, data.departments, timeConfig]);
 
   const unscheduledCount = focusedSection ? needs.length : allNeeds.length;
   const isOpen = (key: PanelKey, count: number | null) => openPanels[key] ?? (count === null ? false : count > 0);
@@ -914,16 +908,18 @@ export function SchedulerWorkspace({
         <ConflictsPanel conflicts={scopedConflicts.filter(isOverlapConflict)} describe={describe} onJump={jumpTo} onFix={permissions.canEdit ? fixIssue : undefined} />
       </PanelSection>
       <PanelSection id="todo" title="Unscheduled" count={unscheduledCount} open={isOpen("todo", unscheduledCount)} onToggle={() => togglePanel("todo", isOpen("todo", unscheduledCount))}>
-        {focusedSection ? (
+        {queueSections.length === 0 ? (
+          <EmptyState title="No sections match these filters" description="Choose a different academic year, term, program, or year level, or create sections first." className="py-8" />
+        ) : sectionsWithoutCurriculum.length === queueSections.length ? <EmptyState title="No curriculum is ready to schedule" description="Choose this term's curriculum and assign teachers in Subjects. Valid assignments are added to Unscheduled automatically." action={<Link href="/subjects" className="text-primary underline">Open Subjects</Link>} className="py-8" /> : focusedSection ? (
           <UnscheduledPanel
             needs={needs}
             editable={permissions.canEdit}
             onAdd={(n) => openNeed(n)}
-            onAutoAssign={() => void autoAssignRemaining()}
+            onAutoAssign={() => setAutoScheduleOpen(true)}
             label={(n) => {
               const s = maps.subject.get(n.subjectId);
-              const preferred = rankFaculty(data.faculty.filter((f) => f.status === "ACTIVE" && !f.foreign), { dayOfWeek: "MONDAY", startMin: 8 * 60, endMin: 9 * 60 }, entries, maps.section.get(n.sectionId)?.level)[0];
-              return { title: `${s?.code ?? "?"}${n.component === "LABORATORY" ? " (Laboratory)" : ""}`, subtitle: s?.name ?? "", details: `${s?.lectureHours ?? 0} lecture hours · ${s?.labHours ?? 0} laboratory hours`, preferredFaculty: maps.faculty.get(preferred?.id ?? "")?.fullName };
+              const teacher = assignedFor(data.assignments.filter((a) => !a.semesterId || a.semesterId === termOf(n.sectionId)), n.subjectId, n.sectionId);
+              return { title: `${s?.code ?? "?"}${n.component === "LABORATORY" ? " (Laboratory)" : ""}`, subtitle: s?.name ?? "", details: `${s?.lectureHours ?? 0} lecture hours · ${s?.labHours ?? 0} laboratory hours`, preferredFaculty: teacher ? maps.faculty.get(teacher)?.fullName ?? "Assigned teacher unavailable" : "Needs teacher" };
             }}
           />
         ) : (
@@ -952,6 +948,12 @@ export function SchedulerWorkspace({
       )}
     </div>
   );
+
+  // Active filters as removable chips; defaults stay hidden.
+  const labelOf = (list: { value: string; label: string }[], value: string) => list.find((o) => o.value === value)?.label;
+  const filterChips = ([
+    ["programId", options.programs], ["yearLevel", options.years], ["sectionId", options.sectionOptions], ["facultyId", options.faculty], ["roomId", options.rooms],
+  ] as const).flatMap(([key, list]) => filters[key] ? [{ key, label: labelOf(list, filters[key]) ?? filters[key], onClear: () => update({ [key]: "" }) }] : []);
 
   return (
     <DndContext
@@ -993,11 +995,8 @@ export function SchedulerWorkspace({
           help="Drag classes to reschedule. Hard constraints block a save; soft ones ask before overriding."
           leading={<>
             {academicYearControl}
+            <NativeSelect id="scheduler-term" aria-label="Term" className="w-72" value={filters.termId} onChange={(e) => update({ termId: e.target.value || ACTIVE_TERMS })} options={options.terms} />
             {permissions.canConfigureTimetable && <TimetableConfiguration terms={data.terms} departments={data.departments} canManageSchool={!!permissions.canManageSchoolTimetable} termId={selectedTermId} departmentId={filters.departmentId || data.sections.find((s) => s.id === filters.sectionId)?.departmentId || undefined} />}
-            <div className="min-w-0 space-y-1 xl:w-64">
-              <label htmlFor="scheduler-term" className="block text-sm text-muted-foreground">Term</label>
-              <NativeSelect id="scheduler-term" value={filters.termId} onChange={(e) => update({ termId: e.target.value || ACTIVE_TERMS })} options={options.terms} />
-            </div>
           </>}
         >
             <Button
@@ -1030,7 +1029,7 @@ export function SchedulerWorkspace({
                 {issueTotal > 0 && <Badge variant="secondary" className="ml-0.5">{issueTotal}</Badge>}
               </Button>
             )}
-            {permissions.canSubmit && <Button variant="outline" disabled={autoScheduling} onClick={() => focusedSection ? void autoAssignRemaining() : setPanel("todo")}>{autoScheduling ? <CircleNotch className="size-4 animate-spin" /> : <Lightning className="size-4" />} Auto-Schedule</Button>}
+            {permissions.canSubmit && <Button variant="outline" onClick={() => setAutoScheduleOpen(true)}><Lightning className="size-4" /> Auto-Schedule</Button>}
             {permissions.canEdit && !permissions.queueOnly && (
               <Button onClick={() => openNew()} aria-keyshortcuts="n">
                 <Plus className="size-4" /> Add class
@@ -1044,6 +1043,7 @@ export function SchedulerWorkspace({
           filterRef={filterBarRef}
           expanded={filtersExpanded}
           onToggle={() => setFiltersExpanded((v) => !v)}
+          chips={filterChips}
           activeCount={Object.entries(filters).filter(([key, value]) => value && !(key === "termId" && value === ACTIVE_TERMS)).length}
           perspective={permissions.queueOnly ? undefined : perspective}
           onPerspective={(kind) => { setPerspective(kind); if (kind !== "section") update({ sectionId: "" }); }}
@@ -1085,7 +1085,8 @@ export function SchedulerWorkspace({
         </FilterCard>
 
         <div className={cn("grid gap-3 lg:min-h-0 lg:flex-1 lg:overflow-hidden", panelHidden ? "lg:grid-cols-[minmax(0,1fr)_48px]" : "lg:grid-cols-[minmax(0,1fr)_320px]")}>
-          <section aria-label="Timetable" className="flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto pr-1">
+          <section aria-label="Timetable" className={cn("flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto pr-1", fullScreen && "fixed inset-0 z-40 bg-background p-4")}>
+            {!focusTitle && <div className="flex justify-end print:hidden">{fullScreenButton}</div>}
             {focusTitle && (
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <CalendarDots className="size-4 text-primary" />
@@ -1093,28 +1094,21 @@ export function SchedulerWorkspace({
                 {focusedSection && <span className="text-muted-foreground">· {stageLabel(focusedSection)} · {focusedSection.studentCount} learners</span>}
                 <span className="text-muted-foreground">· {visibleTimetable.length} classes</span>
                 {focusedSection && <Badge variant="secondary">{Math.round(visibleEntries.reduce((sum, e) => sum + e.endMin - e.startMin, 0) / 60 * 10) / 10} / {data.subjects.filter((s) => subjectAppliesToSection(s, focusedSection)).reduce((sum, s) => sum + s.lectureHours + s.labHours, 0)} hours plotted</Badge>}
-                {focusedSection && <Badge variant={visibleEntries.some((e) => e.status === "PUBLISHED") ? "outline" : "secondary"}>{visibleEntries.every((e) => e.status === "PUBLISHED") && visibleEntries.length ? "Published" : "Draft"}</Badge>}
-                {printDoc && (
-                  <span className="ml-auto">
-                    <ReportButtons doc={printDoc} />
-                  </span>
-                )}
+                {focusedSection && <Badge variant={visibleEntries.some((e) => e.status === "PUBLISHED") ? "outline" : "secondary"}>{visibleEntries.length && visibleEntries.every((e) => e.status === "PUBLISHED") ? "Published" : visibleEntries.some((e) => e.status === "REVIEW") ? "Awaiting approval" : "Draft"}</Badge>}
+                <span className="ml-auto flex flex-wrap items-center gap-2 print:hidden">
+                  {printDoc && <ReportButtons doc={printDoc} />}
+                  {fullScreenButton}
+                </span>
               </div>
             )}
 
-            {!focus && (
-              <WhereToLook
-                conflicts={conflictSections}
-                unscheduled={unscheduledSections}
-                name={(id) => maps.section.get(id)?.name ?? "Section"}
-                onPick={(id) => update({ sectionId: id })}
-              />
-            )}
+            {proposed && <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-sm">Preview only. Proposed meetings are not saved. Progress and exports use saved meetings until you save the drafts.</p>}
             {focus ? (
               visibleTimetable.length === 0 && !permissions.canEdit ? (
                 <EmptyState icon={CalendarDots} title="No classes scheduled" description="Nothing is scheduled for this selection yet." />
               ) : (
                 <Timetable
+                  onResize={permissions.canEdit ? resizeEntry : undefined}
                   days={days}
                   entries={visibleTimetable}
                   info={blockInfo}
@@ -1208,6 +1202,7 @@ export function SchedulerWorkspace({
       )}
 
       <SubmitTimetableDialog summary={submitSummary} open={!!submitSummary} pending={submitting} onOpenChange={(o) => !o && setSubmitSummary(null)} onConfirm={() => void confirmSubmit()} />
+      {autoScheduleOpen && <AutoScheduleDialog selectedSectionId={focusedSection?.editable ? focusedSection.id : undefined} filterSectionIds={options.sections.filter((s) => s.editable).map((s) => s.id)} labels={resolveLabels} onPreview={setProposed} onApplied={applyResolved} onClose={() => setAutoScheduleOpen(false)} />}
       <ClassDialog
         open={!!dialog}
         onOpenChange={(o) => !o && setDialog(null)}
@@ -1337,37 +1332,5 @@ function SectionPicker({
         })}
       </div>
     </div>
-  );
-}
-
-const SHOWN_SECTIONS = 8;
-
-/** Lists the sections with double bookings and with unscheduled subjects, so viewers know where to look first. */
-function WhereToLook({ conflicts, unscheduled, name, onPick }: { conflicts: [string, number][]; unscheduled: [string, number][]; name: (id: string) => string; onPick: (id: string) => void }) {
-  if (!conflicts.length && !unscheduled.length) {
-    return (
-      <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm">
-        <CheckCircle className="size-5 text-emerald-600" weight="fill" aria-hidden /> Every section is complete with no conflicts.
-      </div>
-    );
-  }
-  const group = (title: string, hint: string, rows: [string, number][], tone: string, unit: string) => rows.length > 0 && (
-    <div className="space-y-2">
-      <p className="text-sm font-semibold">{title} <span className="font-normal text-muted-foreground">· {rows.length} section{rows.length === 1 ? "" : "s"} · {hint}</span></p>
-      <div className="flex flex-wrap gap-1.5">
-        {rows.slice(0, SHOWN_SECTIONS).map(([id, count]) => (
-          <button key={id} type="button" onClick={() => onPick(id)} className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors", tone)}>
-            {name(id)} <span className="rounded-full bg-background/80 px-1.5 tabular-nums">{count} {unit}</span>
-          </button>
-        ))}
-        {rows.length > SHOWN_SECTIONS && <span className="self-center text-xs text-muted-foreground">and {rows.length - SHOWN_SECTIONS} more in Schedule checks</span>}
-      </div>
-    </div>
-  );
-  return (
-    <section aria-label="Where to look" className="grid gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
-      {group("Conflicts", "double bookings of a room, faculty member, or section", conflicts, "border-red-500/40 bg-red-500/5 text-red-700 hover:bg-red-500/10 dark:text-red-400", "conflicts")}
-      {group("Unscheduled subjects", "subjects not yet placed on the timetable", unscheduled, "border-amber-500/40 bg-amber-500/5 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400", "left")}
-    </section>
   );
 }

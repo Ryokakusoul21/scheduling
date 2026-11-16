@@ -1,3 +1,4 @@
+import { roomAllowsSection, type RoomDesignation, type SectionDesignation } from "@/lib/rooms/designation";
 /**
  * Slot validation for placing one class: why a day and time is invalid, and which rooms would fit.
  * Pure and browser-safe; callers pass only classes from concurrent terms.
@@ -59,18 +60,18 @@ export function slotMap(
 }
 
 /** Rooms of the right type, free at the class time, with enough seats; smallest fitting room first. */
-export function suggestRooms<R extends SchedRoom & { archived?: boolean; foreign?: boolean }>(
+export function suggestRooms<R extends SchedRoom & RoomDesignation & { archived?: boolean; foreign?: boolean }>(
   entry: SchedEntry,
   rooms: R[],
   others: SchedEntry[],
-  needs: { studentCount: number; requiredRoomType?: RoomType }
+  needs: SectionDesignation & { studentCount: number; requiredRoomType?: RoomType }
 ): R[] {
   const wantLab = entry.component === "LABORATORY";
   const exact = wantLab && needs.requiredRoomType && isLabRoom(needs.requiredRoomType) ? needs.requiredRoomType : null;
   return rooms
     .filter((r) => !r.archived && !r.foreign && r.status === "AVAILABLE" && r.id !== entry.roomId)
     .filter((r) => (exact ? r.roomType === exact : wantLab ? isLabRoom(r.roomType) : !isLabRoom(r.roomType)))
-    .filter((r) => r.capacity >= needs.studentCount)
+    .filter((r) => r.capacity >= needs.studentCount && roomAllowsSection(r, needs))
     .filter((r) => !checkSlot({ ...entry, roomId: r.id }, others, { room: r, bounds: { startMin: 0, endMin: 24 * 60 } }).some((x) => x === "Room busy" || x === "Outside allowed hours"))
     .sort((a, b) => a.capacity - b.capacity);
 }

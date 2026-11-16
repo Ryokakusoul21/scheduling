@@ -1,3 +1,4 @@
+import { roomLabel } from "@/lib/rooms/label";
 import type {
   Faculty,
   FacultyAvailability,
@@ -32,7 +33,7 @@ export function toSchedRoom(r: RoomWithAvailability): SchedRoom {
   return {
     id: r.id,
     roomNumber: r.roomNumber,
-    roomName: r.roomName,
+    roomName: roomLabel(r),
     capacity: r.capacity,
     roomType: r.roomType,
     status: r.status,

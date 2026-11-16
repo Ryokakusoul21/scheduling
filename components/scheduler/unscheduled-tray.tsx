@@ -36,7 +36,7 @@ export function UnscheduledTray({
 function TrayChip({ need, text, editable, onAdd }: { need: SubjectNeed; text: string; editable: boolean; onAdd: (n: SubjectNeed) => void }) {
   const { setNodeRef, listeners, isDragging } = useDraggable({
     id: `tray:${need.sectionId}:${need.subjectId}:${need.component}`,
-    disabled: !editable,
+    disabled: !editable || !!need.blockedReason,
     data: { kind: "need", need },
   });
   const hours = `${Math.round((need.scheduledMin / 60) * 10) / 10} of ${need.requiredMin / 60} hours`;
@@ -46,7 +46,7 @@ function TrayChip({ need, text, editable, onAdd }: { need: SubjectNeed; text: st
         type="button"
         ref={setNodeRef}
         {...listeners}
-        disabled={!editable}
+        disabled={!editable || !!need.blockedReason}
         onClick={() => onAdd(need)}
         aria-label={`${text}, ${hours} scheduled. Press Enter to add.`}
         className={cn(
@@ -57,6 +57,7 @@ function TrayChip({ need, text, editable, onAdd }: { need: SubjectNeed; text: st
       >
         {editable && <DotsSixVertical className="size-3.5 text-muted-foreground" weight="bold" aria-hidden />}
         {text}
+        {need.blockedReason && <span className="text-amber-700">Needs teacher</span>}
         <span className="text-muted-foreground">· {hours}</span>
       </button>
     </li>

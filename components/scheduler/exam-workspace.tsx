@@ -50,7 +50,7 @@ export interface ExamData {
   sections: { id: string; name: string; departmentId?: string | null; level: string; yearLevel: string | null; gradeLevel: string | null; programId: string | null; semesterId: string | null; studentCount: number }[];
   subjects: { id: string; code: string; name: string }[];
   faculty: { id: string; fullName: string; dayOff: DayOfWeek | null; availability: { dayOfWeek: DayOfWeek; startMin: number; endMin: number }[] }[];
-  rooms: { id: string; roomName: string; capacity: number; foreign: boolean; availability: { dayOfWeek: DayOfWeek; startMin: number; endMin: number }[] }[];
+  rooms: { isGeneralShared?: boolean; departmentId?: string | null; departmentCode?: string | null; id: string; roomName: string; capacity: number; foreign: boolean; availability: { dayOfWeek: DayOfWeek; startMin: number; endMin: number }[] }[];
   unavailable: { facultyId: string | null; roomId: string | null; start: string; end: string; startMin: number | null; endMin: number | null }[];
   exams: ExamRecord[];
   busy: ExamSlot[];
@@ -125,9 +125,9 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
   const [proctorId, setProctorId] = useState(initial.proctor);
   const [roomId, setRoomId] = useState(initial.room);
   const [openPanels, setOpenPanels] = usePersisted<Partial<Record<Panel, boolean>>>("exam-panels", {});
-  const [panelHidden, setPanelHidden] = usePersisted("scheduler-panel-hidden", false);
+  const [panelHidden, setPanelHidden] = usePersisted("scheduler-panel-hidden", true);
   const [perspective, setPerspective] = useState<Perspective>("section");
-  const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
   const [autoPlan, setAutoPlan] = useState<AutoScheduleResult | null>(null);
@@ -274,6 +274,7 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
         sectionId: section.id,
         sectionName: section.name,
         sectionLevel: section.level,
+        departmentId: section.departmentId,
         yearLevel: section.yearLevel,
         gradeLevel: section.gradeLevel,
         studentCount: section.studentCount,
@@ -423,11 +424,8 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
           help="Each examination starts from its class schedule. Drag to change the date or time; hard conflicts block a save."
           leading={<>
             {academicYearControl}
+            <NativeSelect id="exam-term" aria-label="Term" className="w-72" value={termId} onChange={(e) => { setTermId(e.target.value); setSectionId(""); }} options={data.terms.map((t) => ({ value: t.id, label: t.label }))} />
             <TimetableConfiguration terms={data.terms} departments={data.departments ?? []} canManageSchool={data.isAdmin} termId={termId} departmentId={maps.section.get(sectionId)?.departmentId ?? undefined} />
-            <div className="min-w-0 space-y-1 xl:w-64">
-              <label htmlFor="exam-term" className="block text-sm text-muted-foreground">Term</label>
-              <NativeSelect id="exam-term" value={termId} onChange={(e) => { setTermId(e.target.value); setSectionId(""); }} options={data.terms.map((t) => ({ value: t.id, label: t.label }))} />
-            </div>
           </>}
         >
           {data.canSubmit && <Button variant="outline" disabled={!win || !pendingBySection.size || pending} onClick={() => setGenerateOpen(true)}><Lightning className="size-4" /> Auto-Schedule</Button>}
@@ -462,6 +460,12 @@ export function ExamWorkspace({ data, academicYearControl, modes }: { data: Exam
         <FilterCard
           expanded={filtersExpanded}
           onToggle={() => setFiltersExpanded((v) => !v)}
+          chips={[
+            programId && { key: "program", label: data.programs.find((p) => p.id === programId)?.code ?? "Program", onClear: () => setProgramId("") },
+            sectionId && { key: "section", label: maps.section.get(sectionId)?.name ?? "Section", onClear: () => setSectionId("") },
+            proctorId && { key: "proctor", label: data.faculty.find((f) => f.id === proctorId)?.fullName ?? "Proctor", onClear: () => setProctorId("") },
+            roomId && { key: "room", label: data.rooms.find((r) => r.id === roomId)?.roomName ?? "Room", onClear: () => setRoomId("") },
+          ].filter((c): c is { key: string; label: string; onClear: () => void } => !!c)}
           activeCount={[programId, sectionId, proctorId, roomId].filter(Boolean).length}
           perspective={data.canSubmit ? undefined : perspective}
           onPerspective={(kind) => { setPerspective(kind); setSectionId(""); setProctorId(""); setRoomId(""); }}
@@ -588,7 +592,7 @@ function GenerateExamsDialog({ sections, pendingBySection, initial, period, plan
           <>
             <DialogHeader>
               <DialogTitle>Auto-Schedule {period} Examinations</DialogTitle>
-              <DialogDescription>Choose the year levels or sections to generate. Each examination starts from its class schedule, keeps the class teacher as proctor, and is saved as a draft on the timetable.</DialogDescription>
+              <DialogDescription>Choose year levels or sections. Each examination is saved as a draft.</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
               {groups.map(([group, list]) => {

@@ -2,9 +2,10 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { OUTSIDE_DEPARTMENT, requireScope } from "@/lib/permissions/scope";
-import { canManageSection } from "@/lib/sections/permissions";
+import { OUTSIDE_DEPARTMENT, policyUserFromScope, requireScope } from "@/lib/permissions/scope";
+import { can } from "@/lib/permissions/policy";
 import { generateSectionBatch, sectionGenerationContext, undoSectionBatch } from "@/lib/sections/generation-service";
+import { CurriculumError, linkEmptySectionCurriculum } from "@/lib/sections/curriculum-service";
 import { logBlocked, recordDepartment } from "@/lib/permissions/department";
 import { prisma } from "@/lib/db/prisma";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
@@ -24,6 +25,7 @@ const schema = z
     semesterId: z.string().optional(),
   })
   .refine((d) => d.level !== "COLLEGE" || (!!d.programId && !!d.yearLevel), { message: "College sections need a course and year level" })
+  .refine((d) => d.level !== "COLLEGE" || !!d.semesterId, { message: "Choose an academic term for this college section" })
   .refine((d) => d.level === "COLLEGE" || (!!d.gradeLevel && LEVELS[d.level].grades.includes(d.gradeLevel)), {
     message: "Choose a grade level that belongs to this academic level",
   })
@@ -46,10 +48,10 @@ export async function saveSectionAction(id: string | null, formData: FormData): 
   };
 
   // Sections belong to the department of their course or strand, or of their basic-education level.
-  const existing = id ? await prisma.section.findUnique({ where: { id }, select: { departmentId: true } }) : null;
+  const existing = id ? await prisma.section.findUnique({ where: { id }, select: { departmentId: true, programId: true, archivedAt: true } }) : null;
   const departmentId = await recordDepartment(scope, data.programId, data.level, existing?.departmentId);
-  const actor = scope;
-  if (!canManageSection(actor, { departmentId }) || (existing && !canManageSection(actor, existing))) {
+  const actor = policyUserFromScope(scope);
+  if (!can(actor, "edit", { type: "section", departmentId, programId: data.programId }) || (existing && (existing.archivedAt || !can(actor, "edit", { type: "section", ...existing })))) {
     await logBlocked(scope, "save a section outside the department", "Section", id);
     return { ok: false, error: OUTSIDE_DEPARTMENT };
   }
@@ -59,15 +61,38 @@ export async function saveSectionAction(id: string | null, formData: FormData): 
   });
   if (duplicate) return { ok: false, error: `A section named "${data.name}" already exists here.` };
 
-  if (id) await prisma.section.update({ where: { id }, data: { ...data, departmentId } });
-  else {
-    const last = await prisma.section.aggregate({ _max: { sortOrder: true } });
-    await prisma.section.create({ data: { ...data, departmentId, sortOrder: (last._max.sortOrder ?? -1) + 1 } });
+  try {
+    if (id) await prisma.section.update({ where: { id }, data: { ...data, departmentId } });
+    else {
+      await prisma.$transaction(async (tx) => {
+        const last = await tx.section.aggregate({ _max: { sortOrder: true } });
+        const section = await tx.section.create({ data: { ...data, departmentId, sortOrder: (last._max.sortOrder ?? -1) + 1 } });
+        await linkEmptySectionCurriculum(tx, scope, section.id);
+      });
+    }
+  } catch (error) {
+    if (error instanceof CurriculumError) return { ok: false, error: error.message };
+    throw error;
   }
   revalidatePath("/sections");
   revalidatePath("/scheduler");
   queueWorkloadCheck("A section was opened or changed");
   return { ok: true };
+}
+
+export async function loadSectionCurriculumAction(sectionId: string) {
+  const scope = await requireScope(...STAFF_ROLES);
+  if (typeof sectionId !== "string" || !sectionId) return { ok: false as const, error: "Choose a section." };
+  try {
+    const created = await prisma.$transaction((tx) => linkEmptySectionCurriculum(tx, scope, sectionId));
+    revalidatePath("/sections");
+    revalidatePath("/scheduler");
+    if (created) queueWorkloadCheck("Section curriculum was loaded");
+    return { ok: true as const, created };
+  } catch (error) {
+    if (error instanceof CurriculumError) return { ok: false as const, error: error.message };
+    throw error;
+  }
 }
 export async function loadSectionGenerationContextAction(input: unknown) {
   return sectionGenerationContext(await requireScope(...STAFF_ROLES), input);

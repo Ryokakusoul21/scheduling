@@ -12,7 +12,7 @@ export const CHANGE_LABELS: Record<ChangeType, string> = {
 };
 
 /** Why the solver gave up on an issue. */
-export type Cause = "NO_ROOM" | "NO_FACULTY" | "NO_SLOT" | "DATA" | "NOT_EDITABLE" | "LIMIT";
+export type Cause = "NO_ROOM" | "NO_FACULTY" | "NO_SLOT" | "DATA" | "NOT_EDITABLE" | "LIMIT" | "MISSING_ASSIGNMENT" | "ASSIGNED_UNAVAILABLE";
 
 const ROOM_WORD: Record<string, string> = {
   COMPUTER_LABORATORY: "computer laboratory",
@@ -31,6 +31,10 @@ export function unresolved(issue: Issue, cause: Cause, input: ResolverInput): Un
   const subjectLink = subject ? { href: "/subjects", label: `Check ${subject.code} in Subjects` } : undefined;
 
   switch (cause) {
+    case "MISSING_ASSIGNMENT":
+      return { issue, reason: "Needs teacher: this section's subject has no active teacher assignment for this term.", actions: ["Assign a teacher to this section in Subjects, then run Auto-Schedule again."], link: { href: "/subjects", label: "Open Subjects" } };
+    case "ASSIGNED_UNAVAILABLE":
+      return { issue, reason: input.faculty.find((f) => f.id === input.assignments?.find((a) => a.sectionId === issue.sectionId && a.subjectId === issue.subjectId && a.semesterId === section?.termId)?.facultyId)?.unavailableReason ?? "The assigned teacher does not teach this level or is unavailable. Another teacher was not substituted.", actions: ["Check the assigned teacher and required approvals in Subjects."], link: { href: "/subjects", label: "Review assignment" } };
     case "DATA":
       return {
         issue,
@@ -49,7 +53,7 @@ export function unresolved(issue: Issue, cause: Cause, input: ResolverInput): Un
       return {
         issue,
         reason: "No active faculty member who teaches this level is free at any time that also suits a room.",
-        actions: ["Assign another faculty member, or turn off Keep faculty assignments and run again.", "Widen the faculty member's available hours."],
+        actions: ["Review the teacher assignment in Subjects.", "Widen the assigned teacher's available hours."],
         link: { href: "/faculty", label: "Open Faculty" },
       };
     case "NOT_EDITABLE":

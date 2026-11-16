@@ -1,3 +1,4 @@
+import { roomLabel } from "@/lib/rooms/label";
 import { loadTimetableBundle } from "@/lib/timetable/service";
 import { PROGRAM_CATALOG_FILTER } from "@/lib/academics/levels";
 import type { AcademicLevel } from "@prisma/client";
@@ -23,7 +24,7 @@ export async function ExamMode({ scope, academicYearId, academicYearControl, mod
     // The teacher of a class is its default proctor, even when the teacher belongs to another department (a shared General Education class).
     prisma.faculty.findMany({ where: { status: "ACTIVE", archivedAt: null, OR: [departmentWhere.faculty(scope), { schedules: { some: { semesterId: { in: termIds }, ...departmentWhere.schedule(scope) } } }] }, include: { availability: true }, orderBy: { fullName: "asc" } }),
     // Rooms stay campus-wide for availability; another department's room can only be requested from the Registrar.
-    prisma.room.findMany({ where: { archivedAt: null, status: "AVAILABLE" }, include: { availability: true }, orderBy: [{ sortOrder: "asc" }, { roomName: "asc" }] }),
+    prisma.room.findMany({ where: { archivedAt: null, status: "AVAILABLE" }, include: { availability: true, department: { select: { code: true } } }, orderBy: [{ sortOrder: "asc" }, { roomNumber: "asc" }] }),
     prisma.examination.findMany({ where: { AND: [examScope, { semesterId: { in: termIds }, status: { not: "ARCHIVED" } }] }, orderBy: [{ date: "asc" }, { startMin: "asc" }] }),
     hod
       ? prisma.examination.findMany({ where: { semesterId: { in: termIds }, status: { not: "ARCHIVED" }, NOT: examScope }, select: { id: true, date: true, startMin: true, endMin: true, roomId: true, proctorId: true, sectionId: true } })
@@ -66,10 +67,10 @@ export async function ExamMode({ scope, academicYearId, academicYearControl, mod
     departments: await prisma.department.findMany({ where: departmentWhere.department(scope), select: { id: true, name: true }, orderBy: { name: "asc" } }),
     terms: terms.map((t) => ({ id: t.id, level: t.level as AcademicLevel, programId: t.programId, isActive: t.isActive, label: `${levelLabel(t.level)} · ${termLabel(t.type)}${t.isActive ? " (active)" : ""}` })),
     programs: programs.map((p) => ({ id: p.id, code: p.code, name: p.name, level: p.level })),
-    sections: sections.map((s) => ({ id: s.id, name: s.name, departmentId: s.departmentId, level: s.level, yearLevel: s.yearLevel, gradeLevel: s.gradeLevel, programId: s.programId, semesterId: s.semesterId, studentCount: s.studentCount })),
+    sections: sections.filter((s) => !scope.isAdmin || exams.some((e) => e.sectionId === s.id)).map((s) => ({ id: s.id, name: s.name, departmentId: s.departmentId, level: s.level, yearLevel: s.yearLevel, gradeLevel: s.gradeLevel, programId: s.programId, semesterId: s.semesterId, studentCount: s.studentCount })),
     subjects,
     faculty: faculty.map((f) => ({ id: f.id, fullName: f.fullName, dayOff: f.employmentType === "PART_TIME" ? f.dayOff : null, availability: f.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })) })),
-    rooms: rooms.map((r) => ({ id: r.id, roomName: r.roomName, capacity: r.capacity, foreign: isForeign(scope, r.departmentId), availability: isForeign(scope, r.departmentId) ? [] : r.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })) })),
+    rooms: rooms.map((r) => ({ id: r.id, departmentId: r.departmentId, departmentCode: r.department?.code, isGeneralShared: r.isGeneralShared, roomName: roomLabel(r), capacity: r.capacity, foreign: isForeign(scope, r.departmentId), availability: isForeign(scope, r.departmentId) ? [] : r.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })) })),
     exams: exams.map((e) => ({
       id: e.id, semesterId: e.semesterId, sectionId: e.sectionId, subjectId: e.subjectId, roomId: e.roomId, proctorId: e.proctorId,
       type: e.type, date: day(e.date), startMin: e.startMin, endMin: e.endMin, status: e.status, notes: e.notes ?? "", reviewNote: e.reviewNote,

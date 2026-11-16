@@ -1,3 +1,4 @@
+import { roomAllowsSection, type RoomDesignation, type SectionDesignation } from "@/lib/rooms/designation";
 /**
  * Ranks faculty and rooms for a class slot so the best (free, available,
  * suitable) options come first. Shared by the class dialog and drag-to-create.
@@ -61,11 +62,13 @@ export function rankFaculty(
 const LAB_TYPES: RoomType[] = ["COMPUTER_LABORATORY", "SCIENCE_LABORATORY"];
 
 export function rankRooms(
-  rooms: { id: string; capacity: number; roomType: RoomType; status: string; programIds?: string[] | null }[],
+  rooms: ({ id: string; capacity: number; roomType: RoomType; status: string } & RoomDesignation)[],
   slot: Slot,
   bookings: Booking[],
-  opts: { studentCount?: number; component: "LECTURE" | "LABORATORY"; requiredRoomType?: RoomType; programId?: string | null }
+  /** The faculty member's preferred rooms, best first: a free valid preferred room wins; otherwise the tightest fit. */
+  opts: SectionDesignation & { studentCount?: number; component: "LECTURE" | "LABORATORY"; requiredRoomType?: RoomType; programId?: string | null; preferredRoomIds?: string[]; sameRoomId?: string }
 ): Ranked[] {
+  const capacity = new Map(rooms.map((r) => [r.id, r.capacity]));
   return rooms
     .map((r) => {
       const busy = isBusy(bookings, "roomId", r.id, slot);
@@ -76,13 +79,18 @@ export function rankRooms(
           ? !isLab && r.roomType !== opts.requiredRoomType
           : isLab || r.roomType === "CONFERENCE_ROOM";
       const closed = r.status !== "AVAILABLE";
-      // Designated rooms only serve their own programs or strands.
-      const otherProgram = !!r.programIds && !(opts.programId && r.programIds.includes(opts.programId));
+      // Designation and owning department use the same selection.
+      const otherProgram = !roomAllowsSection(r, opts);
+      const base = (busy ? 8 : 0) + (closed || otherProgram ? 4 : 0) + (tooSmall ? 2 : 0) + (typeMismatch ? 1 : 0);
+      const preferred = opts.preferredRoomIds?.indexOf(r.id) ?? -1;
+      // Only a room that is otherwise valid gets the preference boost; a busy preferred room falls back.
+      // Next best: the room the subject's other meetings with this section already use.
+      const boost = base !== 0 ? 0 : preferred >= 0 ? 1 - preferred * 0.1 : r.id === opts.sameRoomId ? 0.5 : 0;
       return {
         id: r.id,
-        rank: (busy ? 8 : 0) + (closed || otherProgram ? 4 : 0) + (tooSmall ? 2 : 0) + (typeMismatch ? 1 : 0),
-        notes: [busy && "busy", tooSmall && `seats ${r.capacity}`, typeMismatch && "type", closed && "closed", otherProgram && "other program"].filter(Boolean) as string[],
+        rank: base - boost,
+        notes: [busy && "busy", tooSmall && `seats ${r.capacity}`, typeMismatch && "type", closed && "closed", otherProgram && "other department", boost > 0 && (preferred >= 0 ? "preferred" : "same room")].filter(Boolean) as string[],
       };
     })
-    .sort((a, b) => a.rank - b.rank);
+    .sort((a, b) => a.rank - b.rank || (capacity.get(a.id) ?? 0) - (capacity.get(b.id) ?? 0));
 }

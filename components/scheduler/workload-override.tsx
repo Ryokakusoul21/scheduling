@@ -28,7 +28,7 @@ export function useWorkloadOverride() {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Faculty loads are not balanced</DialogTitle>
-          <DialogDescription>Approve or fix the workload proposals first, or submit anyway with a reason. The override is recorded in the Audit Logs.</DialogDescription>
+          <DialogDescription>Fix workload proposals first, or submit with a reason.</DialogDescription>
         </DialogHeader>
         <ul className="max-h-56 space-y-1.5 overflow-y-auto text-sm">
           {issues?.map((i) => <li key={i} className="flex gap-2"><Warning className="mt-0.5 size-4 shrink-0 text-warning" />{i}</li>)}

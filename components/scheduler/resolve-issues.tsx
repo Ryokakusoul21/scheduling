@@ -1,15 +1,17 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { CircleNotch, Eye, MagicWand } from "@phosphor-icons/react/ssr";
+import { ArrowsOutCardinal, CalendarX, ChalkboardTeacher, CircleNotch, Clock, Door, Eye, Hourglass, MagicWand, WarningCircle } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
+import { DialogHero, Fact, LEGEND, Segmented, ToggleCard } from "./process-dialog-parts";
 import { checkSelection } from "@/lib/scheduler/resolver/changes";
 import { summaryFacts, templateSummary } from "@/lib/scheduler/resolver/explain";
 import { DEFAULT_OPTIONS, ISSUE_KINDS, type Change, type IssueCounts, type IssueKind, type Proposal, type ResolverEntry, type ResolverInput } from "@/lib/scheduler/resolver/types";
 import { applyRepairAction, narrateRepairAction, repairStampAction, undoRepairAction } from "@/app/(dashboard)/scheduler/resolve-actions";
 import { cn } from "@/lib/utils";
+import { ProcessAnimation } from "./process-animation";
 import { ResolveReview, type Labels } from "./resolve-review";
 import { useResolver } from "./use-resolver";
 
@@ -23,12 +25,16 @@ export interface ResolveRequest {
 
 const KIND_LABELS: Record<IssueKind, string> = {
   UNSCHEDULED: "Unscheduled classes",
-  HOURS: "Hours that do not match the subject",
+  HOURS: "Hours mismatches",
   ROOM_TYPE: "Room type mismatches",
   CONFLICT: "Double bookings",
 };
+const KIND_ICONS = { UNSCHEDULED: CalendarX, HOURS: Hourglass, ROOM_TYPE: Door, CONFLICT: WarningCircle } satisfies Record<IssueKind, unknown>;
 
-type Phase = { name: "options" } | { name: "review"; proposal: Proposal; base: ResolverEntry[]; generatedAt: string };
+const STAGES = ["Find issues", "Fix", "Improve"];
+const MIN_RUN_MS = 1200;
+
+type Phase ={ name: "options" } | { name: "review"; proposal: Proposal; base: ResolverEntry[]; generatedAt: string };
 
 /**
  * Resolve issues: options, a cancellable run in a Web Worker, then a review where each change can be
@@ -58,7 +64,6 @@ export function ResolveIssues({
   const [scope, setScope] = useState<ResolveRequest["scope"]>(request?.scope ?? "filter");
   const [selected, setSelected] = useState<string[]>(request?.sectionIds ?? []);
   const [kinds, setKinds] = useState<IssueKind[]>(request?.kinds ?? ISSUE_KINDS);
-  const [keepFaculty, setKeepFaculty] = useState(DEFAULT_OPTIONS.keepFaculty);
   const [moveComplete, setMoveComplete] = useState(DEFAULT_OPTIONS.moveCompleteSections);
   const [retime, setRetime] = useState(DEFAULT_OPTIONS.retime);
   const [phase, setPhase] = useState<Phase>({ name: "options" });
@@ -70,16 +75,25 @@ export function ResolveIssues({
   const [previewing, setPreviewing] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const [applying, startApply] = useTransition();
+  const [busy, setBusy] = useState(false);
+  const runId = useRef(0);
 
   const sectionIds = scope === "filter" ? filterSectionIds : scope === "selected" ? selected : (request?.sectionIds ?? filterSectionIds);
-  const options = { ...DEFAULT_OPTIONS, sectionIds, issueIds: scope === "issue" && request?.issueId ? [request.issueId] : undefined, kinds, keepFaculty, moveCompleteSections: moveComplete, retime };
+  const options = { ...DEFAULT_OPTIONS, sectionIds, issueIds: scope === "issue" && request?.issueId ? [request.issueId] : undefined, kinds, keepFaculty: true, moveCompleteSections: moveComplete, retime };
 
   async function start() {
     const input = buildInput();
     const stamp = await repairStampAction();
     if (!stamp.ok) return void toast.error(stamp.error);
     setAnnouncement("Looking for fixes.");
+    const id = ++runId.current;
+    const began = Date.now();
+    setBusy(true);
     const proposal = await run(input, options);
+    // Hold briefly so the process animation is seen even when the solver is instant.
+    if (proposal) await new Promise((r) => setTimeout(r, Math.max(0, MIN_RUN_MS - (Date.now() - began))));
+    if (runId.current !== id) return;
+    setBusy(false);
     if (!proposal) return setAnnouncement("Cancelled.");
     const ids = proposal.changes.map((c) => c.id);
     setAccepted(new Set(ids));
@@ -114,8 +128,16 @@ export function ResolveIssues({
     if (previewing) onPreview(phase.proposal.changes.filter((c) => result.accepted.includes(c.id)));
   }
 
-  function close() {
+  /** Cancels a run, including one waiting out the animation hold. */
+  function stop() {
+    runId.current++;
+    setBusy(false);
     cancel();
+    setAnnouncement("Cancelled.");
+  }
+
+  function close() {
+    stop();
     onPreview(null);
     setPreviewing(false);
     onClose();
@@ -152,16 +174,6 @@ export function ResolveIssues({
     });
   }
 
-  const check = (label: string, value: boolean, set: (v: boolean) => void, hint?: string) => (
-    <label key={label} className="flex items-start gap-2.5 text-sm">
-      <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={value} onChange={(e) => set(e.target.checked)} />
-      <span>
-        {label}
-        {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}
-      </span>
-    </label>
-  );
-
   const reviewing = phase.name === "review";
   const count = reviewing ? accepted.size : 0;
 
@@ -170,66 +182,64 @@ export function ResolveIssues({
       <p aria-live="polite" className="sr-only">{progress ? `${progress.step}…` : announcement}</p>
       <Dialog open={!!request && !previewing} onOpenChange={(o) => !o && close()}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Resolve issues</DialogTitle>
-            <DialogDescription>
-              {reviewing ? "Review the proposed changes. Nothing changes until you apply them." : "The solver proposes fixes that never break a required rule. You review them before anything changes."}
-            </DialogDescription>
-          </DialogHeader>
+          <DialogHero icon={MagicWand} title="Resolve issues" description={reviewing ? "Review the proposal. Nothing changes until you apply." : "Proposes safe fixes for you to review."} />
 
-          {progress ? (
-            <div className="space-y-3 py-6" role="status">
-              <p className="flex items-center gap-2 font-medium">
-                <CircleNotch className="size-5 animate-spin" /> {progress.step}…
-              </p>
-              <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
-                <div className="h-full rounded-full bg-primary transition-[width] duration-200" style={{ width: `${progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%` }} />
-              </div>
-              <p className="text-[13px] text-muted-foreground">{progress.done} of {progress.total} tasks</p>
-            </div>
+          {busy ? (
+            <ProcessAnimation
+              stages={STAGES}
+              active={!progress ? STAGES.length : progress.step === "Finding issues" ? 0 : progress.step === "Improving the proposal" || progress.step === "Done" ? 2 : 1}
+              label={progress ? `${progress.step}…` : "Proposal ready"}
+              percent={!progress ? 100 : progress.total ? Math.round((progress.done / progress.total) * 100) : 0}
+              detail={progress ? `${progress.done} of ${progress.total}` : undefined}
+            />
           ) : reviewing ? (
             <ResolveReview proposal={phase.proposal} counts={counts ?? phase.proposal.after} summary={summary} aiPending={aiPending} accepted={accepted} onToggle={toggle} labels={labels} />
           ) : (
             <div className="space-y-5">
-              <fieldset className="space-y-2">
-                <legend className="mb-1 text-sm font-semibold">Scope</legend>
-                {([
-                  ["filter", `All sections in the current filter (${filterSectionIds.length})`],
-                  ["selected", "Selected sections"],
-                  ...(request?.issueId ? [["issue", `This issue only: ${request.issueLabel ?? ""}`]] : []),
-                ] as [ResolveRequest["scope"], string][]).map(([value, label]) => (
-                  <label key={value} className="flex items-center gap-2.5 text-sm">
-                    <input type="radio" name="resolve-scope" className="size-4 accent-primary" checked={scope === value} onChange={() => setScope(value)} />
-                    {label}
-                  </label>
-                ))}
+              <div className="space-y-2">
+                <Segmented
+                  name="resolve-scope"
+                  legend="Scope"
+                  value={scope}
+                  onChange={setScope}
+                  options={[
+                    { value: "filter", label: "All sections", count: filterSectionIds.length },
+                    { value: "selected", label: "Selected", count: scope === "selected" ? selected.length : undefined },
+                    ...(request?.issueId ? [{ value: "issue" as const, label: "This issue" }] : []),
+                  ]}
+                />
+                {scope === "issue" && request?.issueLabel && <p className="text-xs text-muted-foreground">{request.issueLabel}</p>}
                 {scope === "selected" && (
-                  <div className="ml-6 max-h-40 space-y-1 overflow-y-auto rounded-lg border p-2">
+                  <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto rounded-lg border p-2" role="group" aria-label="Sections">
                     {filterSectionIds.map((id) => (
-                      <label key={id} className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" className="size-4 accent-primary" checked={selected.includes(id)} onChange={(e) => setSelected((s) => (e.target.checked ? [...s, id] : s.filter((x) => x !== id)))} />
+                      <label key={id} className={cn("cursor-pointer rounded-full border px-2.5 py-1 text-xs font-medium transition-colors has-focus-visible:ring-2 has-focus-visible:ring-ring", selected.includes(id) ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")}>
+                        <input type="checkbox" className="sr-only" checked={selected.includes(id)} onChange={(e) => setSelected((s) => (e.target.checked ? [...s, id] : s.filter((x) => x !== id)))} />
                         {labels.section(id)}
                       </label>
                     ))}
                   </div>
                 )}
+              </div>
+              <fieldset>
+                <legend className={LEGEND}>Fix</legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {ISSUE_KINDS.map((k) => <ToggleCard key={k} icon={KIND_ICONS[k]} label={KIND_LABELS[k]} checked={kinds.includes(k)} onChange={(v) => setKinds((list) => (v ? [...list, k] : list.filter((x) => x !== k)))} />)}
+                </div>
               </fieldset>
-              <fieldset className="space-y-2">
-                <legend className="mb-1 text-sm font-semibold">Issue types to fix</legend>
-                {ISSUE_KINDS.map((k) => check(KIND_LABELS[k], kinds.includes(k), (v) => setKinds((list) => (v ? [...list, k] : list.filter((x) => x !== k)))))}
+              <fieldset>
+                <legend className={LEGEND}>Allow</legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <ToggleCard icon={ArrowsOutCardinal} label="Move complete sections" hint="Frees room for other classes" checked={moveComplete} onChange={setMoveComplete} />
+                  <ToggleCard icon={Clock} label="Change class times" hint="Off: rooms only" checked={retime} onChange={setRetime} />
+                </div>
               </fieldset>
-              <fieldset className="space-y-2">
-                <legend className="mb-1 text-sm font-semibold">Limits on the fix</legend>
-                {check("Keep faculty assignments", keepFaculty, setKeepFaculty, "New meetings go to the faculty member already teaching the subject in that section.")}
-                {check("Allow moving classes in complete sections", moveComplete, setMoveComplete, "Lets the solver move a class of a fully scheduled section to make room.")}
-                {check("Allow changing the time of scheduled classes", retime, setRetime, "When off, existing classes only change rooms.")}
-              </fieldset>
+              <Fact icon={ChalkboardTeacher}>Assigned teachers are kept</Fact>
             </div>
           )}
 
           <DialogFooter className="gap-2">
-            {progress ? (
-              <Button variant="outline" onClick={cancel}>Cancel</Button>
+            {busy ? (
+              <Button variant="outline" onClick={stop}>Cancel</Button>
             ) : reviewing ? (
               <>
                 <Button variant="outline" onClick={close}>Discard</Button>

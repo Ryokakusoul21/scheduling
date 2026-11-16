@@ -14,8 +14,8 @@ import type { AssignContext, SubjectInfo } from "./types";
 type Kind = (typeof REQUEST_KINDS)[number]["value"];
 
 /** Replaces the browser prompt: request type, a required reason, and an optional preferred teacher. */
-export function RequestChangeModal({ subject, faculty, assignment, onClose }: {
-  subject: SubjectInfo; faculty: AssignContext["faculty"]; assignment?: boolean; onClose: (sent: boolean) => void;
+export function RequestChangeModal({ subject, faculty, onClose }: {
+  subject: SubjectInfo; faculty: AssignContext["faculty"]; onClose: (sent: boolean) => void;
 }) {
   const [kind, setKind] = useState<Kind>("CHANGE_FACULTY");
   const [reason, setReason] = useState("");
@@ -44,7 +44,7 @@ export function RequestChangeModal({ subject, faculty, assignment, onClose }: {
     <Dialog open onOpenChange={(open) => !open && !pending && onClose(false)}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-lg">{assignment ? "Request assignment" : "Request change"} for {subject.code}</DialogTitle>
+          <DialogTitle className="text-lg">Request change for {subject.code}</DialogTitle>
           <DialogDescription className="text-sm">
             {subject.name}{subject.departmentName ? ` is managed by ${subject.departmentName}.` : " is managed by another department."} The Head of Department who owns it decides in Schedule Requests; if it has no owning department, the Registrar does.
           </DialogDescription>

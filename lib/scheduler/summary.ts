@@ -8,17 +8,22 @@ import type { DetectedConflict, SchedEntry } from "./types";
 type Section = { id: string; level: string; programId: string | null; yearLevel: string | null; gradeLevel: string | null; curriculum?: { subjectId: string; component: "LECTURE" | "LABORATORY" }[] };
 type Subject = { id: string; level: string; programId: string | null; yearLevel: string | null; gradeLevel: string | null; lectureHours: number; labHours: number; archived?: boolean };
 type Entry = SchedEntry & { status?: string };
+type QueueAssignment = { subjectId: string; sectionId: string | null; facultyId: string; semesterId?: string };
 
 /** Unscheduled subject components of one section in one term. */
-export function sectionNeeds(section: Section, subjects: Subject[], entries: Entry[], termId: string): SubjectNeed[] {
+export function sectionNeeds(section: Section, subjects: Subject[], entries: Entry[], termId: string, assignments?: QueueAssignment[]): SubjectNeed[] {
   const applicable = subjects.filter((s) => !s.archived && subjectAppliesToSection(s, section));
   const inTerm = entries.filter((e) => e.sectionId === section.id && e.semesterId === termId && e.status !== "ARCHIVED");
-  return remainingNeeds(section, applicable, inTerm, section.curriculum);
+  return remainingNeeds(section, applicable, inTerm, section.curriculum).map((n) => {
+    if (!assignments) return n;
+    const facultyId = assignments.find((a) => a.sectionId === section.id && a.subjectId === n.subjectId && (!a.semesterId || a.semesterId === termId))?.facultyId ?? null;
+    return { ...n, facultyId, ...(!facultyId ? { blockedReason: "Needs teacher: assign a teacher in Subjects first." } : {}) };
+  });
 }
 
 /** Unscheduled needs of every listed section, flattened in section order. */
-export function allSectionNeeds(sections: Section[], subjects: Subject[], entries: Entry[], termOf: (sectionId: string) => string): SubjectNeed[] {
-  return sections.flatMap((s) => sectionNeeds(s, subjects, entries, termOf(s.id)));
+export function allSectionNeeds(sections: Section[], subjects: Subject[], entries: Entry[], termOf: (sectionId: string) => string, assignments?: QueueAssignment[]): SubjectNeed[] {
+  return sections.flatMap((s) => sectionNeeds(s, subjects, entries, termOf(s.id), assignments));
 }
 
 /** Classes whose faculty is empty, unknown, or no longer active, reported as warnings. */

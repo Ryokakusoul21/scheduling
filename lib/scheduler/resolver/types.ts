@@ -45,18 +45,25 @@ export interface ResolverSubject {
 }
 
 export interface ResolverFaculty extends SchedFaculty {
+  unavailableReason?: string;
   teachingLevels: string[];
   /** Only active faculty of the viewer's own scope are ever assigned. */
   assignable: boolean;
+  /** Preferred rooms, best first; set only for viewers allowed to see them. */
+  preferredRoomIds?: string[];
 }
 
 export interface ResolverRoom extends SchedRoom {
+  departmentId?: string | null;
+  departmentCode?: string | null;
   programIds: string[] | null;
   /** Rooms of another department or closed rooms are never chosen. */
   assignable: boolean;
 }
 
 export interface ResolverInput {
+  /** Explicit active teacher assignments. An empty list keeps required classes visible as blocked. */
+  assignments?: { sectionId: string; subjectId: string; semesterId: string; facultyId: string }[];
   timetables?: Record<string, import("@/lib/timetable/config").TimetableConfig>;
   entries: ResolverEntry[];
   sections: ResolverSection[];
@@ -72,6 +79,8 @@ export interface ResolverInput {
 }
 
 export interface ResolverOptions {
+  /** Auto-scheduling adds missing hours only; saved meetings and their teachers stay in place. */
+  placementOnly?: boolean;
   /** Sections to work on; issues elsewhere are left alone. */
   sectionIds: string[];
   /** When set, only these issue ids are worked on ("This issue only"). */

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowCounterClockwise, CircleNotch, Eye, Lightning } from "@phosphor-icons/react/ssr";
@@ -53,7 +53,6 @@ export interface BatchView {
 const KINDS: { value: Kind; label: string; help: string }[] = [
   { value: "FACULTY", label: "Faculty unavailable", help: "Each class gets a qualified substitute who is free, preferring the same department; otherwise it is cancelled for a make-up class." },
   { value: "ROOM", label: "Room unavailable", help: "Each class moves to the nearest suitable free room, or the nearest free time that day; otherwise it is cancelled for a make-up class." },
-  { value: "SUSPENSION", label: "Class suspension", help: "Classes on the chosen days (all sections or specific sections) are cancelled, and make-up class options are offered." },
 ];
 const TIMES = timeOptions({ ...DEFAULT_GRID, dayEnd: 21 * 60 }).map((t) => ({ value: String(t.value), label: t.label }));
 const today = () => new Date().toLocaleDateString("en-CA");
@@ -62,8 +61,6 @@ interface FormState {
   kind: Kind;
   facultyId: string;
   roomId: string;
-  sectionIds: string[];
-  title: string;
   start: string;
   end: string;
   startMin: string;
@@ -75,8 +72,6 @@ interface FormState {
 export function AdjustmentWorkspace(props: {
   faculty: Option[];
   rooms: Option[];
-  sections: Option[];
-  canSuspendAll: boolean;
   reports: ReportView[];
   batches: BatchView[];
   initialReportId?: string;
@@ -84,16 +79,15 @@ export function AdjustmentWorkspace(props: {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const fromReport = (r: ReportView): FormState => ({
-    kind: "FACULTY", facultyId: r.facultyId, roomId: "", sectionIds: [], title: "", start: r.start, end: r.end,
+    kind: "FACULTY", facultyId: r.facultyId, roomId: "", start: r.start, end: r.end,
     startMin: r.startMin?.toString() ?? "", endMin: r.endMin?.toString() ?? "", reason: r.reason, reportId: r.id,
   });
   const initial = props.reports.find((r) => r.id === props.initialReportId);
   const [form, setForm] = useState<FormState>(
-    initial ? fromReport(initial) : { kind: "FACULTY", facultyId: "", roomId: "", sectionIds: [], title: "", start: today(), end: today(), startMin: "", endMin: "", reason: "" }
+    initial ? fromReport(initial) : { kind: "FACULTY", facultyId: "", roomId: "", start: today(), end: today(), startMin: "", endMin: "", reason: "" }
   );
   const [preview, setPreview] = useState<AdjustmentPlan | null>(null);
   const [applied, setApplied] = useState<{ batchId: string; plan: AdjustmentPlan } | null>(null);
-  const [sectionQuery, setSectionQuery] = useState("");
 
   const update = (patch: Partial<FormState>) => {
     setForm((f) => ({ ...f, ...patch }));
@@ -102,8 +96,7 @@ export function AdjustmentWorkspace(props: {
   const request = (): AdjustmentRequest => {
     const common = { start: form.start, end: form.end, startMin: form.startMin ? Number(form.startMin) : null, endMin: form.endMin ? Number(form.endMin) : null, reason: form.reason };
     if (form.kind === "FACULTY") return { kind: "FACULTY", facultyId: form.facultyId, reportId: form.reportId, ...common };
-    if (form.kind === "ROOM") return { kind: "ROOM", roomId: form.roomId, ...common };
-    return { kind: "SUSPENSION", sectionIds: form.sectionIds, title: form.title, ...common };
+    return { kind: "ROOM", roomId: form.roomId, ...common };
   };
 
   function runPreview(e: React.FormEvent) {
@@ -127,10 +120,6 @@ export function AdjustmentWorkspace(props: {
     });
   }
 
-  const visibleSections = useMemo(
-    () => props.sections.filter((s) => s.label.toLowerCase().includes(sectionQuery.toLowerCase())),
-    [props.sections, sectionQuery]
-  );
   const kind = KINDS.find((k) => k.value === form.kind)!;
 
   return (
@@ -163,12 +152,6 @@ export function AdjustmentWorkspace(props: {
                     <NativeSelect id="j-room" value={form.roomId} onChange={(e) => update({ roomId: e.target.value })} options={props.rooms} placeholder="Choose a room" />
                   </Field>
                 )}
-                {form.kind === "SUSPENSION" && (
-                  <Field className="lg:col-span-2">
-                    <FieldLabel htmlFor="j-title">Suspension title</FieldLabel>
-                    <Input id="j-title" value={form.title} onChange={(e) => update({ title: e.target.value })} placeholder="Typhoon class suspension" />
-                  </Field>
-                )}
                 <Field>
                   <FieldLabel htmlFor="j-start">From date</FieldLabel>
                   <Input id="j-start" type="date" value={form.start} onChange={(e) => update({ start: e.target.value, end: e.target.value > form.end ? e.target.value : form.end })} />
@@ -190,35 +173,6 @@ export function AdjustmentWorkspace(props: {
                   <Input id="j-reason" value={form.reason} onChange={(e) => update({ reason: e.target.value })} placeholder="Medical leave, maintenance, weather advisory" />
                 </Field>
               </div>
-
-              {form.kind === "SUSPENSION" && (
-                <fieldset className="space-y-2 rounded-lg border p-3">
-                  <legend className="px-1 text-sm font-medium">Sections</legend>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {props.canSuspendAll && (
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" className="size-4 accent-primary" checked={form.sectionIds.length === 0} onChange={() => update({ sectionIds: [] })} />
-                        All sections
-                      </label>
-                    )}
-                    <Input placeholder="Search sections" value={sectionQuery} onChange={(e) => setSectionQuery(e.target.value)} className="h-8 max-w-60" />
-                    <span className="text-xs text-muted-foreground">{form.sectionIds.length ? `${form.sectionIds.length} selected` : props.canSuspendAll ? "Every section" : "None selected"}</span>
-                  </div>
-                  <div className="grid max-h-44 gap-1 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
-                    {visibleSections.map((s) => (
-                      <label key={s.value} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          className="size-4 accent-primary"
-                          checked={form.sectionIds.includes(s.value)}
-                          onChange={(e) => update({ sectionIds: e.target.checked ? [...form.sectionIds, s.value] : form.sectionIds.filter((x) => x !== s.value) })}
-                        />
-                        <span className="truncate">{s.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-              )}
 
               <Button type="submit" variant="outline" disabled={pending}>
                 {pending ? <CircleNotch className="size-4 animate-spin" /> : <Eye className="size-4" />} Preview affected classes
@@ -268,7 +222,7 @@ export function AdjustmentWorkspace(props: {
                   {b.undone && <Badge variant="outline">Undone</Badge>}
                 </summary>
                 <div className="mt-3 space-y-2">
-                  {!b.undone && <UndoButton batchId={b.id} />}
+                  {!b.undone && (b.cause === "Class suspension" ? <p className="text-xs text-muted-foreground">Lift this order in Class Suspensions.</p> : <UndoButton batchId={b.id} />)}
                   <ChangeList items={b.items} extra={(i) => !b.undone && i.kind === "CANCELLED" && !i.makeUpScheduled && <MakeUpPicker batchId={b.id} item={i} />} />
                 </div>
               </details>
@@ -329,7 +283,7 @@ function UndoButton({ batchId, onDone }: { batchId: string; onDone?: () => void 
   );
 }
 
-function MakeUpPicker({ batchId, item }: { batchId: string; item: PlanItem }) {
+export function MakeUpPicker({ batchId, item }: { batchId: string; item: PlanItem }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [options, setOptions] = useState<(Placement & { reason: string })[] | null>(null);

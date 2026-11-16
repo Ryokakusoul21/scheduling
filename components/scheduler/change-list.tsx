@@ -34,8 +34,8 @@ export function ChangeList<T extends PlanItem>({
         <li key={`${i.scheduleId}-${i.before.date}-${n}`} className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{i.label}</p>
-            <Badge variant={i.kind === "MOVED" ? "secondary" : "destructive"} className="mt-1">
-              {i.kind === "MOVED" ? "Moved" : "Cancelled"}
+            <Badge variant={i.kind === "CANCELLED" ? "destructive" : "secondary"} className={cn("mt-1", i.kind === "ONLINE" && "bg-blue-500/10 text-blue-800 dark:text-blue-200")}>
+              {i.kind === "ONLINE" ? "Virtual class" : i.kind === "MOVED" ? "Moved" : "Cancelled"}
             </Badge>
           </div>
           <Slot p={i.before} />

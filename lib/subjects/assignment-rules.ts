@@ -28,11 +28,11 @@ export function subjectLoad(subject: Pick<AssignableSubject, "units" | "lectureH
 }
 
 /** Non-blocking warnings with projected loads for giving these subjects to this faculty member (and taking them from `losing`). */
-export function assignmentWarnings(faculty: AssignableFaculty, subjects: AssignableSubject[], measure: "HOURS" | "UNITS", losing: { faculty: AssignableFaculty; subjects: AssignableSubject[] }[] = []) {
+export function assignmentWarnings(faculty: AssignableFaculty, subjects: AssignableSubject[], measure: "HOURS" | "UNITS", losing: { faculty: AssignableFaculty; subjects: AssignableSubject[] }[] = [], loadDelta?: number) {
   const warnings: string[] = [];
   const unit = measure === "HOURS" ? "hours" : "units";
   const sum = (list: AssignableSubject[]) => list.reduce((n, s) => n + subjectLoad(s, measure), 0);
-  const gain = projectionWarning({ ...faculty, maximum: faculty.limit }, sum(subjects), unit);
+  const gain = projectionWarning({ ...faculty, maximum: faculty.limit }, loadDelta ?? sum(subjects), unit);
   if (gain) warnings.push(gain);
   for (const l of losing) {
     const loss = projectionWarning({ ...l.faculty, maximum: l.faculty.limit }, -sum(l.subjects), unit);
@@ -49,5 +49,5 @@ export function assignmentWarnings(faculty: AssignableFaculty, subjects: Assigna
 
 /** The assigned faculty for a class, or null when the subject is unassigned. */
 export function assignedFor(rows: { subjectId: string; sectionId: string | null; facultyId: string }[], subjectId: string, sectionId: string) {
-  return (rows.find((r) => r.subjectId === subjectId && r.sectionId === sectionId) ?? rows.find((r) => r.subjectId === subjectId && !r.sectionId))?.facultyId ?? null;
+  return rows.find((r) => r.subjectId === subjectId && r.sectionId === sectionId)?.facultyId ?? null;
 }

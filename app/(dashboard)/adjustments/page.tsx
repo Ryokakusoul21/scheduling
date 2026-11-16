@@ -1,3 +1,4 @@
+import { roomLabel } from "@/lib/rooms/label";
 import { prisma } from "@/lib/db/prisma";
 import { SCHEDULING_ROLES } from "@/lib/permissions/roles";
 import { requireScope } from "@/lib/permissions/scope";
@@ -22,14 +23,9 @@ export default async function AdjustmentsPage({ searchParams }: { searchParams: 
   const since = new Date();
   since.setDate(since.getDate() - 60);
 
-  const [faculty, rooms, sections, reports, batches] = await Promise.all([
+  const [faculty, rooms, reports, batches] = await Promise.all([
     prisma.faculty.findMany({ where: { status: "ACTIVE", archivedAt: null, ...dept }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true } }),
-    prisma.room.findMany({ where: { ...dept, archivedAt: null }, orderBy: { roomName: "asc" }, select: { id: true, roomName: true } }),
-    prisma.section.findMany({
-      where: { archivedAt: null, ...(scope.isAdmin ? {} : { departmentId: scope.manageDepartmentId }) },
-      orderBy: [{ level: "asc" }, { sortOrder: "asc" }],
-      select: { id: true, name: true, level: true },
-    }),
+    prisma.room.findMany({ where: { ...dept, archivedAt: null }, orderBy: { roomNumber: "asc" }, select: { id: true, roomNumber: true, roomName: true } }),
     prisma.unavailability.findMany({
       where: { kind: "FACULTY", status: "PENDING", faculty: dept },
       include: { faculty: { select: { fullName: true } } },
@@ -45,7 +41,7 @@ export default async function AdjustmentsPage({ searchParams }: { searchParams: 
         adjustments: {
           include: {
             schedule: {
-              include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomName: true } }, faculty: { select: { fullName: true } } },
+              include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomNumber: true, roomName: true } }, faculty: { select: { fullName: true } } },
             },
           },
           orderBy: [{ date: "asc" }],
@@ -57,7 +53,7 @@ export default async function AdjustmentsPage({ searchParams }: { searchParams: 
   ]);
 
   const [roomNames, facultyNames] = await Promise.all([
-    prisma.room.findMany({ select: { id: true, roomName: true } }).then((r) => new Map(r.map((x) => [x.id, x.roomName]))),
+    prisma.room.findMany({ select: { id: true, roomNumber: true, roomName: true } }).then((r) => new Map(r.map((x) => [x.id, roomLabel(x)]))),
     prisma.faculty.findMany({ select: { id: true, fullName: true } }).then((f) => new Map(f.map((x) => [x.id, x.fullName]))),
   ]);
 
@@ -65,7 +61,7 @@ export default async function AdjustmentsPage({ searchParams }: { searchParams: 
     const makeUps = b.adjustments.filter((a) => a.kind === "MAKE_UP");
     const items: (PlanItem & { makeUpScheduled: boolean })[] = b.adjustments.map((a) => {
       const s = a.schedule;
-      const before = { date: isoDate(a.date), roomId: s.roomId, roomName: s.room.roomName, facultyId: s.facultyId, facultyName: s.faculty.fullName, startMin: s.startMin, endMin: s.endMin };
+      const before = { date: isoDate(a.date), roomId: s.roomId, roomName: roomLabel(s.room), facultyId: s.facultyId, facultyName: s.faculty.fullName, startMin: s.startMin, endMin: s.endMin };
       const roomId = a.kind === "ONLINE" ? "" : (a.roomId ?? s.roomId);
       const facultyId = a.facultyId ?? s.facultyId;
       const after = a.kind === "CANCELLED" ? null : {
@@ -84,7 +80,7 @@ export default async function AdjustmentsPage({ searchParams }: { searchParams: 
       };
     });
     const booking = b.booking ? { id: b.booking.id, label: b.booking.priority === "REGULAR" || b.booking.priority === "HIGH" ? "View booking" : "View urgent booking" } : null;
-    return { id: b.id, cause: CAUSE_LABELS[b.cause], summary: b.summary, createdAt: b.createdAt.toISOString(), undone: !!b.undoneAt, booking, items };
+    return { id: b.id, cause: b.cause === "CLASS_SUSPENSION" && b.adjustments.some((item) => item.kind === "ONLINE") ? "Virtual classes" : CAUSE_LABELS[b.cause], summary: b.summary, createdAt: b.createdAt.toISOString(), undone: !!b.undoneAt, booking, items };
   });
 
   const reportViews: ReportView[] = reports.map((r) => ({
@@ -102,13 +98,11 @@ export default async function AdjustmentsPage({ searchParams }: { searchParams: 
     <div className="space-y-4">
       <PageHeader
         title="Schedule Adjustments"
-        description="When a faculty member or room becomes unavailable, or classes are suspended, affected schedules are regenerated automatically. Preview the before-and-after comparison, apply it, offer make-up classes, and undo if needed."
+        description="When a faculty member or room becomes unavailable, affected schedules are regenerated automatically. Preview the before-and-after comparison, apply it, offer make-up classes, and undo if needed."
       />
       <AdjustmentWorkspace
         faculty={faculty.map((f) => ({ value: f.id, label: f.fullName }))}
-        rooms={rooms.map((r) => ({ value: r.id, label: r.roomName }))}
-        sections={sections.map((s) => ({ value: s.id, label: s.name }))}
-        canSuspendAll={scope.isAdmin}
+        rooms={rooms.map((r) => ({ value: r.id, label: roomLabel(r) }))}
         reports={reportViews}
         batches={batchViews}
         initialReportId={report}

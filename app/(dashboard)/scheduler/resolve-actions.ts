@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { narrate } from "@/lib/ai/narrative";
 import { notifyFaculty } from "@/lib/notify";
+import { publishedScheduleIds } from "@/lib/scheduler/published";
 import { queueWorkloadCheck } from "@/lib/workload/auto";
 import { SCHEDULING_ROLES } from "@/lib/permissions/roles";
 import { canManageDepartment, requireScope } from "@/lib/permissions/scope";
@@ -15,7 +16,14 @@ import { validatePlacement } from "@/lib/scheduler/validate";
 import { applyChanges, introducedHard, revertChanges } from "@/lib/scheduler/resolver/changes";
 import { live, worldOf } from "@/lib/scheduler/resolver/issues";
 import { serverInput } from "@/lib/scheduler/resolver/server";
+import { AutoScheduleError, validateAutoPlacements } from "@/lib/scheduler/auto-schedule";
 import type { Change, ResolverEntry } from "@/lib/scheduler/resolver/types";
+
+/** Faculty on the changed classes that are published; drafts stay quiet. */
+async function noticeFaculty(changes: Change[]) {
+  const live = await publishedScheduleIds(changes.flatMap((c) => [c.before?.id, c.after?.id]).filter((id): id is string => !!id));
+  return changes.flatMap((c) => [c.before, c.after]).filter((e) => e && live.has(e.id)).map((e) => e!.facultyId).filter(Boolean);
+}
 
 type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string; stale?: boolean };
 
@@ -96,6 +104,7 @@ export async function applyRepairAction(input: z.infer<typeof applySchema>): Pro
   const parsed = applySchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "The proposal is not valid. Run Resolve issues again." };
   const { changes, generatedAt, options, summary, narrative } = parsed.data as typeof parsed.data & { changes: Change[] };
+  if (scope.role !== "HEAD_OF_DEPARTMENT" && changes.some((c) => !c.before && c.after)) return { ok: false, error: "New draft meetings must be prepared and submitted by the department." };
   const since = new Date(generatedAt);
 
   // Every touched section must be the caller's to change, and every subject theirs or shared.
@@ -142,9 +151,13 @@ export async function applyRepairAction(input: z.infer<typeof applySchema>): Pro
         ? { ...c, after: { ...c.after, id: crypto.randomUUID(), status: newStatus } }
         : c
   );
-  const saved = await prisma.$transaction(async (tx) => {
+  let saved: { proposalId: string; stored: Change[] };
+  try { saved = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(90812026)`;
     const created = stored.filter((c) => !c.before && c.after).map((c) => c.after!);
     if (created.length) {
+      const current = await serverInput(scope, termIds, tx);
+      validateAutoPlacements({ ...current, entries: applyChanges(current.entries, stored.filter((c) => c.before)) }, stored.filter((c) => !c.before && c.after));
       await tx.schedule.createMany({
         data: created.map((a) => ({
           id: a.id, semesterId: a.semesterId, sectionId: a.sectionId, subjectId: a.subjectId, facultyId: a.facultyId, roomId: a.roomId, component: a.component,
@@ -167,10 +180,15 @@ export async function applyRepairAction(input: z.infer<typeof applySchema>): Pro
       data: { userId: scope.userId, role: scope.role, departmentId: scope.departmentId, action: `Applied Resolve issues proposal: ${stored.length} change(s)`, entity: "WorkloadProposal", entityId: proposal.id, newValue: { options, changes: stored.length } as Prisma.InputJsonValue },
     });
     return { proposalId: proposal.id, stored };
-  }, TRANSACTION);
+  }, TRANSACTION); } catch (error) {
+    if (error instanceof AutoScheduleError) return { ok: false, stale: true, error: error.message };
+    throw error;
+  }
 
+  // Only changes to published classes concern faculty.
+  const livePeople = await noticeFaculty(changes);
   await notifyFaculty(
-    facultyIds,
+    livePeople,
     { title: "Your teaching schedule changed", message: "Your classes were updated. Check your timetable.", link: "/scheduler", type: "INFO" }
   );
   queueWorkloadCheck("Scheduler issues resolved", scope.userId);
@@ -219,7 +237,7 @@ export async function undoRepairAction(id: string): Promise<Result<{ entries: Re
     await tx.auditLog.create({ data: { userId: scope.userId, role: scope.role, departmentId: scope.departmentId, action: `Undid Resolve issues proposal: ${changes.length} change(s)`, entity: "WorkloadProposal", entityId: id } });
   }, TRANSACTION);
   await notifyFaculty(
-    changes.flatMap((c) => [c.before?.facultyId, c.after?.facultyId]).filter((f): f is string => !!f),
+    await noticeFaculty(changes),
     { title: "A schedule change was undone", message: "Your classes are back to their previous schedule.", link: "/scheduler", type: "INFO" }
   );
   queueWorkloadCheck("Scheduler repair undone", scope.userId);

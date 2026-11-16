@@ -1,3 +1,4 @@
+import { roomAllowsSection, type RoomDesignation } from "@/lib/rooms/designation";
 /**
  * Scheduling constraints: hard rules block saving, soft rules warn and can be overridden.
  * Pure and browser-safe; the server loads the rules and context (see constraints-server.ts).
@@ -46,7 +47,7 @@ export type ConstraintParams<K extends ConstraintKind> = z.infer<(typeof PARAM_S
 export const CONSTRAINT_INFO: Record<ConstraintKind, { label: string; hard: boolean; description: string }> = {
   NO_DOUBLE_BOOKING: { label: "No double-booking", hard: true, description: "A faculty member, room, or section is never in two classes at once. Always enforced." },
   ROOM_CAPACITY: { label: "Room capacity fits the section", hard: true, description: "The room has at least as many seats as the section has students." },
-  ROOM_DESIGNATION: { label: "Room matches program or strand", hard: true, description: "A section only uses rooms designated for its program or strand, or General / Shared rooms." },
+  ROOM_DESIGNATION: { label: "Room matches department", hard: true, description: "A section only uses rooms designated for its department, or General / Shared rooms." },
   MAX_TEACHING_LOAD: { label: "Maximum teaching load", hard: true, description: "A faculty member does not teach more than the daily and weekly hour limits." },
   PREFERRED_TIME: { label: "Faculty preferred time and days off", hard: false, description: "Classes of the faculty member fall inside the preferred hours and avoid the days off." },
   MAX_CONSECUTIVE: { label: "Maximum consecutive classes", hard: false, description: "No more than the set number of back-to-back classes." },
@@ -73,8 +74,8 @@ export interface ConstraintRule {
 }
 
 export interface ConstraintContext {
-  rooms: Map<string, { name: string; capacity: number; isGeneralShared: boolean; programIds: string[] }>;
-  sections: Map<string, { name: string; studentCount: number; programId: string | null; departmentId: string | null }>;
+  rooms: Map<string, { name: string; capacity: number; isGeneralShared: boolean; programIds: string[] } & RoomDesignation>;
+  sections: Map<string, { name: string; studentCount: number; programId: string | null; departmentId: string | null; level?: string }>;
   subjects: Map<string, { code: string; name: string }>;
   faculty: Map<string, { name: string }>;
   programNames: Map<string, string>;
@@ -146,10 +147,9 @@ function evaluate(rule: ConstraintRule, e: Entry, sameDay: Entry[], weeklyMinute
     }
     case "ROOM_DESIGNATION": {
       const room = ctx.rooms.get(e.roomId);
-      const programId = ctx.sections.get(e.sectionId)?.programId;
-      if (!room || room.isGeneralShared || (programId && room.programIds.includes(programId))) return [];
-      const allowed = room.programIds.map((id) => ctx.programNames.get(id) ?? id).join(", ") || "no program";
-      return [`${me}: ${room.name} is designated for ${allowed}, not for this section's program or strand.`];
+      const section = ctx.sections.get(e.sectionId);
+      if (!room || roomAllowsSection({ ...room, programIds: room.isGeneralShared ? null : room.programIds }, section ?? {})) return [];
+      return [`${me}: ${room.name} is designated for another department.`];
     }
     case "MAX_TEACHING_LOAD": {
       const daily = dayLine(e, sameDay, (x) => x.facultyId).reduce((s, x) => s + x.endMin - x.startMin, 0);

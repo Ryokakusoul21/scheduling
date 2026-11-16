@@ -31,7 +31,7 @@ export function filterSubjects<T extends FilterableSubject>(rows: T[], filters: 
   const term = filters.semester === "1" ? "FIRST" : filters.semester === "2" ? "SECOND" : filters.semester === "MIDYEAR" ? "SUMMER" : null;
   return rows.filter((row) =>
     (filters.category === "ALL" || (filters.category === "JOINED" ? row.sharedProgramIds.length > 1 : row.category === filters.category)) &&
-    (!term || row.semester === term) &&
+    (!term || !row.semester || row.semester === term) &&
     (filters.owner === "ALL" || (!!departmentId && row.departmentId === departmentId))
   );
 }

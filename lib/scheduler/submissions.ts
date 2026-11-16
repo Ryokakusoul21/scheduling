@@ -1,3 +1,4 @@
+import { roomLabel } from "@/lib/rooms/label";
 import "server-only";
 import type { ExaminationType, Prisma, SubmissionKind, TimetableSubmissionStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
@@ -61,20 +62,19 @@ export async function submissionRows(id: string, kind: SubmissionKind): Promise<
   if (kind === "EXAMINATION") {
     const rows = await prisma.examination.findMany({
       where: { submissionId: id }, orderBy: [{ date: "asc" }, { startMin: "asc" }],
-      include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomName: true } }, proctor: { select: { fullName: true } } },
+      include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomNumber: true, roomName: true } }, proctor: { select: { fullName: true } } },
     });
-    return rows.map((e) => ({ id: e.id, section: e.section.name, subject: e.subject.code, when: `${e.date.toISOString().slice(0, 10)}, ${formatRange(e.startMin, e.endMin)}`, room: e.room.roomName, person: e.proctor.fullName }));
+    return rows.map((e) => ({ id: e.id, section: e.section.name, subject: e.subject.code, when: `${e.date.toISOString().slice(0, 10)}, ${formatRange(e.startMin, e.endMin)}`, room: roomLabel(e.room), person: e.proctor.fullName }));
   }
   const rows = await prisma.schedule.findMany({
     where: { submissionId: id }, orderBy: [{ sectionId: "asc" }, { dayOfWeek: "asc" }, { startMin: "asc" }],
-    include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomName: true } }, faculty: { select: { fullName: true } } },
+    include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomNumber: true, roomName: true } }, faculty: { select: { fullName: true } } },
   });
-  return rows.map((e) => ({ id: e.id, section: e.section.name, subject: `${e.subject.code}${e.component === "LABORATORY" ? " (Laboratory)" : ""}`, when: `${DAY(e.dayOfWeek)}, ${formatRange(e.startMin, e.endMin)}`, room: e.room.roomName, person: e.faculty.fullName }));
+  return rows.map((e) => ({ id: e.id, section: e.section.name, subject: `${e.subject.code}${e.component === "LABORATORY" ? " (Laboratory)" : ""}`, when: `${DAY(e.dayOfWeek)}, ${formatRange(e.startMin, e.endMin)}`, room: roomLabel(e.room), person: e.faculty.fullName }));
 }
 
 /**
  * Creates a submission for one department and term, moves the given rows to review, and stores a snapshot.
- * The period row is locked with the submission transaction, so closing the window cannot race a submission.
  */
 export async function createSubmission(input: { kind: SubmissionKind; examType?: ExaminationType; departmentId: string; semesterId: string; ids: string[]; linkIds?: string[]; userId: string; overrideReason?: string | null }): Promise<SubmissionCreation> {
   const key = { departmentId: input.departmentId, semesterId: input.semesterId, kind: input.kind, ...(input.examType ? { examType: input.examType } : {}) };
@@ -82,20 +82,6 @@ export async function createSubmission(input: { kind: SubmissionKind; examType?:
   try {
     created = await prisma.$transaction(async (tx): Promise<SubmissionCreation> => {
     const now = new Date();
-    const activePeriods = await tx.$queryRaw<{ id: string }[]>`
-      SELECT "id"
-      FROM "SchedulingPeriod"
-      WHERE "semesterId" = ${input.semesterId}
-        AND "kind" = ${input.kind === "EXAMINATION" ? "EXAMINATION" : "CLASS_TIMETABLE"}::"SchedulingPeriodKind"
-        AND "status" = 'OPEN'::"SchedulingPeriodStatus"
-        AND "startsAt" <= ${now}
-        AND "endsAt" >= ${now}
-      FOR UPDATE
-    `;
-    if (!activePeriods.length) {
-      const label = input.kind === "EXAMINATION" ? "examination" : "class timetable";
-      return { ok: false, error: `The ${label} submission period closed before the timetable could be submitted. Contact the Registrar.` };
-    }
     if (await tx.timetableSubmission.count({ where: { ...key, status: { in: LOCKED_STATUSES } } })) {
       return { ok: false, error: "A timetable for this term is already waiting for the Registrar's decision." };
     }
