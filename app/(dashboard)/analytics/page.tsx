@@ -73,7 +73,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const buildingId = buildings.some((building) => building.id === params.building) ? params.building! : "";
   const visibleRooms = rooms.filter((room) => !buildingId || room.floor?.building.id === buildingId);
   const buildingRoomIds = new Set(visibleRooms.map((room) => room.id));
-  const schedules = scopedSchedules.filter((meeting) => !buildingId || buildingRoomIds.has(meeting.roomId));
+  const schedules = scopedSchedules.filter((meeting) => !buildingId || buildingRoomIds.has(meeting.roomId ?? ""));
 
   // With a department filter, only rooms that department owns and shared rooms it uses are listed.
   const usedRooms = new Set(schedules.map((s) => s.roomId));

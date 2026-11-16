@@ -16,7 +16,7 @@ export function ClassDetailsDrawer({ subjectCode, classes, onClose }: { subjectC
     .sort((a, b) => DAY_ENUMS.indexOf(a.dayOfWeek) - DAY_ENUMS.indexOf(b.dayOfWeek) || a.startMin - b.startMin);
   const first = meetings[0];
   const faculty = [...new Map(meetings.map((m) => [m.faculty, m.facultyEmail])).entries()];
-  const rooms = [...new Map(meetings.filter((m) => m.room).map((m) => [m.room, m])).values()];
+  const rooms = [...new Map(meetings.filter((m) => m.room && m.deliveryMode !== "ONLINE_LIVE").map((m) => [m.room, m])).values()];
 
   return (
     <Sheet open={!!first} onOpenChange={(open) => !open && onClose()}>
@@ -40,6 +40,7 @@ export function ClassDetailsDrawer({ subjectCode, classes, onClose }: { subjectC
                       <span>
                         <span className="font-medium">{titleCase(m.dayOfWeek)}</span> · {formatRange(m.startMin, m.endMin)}
                         <span className="block text-xs text-muted-foreground">{m.room ?? "Room to be announced"}</span>
+                        {m.deliveryMode === "ONLINE_LIVE" && m.meetingLink && /^https?:\/\//.test(m.meetingLink) && <a href={m.meetingLink} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-primary underline">Join online class</a>}
                       </span>
                       <ComponentTag component={m.component} />
                     </li>

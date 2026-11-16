@@ -115,7 +115,7 @@ export async function facultyAnalytics({ facultyId, userId, termId }: { facultyI
     byDay,
     timetable: classes.map((c) => ({
       id: c.id, dayOfWeek: c.dayOfWeek, startMin: c.startMin, endMin: c.endMin,
-      title: `${c.subject.code} ${c.section.name}`, detail: `${roomLabel(c.room)} · ${c.component === "LABORATORY" ? "Laboratory" : "Lecture"}`,
+      title: `${c.subject.code} ${c.section.name}`, detail: `${(roomLabel(c.room) || "Online (live)")} · ${c.component === "LABORATORY" ? "Laboratory" : "Lecture"}`,
     })),
     comparison: [
       { name: "My load", value: load },

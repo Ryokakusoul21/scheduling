@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireScope } from "@/lib/permissions/scope";
 import { PUBLISH_ROLES } from "@/lib/permissions/roles";
-import { decideSubmissions } from "@/lib/scheduler/submissions";
+import { ClassPolicyReviewError, decideSubmissions } from "@/lib/scheduler/submissions";
 
 const inputSchema = z.object({
   kind: z.enum(["CLASS_SCHEDULE", "EXAMINATION", "SCHEDULE_REQUEST", "ACTIVITY_PROPOSAL", "WORKLOAD_FIX"]),
@@ -26,9 +26,14 @@ export async function bulkReviewAction(input: z.input<typeof inputSchema>): Prom
 
   if (kind === "CLASS_SCHEDULE" || kind === "EXAMINATION") {
     // Ids are whole timetable submissions; Request changes returns the timetable to the Head of Department.
-    const count = await decideSubmissions(ids, decision === "REQUEST_CHANGES" ? "RETURN" : decision, scope.userId, reason);
-    refresh();
-    return { ok: true, count };
+    try {
+      const count = await decideSubmissions(ids, decision === "REQUEST_CHANGES" ? "RETURN" : decision, scope.userId, reason);
+      refresh();
+      return { ok: true, count };
+    } catch (error) {
+      if (error instanceof ClassPolicyReviewError) return { ok: false, error: error.message };
+      throw error;
+    }
   }
   return { ok: false, error: "This approval is handled by department heads and is unavailable in the Registrar Review Center." };
 }

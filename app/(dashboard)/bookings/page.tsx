@@ -68,11 +68,11 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
     const moves = b.batch && !b.batch.undoneAt
       ? b.batch.adjustments.filter((a) => a.kind !== "MAKE_UP").map((a) => {
           const s = a.schedule;
-          const to = a.kind === "ONLINE" ? ONLINE_ROOM : roomName.get(a.roomId ?? s.roomId) ?? "Room";
+          const to = a.kind === "ONLINE" ? ONLINE_ROOM : roomName.get(a.roomId ?? s.roomId ?? "") ?? "Room";
           return {
             label: own(s.section.departmentId) ? `${s.subject.code} ${s.section.name}` : "A class of another department",
             faculty: own(s.section.departmentId) ? (facultyName.get(s.facultyId) ?? "") : "",
-            from: `${roomName.get(s.roomId) ?? "Room"}, ${formatRange(s.startMin, s.endMin)}`,
+            from: `${roomName.get(s.roomId ?? "") ?? "Room"}, ${formatRange(s.startMin, s.endMin)}`,
             to: `${to}, ${a.newDate ? `${formatDay(isoDate(a.newDate))}, ` : ""}${formatRange(a.startMin ?? s.startMin, a.endMin ?? s.endMin)}`,
             kind: a.kind,
             reason: a.reason,
@@ -104,7 +104,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
       canCancel: !past && canManageBooking(scope, b) && ["CONFIRMED", "AWAITING_APPROVAL", "PENDING"].includes(b.status),
       canEdit: !past && canManageBooking(scope, b) && b.status === "CONFIRMED",
       moves,
-      displaced: b.displaced.map((d) => ({ purpose: d.purpose, outcome: d.status === "CANCELLED" ? "Cancelled; no other room was free" : `Moved to ${roomName.get(d.roomId) ?? "another room"}` })),
+      displaced: b.displaced.map((d) => ({ purpose: d.purpose, outcome: d.status === "CANCELLED" ? "Cancelled; no other room was free" : `Moved to ${roomName.get(d.roomId ?? "") ?? "another room"}` })),
       acknowledgements: b.acknowledgements.map((a) => ({ faculty: facultyName.get(a.facultyId) ?? "Faculty", status: a.status, note: a.note })),
     };
   });

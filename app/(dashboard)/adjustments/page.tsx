@@ -61,8 +61,8 @@ export default async function AdjustmentsPage({ searchParams }: { searchParams: 
     const makeUps = b.adjustments.filter((a) => a.kind === "MAKE_UP");
     const items: (PlanItem & { makeUpScheduled: boolean })[] = b.adjustments.map((a) => {
       const s = a.schedule;
-      const before = { date: isoDate(a.date), roomId: s.roomId, roomName: roomLabel(s.room), facultyId: s.facultyId, facultyName: s.faculty.fullName, startMin: s.startMin, endMin: s.endMin };
-      const roomId = a.kind === "ONLINE" ? "" : (a.roomId ?? s.roomId);
+      const before = { date: isoDate(a.date), roomId: s.roomId ?? "", roomName: (roomLabel(s.room) || "Online (live)"), facultyId: s.facultyId, facultyName: s.faculty.fullName, startMin: s.startMin, endMin: s.endMin };
+      const roomId = a.kind === "ONLINE" ? "" : (a.roomId ?? s.roomId ?? "");
       const facultyId = a.facultyId ?? s.facultyId;
       const after = a.kind === "CANCELLED" ? null : {
         date: a.newDate ? isoDate(a.newDate) : before.date, roomId, roomName: a.kind === "ONLINE" ? ONLINE_ROOM : (roomNames.get(roomId) ?? "Room"),

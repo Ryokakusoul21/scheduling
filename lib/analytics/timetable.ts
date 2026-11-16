@@ -5,7 +5,7 @@
 import type { DayOfWeek } from "@/lib/scheduler/types";
 
 export interface Meeting {
-  roomId: string;
+  roomId: string | null;
   facultyId: string;
   dayOfWeek: DayOfWeek;
   startMin: number;
@@ -28,7 +28,7 @@ const pct = (used: number, cap: number) => (cap > 0 ? round1((used / cap) * 100)
 /** Scheduled hours against each room's weekly available hours. */
 export function roomUtilization(meetings: Meeting[], rooms: { id: string; name: string; building: string; availableHours: number }[]): RateRow[] {
   const used = new Map<string, number>();
-  for (const m of meetings) used.set(m.roomId, (used.get(m.roomId) ?? 0) + (m.endMin - m.startMin) / 60);
+  for (const m of meetings) if (m.roomId) used.set(m.roomId, (used.get(m.roomId) ?? 0) + (m.endMin - m.startMin) / 60);
   return rooms
     .map((r) => {
       const u = round1(used.get(r.id) ?? 0);

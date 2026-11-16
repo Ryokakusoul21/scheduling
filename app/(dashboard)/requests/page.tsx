@@ -101,7 +101,7 @@ export default async function RequestsPage() {
         section: s.section.name,
         day: day(s.dayOfWeek),
         time: formatRange(s.startMin, s.endMin),
-        room: s.room.roomNumber,
+        room: s.room?.roomNumber ?? "Online (live)",
         faculty: s.faculty.fullName,
       }))}
       rooms={rooms.map((r) => ({ id: r.id, label: roomLabel(r) }))}

@@ -15,7 +15,7 @@ export async function foreignDepartments(scope: Scope, facultyId: string, roomId
   if (scope.isAdmin) return [];
   const [faculty, room] = await Promise.all([
     prisma.faculty.findUnique({ where: { id: facultyId }, select: { departmentId: true } }),
-    prisma.room.findUnique({ where: { id: roomId }, select: { departmentId: true } }),
+    roomId ? prisma.room.findUnique({ where: { id: roomId }, select: { departmentId: true } }) : Promise.resolve(null),
   ]);
   const assignment = slot ? await prisma.subjectAssignment.findFirst({ where: { ...slot, facultyId, status: "ACTIVE", faculty: { status: "ACTIVE", archivedAt: null } }, select: { section: { select: { id: true, departmentId: true, programId: true, archivedAt: true } } } }) : null;
   const approved = assignment?.section && !assignment.section.archivedAt && can(policyUserFromScope(scope), "edit", { type: "section", ...assignment.section });
@@ -42,9 +42,9 @@ export async function requestCrossDepartment(scope: Scope, input: ClassData, dep
     prisma.subject.findUnique({ where: { id: input.subjectId }, select: { code: true } }),
     prisma.section.findUnique({ where: { id: input.sectionId }, select: { name: true } }),
     prisma.faculty.findUnique({ where: { id: input.facultyId }, select: { fullName: true } }),
-    prisma.room.findUnique({ where: { id: input.roomId }, select: { roomNumber: true, roomName: true } }),
+    input.deliveryMode === "ONLINE_LIVE" ? Promise.resolve(null) : prisma.room.findUnique({ where: { id: input.roomId }, select: { roomNumber: true, roomName: true } }),
   ]);
-  const summary = `${subject?.code} ${section?.name}, ${DAY_LONG[input.dayOfWeek]} ${formatRange(input.startMin, input.endMin)}, ${roomLabel(room)}, ${faculty?.fullName}`;
+  const summary = `${subject?.code} ${section?.name}, ${DAY_LONG[input.dayOfWeek]} ${formatRange(input.startMin, input.endMin)}, ${input.deliveryMode === "ONLINE_LIVE" ? "Online (live)" : roomLabel(room)}, ${faculty?.fullName}`;
   const target = departments.length === 1 ? departments[0] : null;
   const details: CrossDepartmentDetails = { kind: "CROSS_DEPARTMENT_CLASS", input, summary, requesterRole: scope.role, requiredDepartmentIds: [...new Set(departments)], approvedDepartmentIds: [] };
   const request = await prisma.scheduleRequest.create({

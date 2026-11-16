@@ -51,7 +51,7 @@ async function classSheets(s: { id: string; departmentId: string; semesterId: st
   const [subjects, faculty, rooms, conflicts] = await Promise.all([
     prisma.subject.findMany({ where: { id: { in: ids("subjectId") } }, select: { id: true, code: true, name: true, units: true } }),
     prisma.faculty.findMany({ where: { id: { in: ids("facultyId") } }, select: { id: true, fullName: true } }),
-    prisma.room.findMany({ where: { id: { in: ids("roomId") } }, select: { id: true, roomNumber: true, roomName: true } }),
+    prisma.room.findMany({ where: { id: { in: ids("roomId").filter((id): id is string => !!id) } }, select: { id: true, roomNumber: true, roomName: true } }),
     detectConflictsForTerms(await concurrentTermIds(s.semesterId)),
   ]);
   const timetable = await loadTimetableBundle();
@@ -92,7 +92,7 @@ export default async function TimetableReviewPage({ params }: { params: Promise<
   const submittedCount = sheets ? sheets.submitted.length : snapshotRows.length;
 
   const stats: [string, number | string][] = sheets
-    ? [["Classes in timetable", sheets.entries.length], ["New or changed", submittedCount], ["Sections", sheets.sections.length], ["Faculty", new Set(sheets.entries.map((e) => e.facultyId)).size], ["Rooms", new Set(sheets.entries.map((e) => e.roomId)).size]]
+    ? [["Classes in timetable", sheets.entries.length], ["New or changed", submittedCount], ["Sections", sheets.sections.length], ["Faculty", new Set(sheets.entries.map((e) => e.facultyId)).size], ["Rooms", new Set(sheets.entries.flatMap((e) => e.roomId ? [e.roomId] : [])).size]]
     : [[exam ? "Examinations" : "Classes in submitted snapshot", submittedCount], ["Sections", new Set(snapshotRows.map((r) => r.section)).size], [exam ? "Proctors" : "Faculty", new Set(snapshotRows.map((r) => r.person)).size], ["Rooms", new Set(snapshotRows.map((r) => r.room)).size]];
 
   return (

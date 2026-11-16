@@ -209,6 +209,6 @@ export async function subjectDetailsAction(subjectId: string, semesterId: string
   ]);
   return {
     history: logs.map((l) => ({ id: l.id, text: l.action, who: l.user?.name ?? "System", at: l.createdAt.toISOString() })),
-    meetings: meetings.map((m) => ({ facultyId: m.facultyId, facultyName: m.faculty.fullName, sectionName: m.section.name, day: day(m.dayOfWeek), time: formatRange(m.startMin, m.endMin), room: m.room.roomNumber })),
+    meetings: meetings.map((m) => ({ facultyId: m.facultyId, facultyName: m.faculty.fullName, sectionName: m.section.name, day: day(m.dayOfWeek), time: formatRange(m.startMin, m.endMin), room: m.room?.roomNumber ?? "Online (live)" })),
   };
 }

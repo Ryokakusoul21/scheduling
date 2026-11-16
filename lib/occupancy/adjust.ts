@@ -186,7 +186,7 @@ export async function findMakeUpOptions(scheduleId: string, date: string, after:
   const p = await loadPlan(date, addDays(after, 15));
   const schedule = await prisma.schedule.findUnique({ where: { id: scheduleId } });
   if (!schedule) return [];
-  const s: Session = { scheduleId, date, sectionId: schedule.sectionId, subjectId: schedule.subjectId, facultyId: schedule.facultyId, roomId: schedule.roomId, component: schedule.component, startMin: schedule.startMin, endMin: schedule.endMin, status: "REGULAR" };
+  const s: Session = { scheduleId, date, sectionId: schedule.sectionId, subjectId: schedule.subjectId, facultyId: schedule.facultyId, roomId: schedule.roomId ?? "", component: schedule.component, startMin: schedule.startMin, endMin: schedule.endMin, status: "REGULAR" };
   return makeUpOptions(s, p.ctx, after).map((r) => ({ ...placement(p, r), reason: r.reason }));
 }
 
@@ -280,7 +280,7 @@ export async function undoProblems(batchId: string, adjustments: { scheduleId: s
     if (!s) continue;
     const clashes = findClashes(
       p.ctx.occupants,
-      { date: s.date, startMin: s.startMin, endMin: s.endMin, roomId: s.roomId, facultyIds: [s.facultyId], sectionIds: [s.sectionId] },
+      { date: s.date, startMin: s.startMin, endMin: s.endMin, roomId: s.roomId ?? "", facultyIds: [s.facultyId], sectionIds: [s.sectionId] },
       (o) => ignoreRefIds.includes(o.refId) || (o.kind === "CLASS" && o.refId === s.scheduleId)
     );
     problems.push(...clashes.map((c) => `${p.label(s)} cannot return to its original slot: ${describeClash(c)}`));

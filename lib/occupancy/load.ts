@@ -88,7 +88,7 @@ export async function loadPlan(from: string, to: string, opts: { excludeBatchId?
 
   const classes: WeeklyClass[] = schedules.map((s) => ({
     id: s.id, semesterId: s.semesterId, sectionId: s.sectionId, subjectId: s.subjectId, facultyId: s.facultyId,
-    roomId: s.roomId, component: s.component, dayOfWeek: s.dayOfWeek, startMin: s.startMin, endMin: s.endMin,
+    roomId: s.roomId ?? "", component: s.component, dayOfWeek: s.dayOfWeek, startMin: s.startMin, endMin: s.endMin,
   }));
   const dated: DatedAdjustment[] = adjustments.map((a) => ({
     scheduleId: a.scheduleId, date: isoDate(a.date), kind: a.kind, newDate: a.newDate ? isoDate(a.newDate) : null,

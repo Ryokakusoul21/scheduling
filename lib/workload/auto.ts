@@ -172,7 +172,7 @@ export async function undoFix(fixId: string, userId: string): Promise<string | n
   ]);
   if (meetings.length !== fix.scheduleIds.length || meetings.some((s) => s.facultyId !== fix.toFacultyId)) return "The class has changed since this fix, so it cannot be undone automatically.";
   if (original?.status !== "ACTIVE") return `${original?.fullName ?? "The original faculty member"} is no longer active.`;
-  const clash = (await Promise.all(meetings.map((s) => weeklyDoubleBooking({ ...s, facultyId: fix.fromFacultyId }, s.id)))).find(Boolean);
+  const clash = (await Promise.all(meetings.map((s) => weeklyDoubleBooking({ ...s, roomId: s.roomId ?? "", facultyId: fix.fromFacultyId }, s.id)))).find(Boolean);
   if (clash) return `Undoing would create a conflict. ${clash}`;
 
   const plannedId = fix.assignmentKey.startsWith("plan|") ? fix.assignmentKey.slice(5) : null;

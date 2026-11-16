@@ -5,7 +5,7 @@ export const WEEK_DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"
 
 export interface InsightMeeting {
   id: string;
-  roomId: string;
+  roomId: string | null;
   facultyId: string;
   sectionId: string;
   dayOfWeek: string;

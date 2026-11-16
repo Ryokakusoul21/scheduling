@@ -18,6 +18,8 @@ export const ROOM_TYPES: Record<string, string> = {
 
 /** One published class meeting of the student's section, safe to pass to client components. */
 export interface PortalClass {
+  deliveryMode?: "IN_PERSON" | "ONLINE_LIVE";
+  meetingLink?: string | null;
   id: string;
   dayOfWeek: string;
   startMin: number;
@@ -86,7 +88,7 @@ export const loadStudentPortal = cache(async () => {
     prisma.schedule.findMany({
       where: { sectionId: section.id, status: "PUBLISHED" },
       select: {
-        id: true,
+        id: true, deliveryMode: true, meetingLink: true,
         dayOfWeek: true,
         startMin: true,
         endMin: true,
@@ -125,7 +127,9 @@ export const loadStudentPortal = cache(async () => {
     units: c.subject.units,
     faculty: c.faculty.fullName,
     facultyEmail: c.faculty.email,
-    room: roomLabel(c.room) || null,
+    deliveryMode: c.deliveryMode === "ONLINE_LIVE" ? "ONLINE_LIVE" : "IN_PERSON",
+    meetingLink: c.meetingLink,
+    room: (roomLabel(c.room) || "Online (live)") || null,
     roomType: c.room ? (ROOM_TYPES[c.room.roomType] ?? c.room.roomType) : null,
     building: c.room?.floor?.building.name ?? null,
     buildingLocation: c.room?.floor?.building.location ?? null,

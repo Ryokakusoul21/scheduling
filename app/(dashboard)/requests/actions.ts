@@ -31,7 +31,7 @@ async function prepare(scope: Scope, d: RequestFormData): Promise<{ error: strin
     });
     if (!row) return { error: "Choose one of your own classes." };
     departmentId = row.section.departmentId;
-    current = { room: roomLabel(row.room), day: day(row.dayOfWeek), time: formatRange(row.startMin, row.endMin), faculty: row.faculty.fullName };
+    current = { room: (roomLabel(row.room) || "Online (live)"), day: day(row.dayOfWeek), time: formatRange(row.startMin, row.endMin), faculty: row.faculty.fullName };
   }
   const [room, faculty] = await Promise.all([
     d.type === "CHANGE_ROOM" && d.requestedRoomId ? prisma.room.findFirst({ where: { id: d.requestedRoomId }, select: { roomNumber: true, roomName: true } }) : null,

@@ -126,7 +126,7 @@ export async function createAssistantData(scope: Scope) {
       for (const row of rows) source(`${row.section.name} · ${row.subject.code}`, `/scheduler?ay=${encodeURIComponent(row.semester.academicYearId)}&termId=${encodeURIComponent(row.semesterId)}`);
       return { total, nextOffset: total > offset + rows.length ? offset + rows.length : null, rows: rows.map((s) => ({
         subject: `${s.subject.code} ${s.subject.name}`, section: s.section.name, faculty: s.faculty.fullName, termId: s.semesterId,
-        room: roomLabel(s.room), day: s.dayOfWeek,
+        room: (roomLabel(s.room) || "Online (live)"), day: s.dayOfWeek,
         start: formatTime(s.startMin), end: formatTime(s.endMin), status: s.status, component: s.component,
       })) };
     }

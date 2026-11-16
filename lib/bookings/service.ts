@@ -379,7 +379,7 @@ export async function shortenBooking(scope: Scope, id: string, startMin: number,
   if (startMin < b.startMin || endMin > b.endMin || endMin <= startMin || (startMin === b.startMin && endMin === b.endMin)) return { ok: false, error: "Choose a shorter time inside the current booking. To extend or move it, cancel and book again." } satisfies Fail;
   const date = isoDate(b.date);
   const open = b.batch && !b.batch.undoneAt ? b.batch.adjustments.filter((a) => a.kind !== "MAKE_UP") : [];
-  const back = restore ? restorableAfterShortening(open.map((a) => ({ id: a.id, a, date: isoDate(a.date), roomId: a.schedule.roomId, startMin: a.schedule.startMin, endMin: a.schedule.endMin })), { roomId: b.roomId, date, startMin, endMin }) : [];
+  const back = restore ? restorableAfterShortening(open.map((a) => ({ id: a.id, a, date: isoDate(a.date), roomId: a.schedule.roomId ?? "", startMin: a.schedule.startMin, endMin: a.schedule.endMin })), { roomId: b.roomId, date, startMin, endMin }) : [];
   if (back.length) {
     const problems = await undoProblems(b.batch!.id, back.map((x) => x.a), [b.id]);
     if (problems.length) return { ok: false, error: problems.join(" ") } satisfies Fail;

@@ -23,7 +23,7 @@ export async function activeClassesOf(kind: ArchiveKind, id: string) {
     include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomNumber: true, roomName: true } } },
     orderBy: [{ dayOfWeek: "asc" }, { startMin: "asc" }],
   });
-  return rows.map((s) => `${s.subject.code} ${s.section.name}, ${DAY_LABEL[s.dayOfWeek]} ${formatRange(s.startMin, s.endMin)}, ${roomLabel(s.room)}`);
+  return rows.map((s) => `${s.subject.code} ${s.section.name}, ${DAY_LABEL[s.dayOfWeek]} ${formatRange(s.startMin, s.endMin)}, ${(roomLabel(s.room) || "Online (live)")}`);
 }
 
 /**
