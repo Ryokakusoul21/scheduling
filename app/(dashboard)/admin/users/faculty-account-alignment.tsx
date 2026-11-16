@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { FacultyAccountRecord } from "@/lib/admin/faculty-alignment";
 import { cn } from "@/lib/utils";
+import { BulkAccounts } from "./bulk-accounts";
 import { changeEmailAction, createFacultyAccountAction, resetPasswordAction, setAccountStatusAction } from "./actions";
 
 type Account = NonNullable<FacultyAccountRecord["account"]>;
@@ -35,18 +36,21 @@ const STATUS_STYLE: Record<string, string> = {
 export function FacultyAccountAlignment({ faculty, onReview }: { faculty: FacultyAccountRecord[]; onReview: (id: string) => void }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("ALL");
+  const [department, setDepartment] = useState("ALL");
   const [creating, setCreating] = useState<FacultyAccountRecord | null>(null);
   const [emailFor, setEmailFor] = useState<Account | null>(null);
   const [issued, setIssued] = useState<{ email: string; password: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  const counts = { ALL: faculty.length, NONE: 0, ACTIVE: 0, SUSPENDED: 0 } as Record<string, number>;
-  for (const f of faculty) { const s = statusOf(f); if (s in counts) counts[s]++; }
+  const departments = [...new Map(faculty.filter((f) => f.departmentId).map((f) => [f.departmentId!, f.departmentName ?? ""])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const inDepartment = faculty.filter((f) => department === "ALL" || f.departmentId === department);
+  const counts = { ALL: inDepartment.length, NONE: 0, ACTIVE: 0, SUSPENDED: 0 } as Record<string, number>;
+  for (const f of inDepartment) { const s = statusOf(f); if (s in counts) counts[s]++; }
   const q = query.trim().toLowerCase();
-  const rows = faculty.filter((f) => (filter === "ALL" || statusOf(f) === filter) &&
+  const rows = inDepartment.filter((f) => (filter === "ALL" || statusOf(f) === filter) &&
     (!q || [f.fullName, f.employeeId, f.account?.email ?? "", f.departmentName ?? ""].some((s) => s.toLowerCase().includes(q))));
-  const paging = usePagination(rows, 15, `${query}|${filter}`);
+  const paging = usePagination(rows, 15, `${query}|${filter}|${department}`);
 
   const run = (task: () => Promise<{ ok: boolean; error?: string }>, done: string) => start(async () => {
     const res = await task();
@@ -60,11 +64,12 @@ export function FacultyAccountAlignment({ faculty, onReview }: { faculty: Facult
   return <section className="space-y-3 rounded-xl border bg-card p-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-base font-semibold">Faculty accounts</h2>
-      <Link className="text-xs text-primary hover:underline" href="/faculty">Edit roster</Link>
+      <div className="flex items-center gap-3"><Link className="text-xs text-primary hover:underline" href="/faculty">Edit roster</Link><BulkAccounts faculty={faculty} /></div>
     </div>
     <div className="flex flex-wrap items-center gap-2">
       <label className="relative min-w-60 flex-1"><MagnifyingGlass className="absolute left-3 top-2.5 size-4 text-muted-foreground" aria-hidden />
         <Input aria-label="Search faculty" placeholder="Search name, employee ID, email" className="pl-9" value={query} onChange={(e) => setQuery(e.target.value)} /></label>
+      <NativeSelect aria-label="Filter by department" className="sm:w-64" value={department} onChange={(e) => setDepartment(e.target.value)} options={[{ value: "ALL", label: "All departments" }, ...departments.map(([value, label]) => ({ value, label }))]} />
       <div role="group" aria-label="Account status" className="flex flex-wrap gap-1 rounded-lg bg-muted/60 p-1">
         {(["ALL", "NONE", "ACTIVE", "SUSPENDED"] as const).map((s) => <button key={s} type="button" aria-pressed={filter === s} onClick={() => setFilter(s)}
           className={cn("rounded-md px-3 py-1.5 text-xs font-medium", filter === s ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground")}>
@@ -72,9 +77,10 @@ export function FacultyAccountAlignment({ faculty, onReview }: { faculty: Facult
       </div>
     </div>
     <div className="overflow-x-auto">
-      <Table><TableHeader><TableRow><TableHead>Faculty</TableHead><TableHead>Login email</TableHead><TableHead>Status</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
+      <Table><TableHeader><TableRow><TableHead>Faculty</TableHead><TableHead>Department</TableHead><TableHead>Login email</TableHead><TableHead>Status</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
         <TableBody>{paging.visible.map((f) => { const s = statusOf(f); const a = f.account; return <TableRow key={f.id}>
-          <TableCell><p className="font-medium">{f.fullName}</p><p className="text-xs text-muted-foreground">{[f.employeeId, f.departmentName].filter(Boolean).join(" · ")}</p></TableCell>
+          <TableCell><p className="font-medium">{f.fullName}</p><p className="text-xs text-muted-foreground">{f.employeeId}</p></TableCell>
+          <TableCell className="text-sm">{f.departmentName}</TableCell>
           <TableCell className="text-sm">{a?.email}</TableCell>
           <TableCell><Badge variant="outline" className={cn(STATUS_STYLE[s] ?? "border-destructive/25 text-destructive")}>{STATUS_LABEL[s] ?? s}</Badge></TableCell>
           <TableCell><div className="flex justify-end gap-1.5">
@@ -91,7 +97,7 @@ export function FacultyAccountAlignment({ faculty, onReview }: { faculty: Facult
                 </DropdownMenuContent></DropdownMenu>}
           </div></TableCell>
         </TableRow>; })}
-        {!rows.length && <TableRow><TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">No matches</TableCell></TableRow>}</TableBody>
+        {!rows.length && <TableRow><TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">No matches</TableCell></TableRow>}</TableBody>
       </Table>
     </div>
     <Pagination {...paging} />

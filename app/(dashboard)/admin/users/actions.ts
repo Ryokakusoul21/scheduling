@@ -166,33 +166,60 @@ export async function resetPasswordAction(id: string) {
 
 const gmailSchema = z.string().trim().toLowerCase().email("Enter a valid email address.");
 
-/** Creates a login for a roster faculty member with the given email and a generated one-time password. */
-export async function createFacultyAccountAction(facultyId: string, email: string, role: "FACULTY" | "HEAD_OF_DEPARTMENT") {
-  const admin = await requireRole(...ADMIN);
+type Provisioned = { ok: true; password: string } | { ok: false; error: string };
+
+/** Creates one roster faculty login with a generated password; shared by single and bulk creation. */
+async function provisionFacultyAccount(adminId: string, where: { id: string } | { employeeId: string }, email: string, role: string, departmentId?: string): Promise<Provisioned> {
   const parsed = gmailSchema.safeParse(email);
-  if (!parsed.success) return { ok: false as const, error: parsed.error.issues[0]?.message };
-  if (role !== "FACULTY" && role !== "HEAD_OF_DEPARTMENT") return { ok: false as const, error: "Choose Faculty or Head of Department." };
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid email." };
+  if (role !== "FACULTY" && role !== "HEAD_OF_DEPARTMENT") return { ok: false, error: "Role must be Faculty or Head of Department." };
   const password = generatePassword();
   try {
     await prisma.$transaction(async (tx) => {
       await lockDepartmentHeads(tx);
-      const faculty = await tx.faculty.findUnique({ where: { id: facultyId }, include: { user: { select: { id: true } } } });
-      if (!faculty || faculty.archivedAt) throw new FacultyAccountError("This faculty record is no longer on the roster.");
-      if (faculty.user) throw new FacultyAccountError("This faculty member already has an account.");
-      if (await tx.user.findUnique({ where: { email: parsed.data }, select: { id: true } })) throw new FacultyAccountError("This email is already used by another account.");
+      const faculty = await tx.faculty.findUnique({ where: where as Prisma.FacultyWhereUniqueInput, include: { user: { select: { id: true } } } });
+      if (!faculty || faculty.archivedAt) throw new FacultyAccountError("Not on the faculty roster.");
+      if (departmentId && faculty.departmentId !== departmentId) throw new FacultyAccountError("Other department.");
+      if (faculty.user) throw new FacultyAccountError("Already has an account.");
+      if (await tx.user.findUnique({ where: { email: parsed.data }, select: { id: true } })) throw new FacultyAccountError("Email already used by another account.");
       const user = await tx.user.create({
         data: { name: faculty.fullName, email: parsed.data, facultyId: faculty.id, role, status: "ACTIVE", emailVerified: new Date(), mustChangePassword: true, passwordHash: await bcrypt.hash(password, AUTH.bcryptRounds) },
       });
       await setDepartment(tx, user.id, faculty.departmentId ?? undefined);
       await assertSingleDepartmentHead(tx, user.id);
-      await tx.auditLog.create({ data: { userId: admin.id, action: `Created faculty account (${role})`, entity: "User", entityId: user.id, newValue: { facultyId, employeeId: faculty.employeeId } } });
+      await tx.auditLog.create({ data: { userId: adminId, action: `Created faculty account (${role})`, entity: "User", entityId: user.id, newValue: { facultyId: faculty.id, employeeId: faculty.employeeId } } });
     });
   } catch (error) {
-    if (error instanceof FacultyAccountError || error instanceof DepartmentHeadConflictError) return { ok: false as const, error: error.message };
-    return { ok: false as const, error: "Could not create the account. Refresh and try again." };
+    if (error instanceof FacultyAccountError || error instanceof DepartmentHeadConflictError) return { ok: false, error: error.message };
+    return { ok: false, error: "Could not create the account." };
+  }
+  return { ok: true, password };
+}
+
+/** Creates a login for a roster faculty member with the given email and a generated one-time password. */
+export async function createFacultyAccountAction(facultyId: string, email: string, role: "FACULTY" | "HEAD_OF_DEPARTMENT") {
+  const admin = await requireRole(...ADMIN);
+  const result = await provisionFacultyAccount(admin.id, { id: facultyId }, email, role);
+  if (result.ok) for (const path of ["/admin/users", "/faculty", "/admin/departments"]) revalidatePath(path);
+  return result;
+}
+
+export type BulkAccountRow = { employeeId: string; email: string; role: string };
+export type BulkAccountResult = BulkAccountRow & ({ ok: true; password: string } | { ok: false; error: string });
+
+/** Creates many roster logins at once; each row succeeds or fails on its own. */
+export async function createFacultyAccountsBulkAction(departmentId: string, rows: BulkAccountRow[]): Promise<{ ok: true; results: BulkAccountResult[] } | { ok: false; error: string }> {
+  const admin = await requireRole(...ADMIN);
+  if (!departmentId) return { ok: false, error: "Choose a department." };
+  if (!Array.isArray(rows) || !rows.length) return { ok: false, error: "No rows to create." };
+  if (rows.length > 300) return { ok: false, error: "Up to 300 rows per upload." };
+  const results: BulkAccountResult[] = [];
+  for (const row of rows) {
+    const clean = { employeeId: String(row.employeeId ?? "").trim(), email: String(row.email ?? "").trim().toLowerCase(), role: String(row.role ?? "").trim() || "FACULTY" };
+    results.push({ ...clean, ...(await provisionFacultyAccount(admin.id, { employeeId: clean.employeeId }, clean.email, clean.role, departmentId)) });
   }
   for (const path of ["/admin/users", "/faculty", "/admin/departments"]) revalidatePath(path);
-  return { ok: true as const, password };
+  return { ok: true, results };
 }
 
 /** Changes the login email; the user is signed out so the next login uses the new address. */
