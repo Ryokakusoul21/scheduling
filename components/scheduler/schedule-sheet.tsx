@@ -116,7 +116,7 @@ export interface SheetSource {
 /** One printable "Schedule of Classes" page for a section, laid out like the paper schedule. */
 /** highlight outlines classes in blue (for example, those in a submission); flagged outlines conflicts in red. */
 export function SectionSheet({ source, className, highlight, flagged }: { source: SheetSource; className?: string; highlight?: ReadonlySet<string>; flagged?: ReadonlySet<string> }) {
-  const [mobileView, setMobileView] = useState<"agenda" | "week">("week");
+  const [mobileView, setMobileView] = useState<"agenda" | "week">("agenda");
   const { section, entries, subjects, faculty, rooms } = source;
   const config = source.timeConfig ?? DEFAULT_TIMETABLE;
   const rows = useMemo(() => {

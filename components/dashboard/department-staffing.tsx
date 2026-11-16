@@ -28,7 +28,7 @@ export async function DepartmentStaffingSection({ departments: supplied }: { dep
           <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">No departments have been created.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1350px] text-sm">
+            <table data-stack="" className="w-full min-w-[1350px] text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th scope="col" className="px-3 py-2 font-medium">Department</th>
@@ -61,29 +61,29 @@ export async function DepartmentStaffingSection({ departments: supplied }: { dep
                       : "outline" as const;
                   return (
                     <tr key={department.id} className="hover:bg-muted/40">
-                      <th scope="row" className="px-3 py-3 text-left font-medium">
+                      <th scope="row" data-label="" className="px-3 py-3 text-left font-medium">
                         <span className="block">{department.name}</span>
                         <span className="text-xs font-normal text-muted-foreground">{department.code}</span>
                       </th>
-                      <td className="px-3 py-3"><Badge variant={status.variant}>{status.label}</Badge></td>
-                      <td className="px-3 py-3 text-right tabular-nums">{department.activeFaculty}</td>
-                      <td className="px-3 py-3 text-right tabular-nums">{department.assignedLoad} / {department.capacity} {unit}</td>
-                      <td className="px-3 py-3 text-right">
+                      <td data-label="Assessment" className="px-3 py-3"><Badge variant={status.variant}>{status.label}</Badge></td>
+                      <td data-label="Active faculty" className="px-3 py-3 text-right tabular-nums">{department.activeFaculty}</td>
+                      <td data-label="Load / capacity" className="px-3 py-3 text-right tabular-nums">{department.assignedLoad} / {department.capacity} {unit}</td>
+                      <td data-label="Demand utilization" className="px-3 py-3 text-right">
                         <Badge variant={department.utilization !== null && department.utilization > 100 ? "destructive" : department.utilization !== null && department.utilization >= 85 ? "outline" : "secondary"}>
                           {department.utilization === null ? "N/A" : `${department.utilization}%`}
                         </Badge>
                       </td>
-                      <td className="px-3 py-3 text-right tabular-nums">
+                      <td data-label="Additional capacity needed" className="px-3 py-3 text-right tabular-nums">
                         {department.additionalCapacityNeeded ? `${department.additionalCapacityNeeded} ${unit}` : "0"}
                       </td>
-                      <td className="px-3 py-3 text-right tabular-nums">
+                      <td data-label="Unassigned classes" className="px-3 py-3 text-right tabular-nums">
                         {department.unassignedClasses ? `${department.unassignedClasses} · ${department.unassignedLoad} ${unit}` : "0"}
                       </td>
-                      <td className="min-w-[320px] px-3 py-3">
+                      <td data-label="Recommended action" className="min-w-[320px] px-3 py-3">
                         <Badge variant={recommendationVariant}>{department.recommendationLevel === "NONE" ? "NORMAL" : department.recommendationLevel}</Badge>
                         <p className="mt-1 text-xs text-muted-foreground">{department.recommendedAction}</p>
                       </td>
-                      <td className="px-3 py-3 text-right">
+                      <td data-label="" className="px-3 py-3 text-right">
                         <Link className="font-medium text-primary hover:underline" href={`/analytics?department=${encodeURIComponent(department.id)}`} aria-label={`View ${department.name} analytics`}>
                           View analytics
                         </Link>

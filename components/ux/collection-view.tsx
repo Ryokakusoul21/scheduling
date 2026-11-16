@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { Rows, SquaresFour } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -8,15 +8,28 @@ import { usePersisted } from "@/hooks/use-persisted";
 
 export type CollectionLayout = "cards" | "table";
 
+const PHONE = "(max-width: 639px)";
+
+/** True on phone-width screens; false during server render. */
+function usePhone() {
+  return useSyncExternalStore(
+    (notify) => { const m = window.matchMedia(PHONE); m.addEventListener("change", notify); return () => m.removeEventListener("change", notify); },
+    () => window.matchMedia(PHONE).matches,
+    () => false,
+  );
+}
+
+/** Saved layout per list; phones always get cards because wide tables do not fit. */
 export function useCollectionView(key: string, fallback: CollectionLayout = "cards") {
   const [saved, setView] = usePersisted<CollectionLayout>(key, fallback);
-  return [saved === "cards" || saved === "table" ? saved : fallback, setView] as const;
+  const phone = usePhone();
+  return [phone ? "cards" : saved === "cards" || saved === "table" ? saved : fallback, setView] as const;
 }
 
 export function ViewSwitch({ value, onChange, label = "View" }: {
   value: CollectionLayout; onChange: (value: CollectionLayout) => void; label?: string;
 }) {
-  return <div role="group" aria-label={label} className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border bg-card p-0.5 print:hidden">
+  return <div role="group" aria-label={label} className="hidden shrink-0 items-center gap-0.5 rounded-lg border bg-card p-0.5 sm:inline-flex print:hidden">
     {([ ["cards", SquaresFour, "Cards"], ["table", Rows, "Table"] ] as const).map(([mode, Icon, text]) =>
       <Button key={mode} type="button" variant={value === mode ? "default" : "ghost"} size="lg" aria-label={`${text} view`} aria-pressed={value === mode} onClick={() => onChange(mode)}><Icon aria-hidden className="size-4" />{text}</Button>)}
   </div>;

@@ -64,7 +64,7 @@ export function Breadcrumbs({ items, className }: { items: BreadcrumbItem[]; cla
     return <li key={`${item.label}-${index}`} className="flex min-w-0 items-center gap-1.5">
       {index > 0 && <CaretRight className="size-3.5 shrink-0 text-muted-foreground/70" aria-hidden />}
       {item.href && !current
-        ? <Link href={item.href} onClick={leave} className="rounded-sm font-medium text-muted-foreground outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">{content}</Link>
+        ? <Link href={item.href} onClick={leave} className="min-w-0 rounded-sm font-medium text-muted-foreground outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">{content}</Link>
         : <span aria-current={current ? "page" : undefined} className="min-w-0 font-semibold text-foreground">{content}</span>}
     </li>;
   };
@@ -72,7 +72,7 @@ export function Breadcrumbs({ items, className }: { items: BreadcrumbItem[]; cla
   const collapsed = items.length > 3 && !expanded;
   return <nav aria-label="Breadcrumb" className={cn("print:hidden", className)}>
     <ol className="hidden min-w-0 flex-wrap items-center gap-1.5 text-sm md:flex">{items.map((item, index) => renderItem(item, index, true))}</ol>
-    <ol className="flex min-w-0 items-center gap-1.5 text-xs md:hidden">
+    <ol className="flex min-w-0 items-center gap-1.5 overflow-hidden text-xs md:hidden">
       {!collapsed && items.map((item, index) => renderItem(item, index, true))}
       {collapsed && <>
         {renderItem(items[0], 0, true)}
