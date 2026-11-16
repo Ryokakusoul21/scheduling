@@ -3,7 +3,7 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ListChecks, MagnifyingGlass, Plus } from "@phosphor-icons/react/ssr";
+import { CaretRight, ListChecks, Lock, MagnifyingGlass, Plus } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -14,7 +14,10 @@ import { cn } from "@/lib/utils";
 import { CATEGORIES, categoryOf, type Category, type ConstraintRow, type CreateCategory } from "./categories";
 import { ConstraintDialog } from "./constraint-dialog";
 import { FacultyPreferences } from "./faculty-preferences";
-import { ROW_GRID, RuleRow, StrengthBadge, type RowHandlers } from "./rule-row";
+import { CompactRuleRow, ROW_GRID, RuleRow, StrengthBadge, type RowHandlers } from "./rule-row";
+import { isClassPolicy } from "@/lib/scheduler/class-policies";
+import type { PolicyOptions } from "./class-policy-fields";
+import { TimetableConfiguration } from "@/components/scheduler/timetable-configuration";
 import { deleteConstraintAction, saveConstraintAction, toggleConstraintAction } from "./actions";
 
 type Option = { value: string; label: string };
@@ -40,18 +43,22 @@ export function ConstraintsManager({
   rows,
   departments,
   faculty,
+  rooms,
   subjects,
+  policyOptions,
 }: {
   isAdmin: boolean;
   rows: ConstraintRow[];
   departments: Option[];
   faculty: Option[];
+  rooms: Option[];
   subjects: Option[];
+  policyOptions: PolicyOptions;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const tab: Category = CATEGORIES.some((c) => c.value === params.get("tab")) ? (params.get("tab") as Category) : "faculty";
+  const tab: Category = CATEGORIES.some((c) => c.value === params.get("tab")) ? (params.get("tab") as Category) : "schedule";
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<{ row: ConstraintRow | "new"; category: CreateCategory } | null>(null);
@@ -61,7 +68,7 @@ export function ConstraintsManager({
   const [shown, setOptimistic] = useOptimistic(rows, (state, change: { id: string; enabled: boolean }) =>
     state.map((r) => (r.id === change.id ? { ...r, enabled: change.enabled } : r))
   );
-  const names = new Map([...faculty, ...subjects].map((o) => [o.value, o.label]));
+  const names = new Map([...faculty, ...rooms, ...subjects, ...policyOptions.terms, ...policyOptions.programs, ...policyOptions.sections, ...policyOptions.classes].map((o) => [o.value, o.label]));
 
   function selectTab(next: Category) {
     const q = new URLSearchParams(params.toString());
@@ -79,6 +86,7 @@ export function ConstraintsManager({
   }
 
   function duplicate(row: ConstraintRow) {
+    if (isClassPolicy(row.kind)) { setEditing({ row: { ...row, id: "", name: `${row.name} (copy)` }, category: "schedule" }); return; }
     startTransition(async () => {
       const res = await saveConstraintAction(null, { kind: row.kind, name: `${row.name} (copy)`, params: row.params, departmentId: row.departmentId, enabled: row.enabled });
       if (res.ok) toast.success(`${row.name} duplicated`);
@@ -94,7 +102,9 @@ export function ConstraintsManager({
   };
   const add = (category: CreateCategory) => setEditing({ row: "new", category });
 
-  const inTab = shown.filter((r) => categoryOf(r.kind, r.params) === tab);
+  const schoolRules = shown.filter((r) => !r.departmentId);
+  const departmentRules = shown.filter((r) => !!r.departmentId);
+  const inTab = departmentRules.filter((r) => categoryOf(r.kind, r.params) === tab);
   const visible = inTab
     .filter((r) => matches(r, filter) && r.name.toLowerCase().includes(query.trim().toLowerCase()))
     // Required rules first, then Preferred; the server order is kept within each.
@@ -109,7 +119,7 @@ export function ConstraintsManager({
       <EmptyState
         icon={ListChecks}
         title={narrowed ? "No rules match" : `No ${tab === "faculty" ? "faculty-wide rules" : label.toLowerCase()} yet`}
-        description={narrowed ? "Try another filter or search." : "Add one with the button below."}
+        description={narrowed ? "Try another filter." : undefined}
         action={!narrowed && <Button onClick={() => add(tab)}><Plus className="size-4" /> Add rule</Button>}
         className="py-8"
       />
@@ -134,7 +144,7 @@ export function ConstraintsManager({
       <div className="space-y-6">
         <PageHeader
           title="Scheduling Constraints"
-          description="Rules the scheduler follows when building timetables. School-wide rules set by the Registrar are read-only."
+          description="Rules the scheduler follows."
           actions={
             <Button className="h-9" onClick={() => add(tab)}>
               <Plus className="size-4" /> Add constraint
@@ -142,10 +152,26 @@ export function ConstraintsManager({
           }
         />
 
+        {schoolRules.length > 0 && <details className="group rounded-xl border bg-card">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold">
+            <CaretRight className="size-4 transition-transform group-open:rotate-90" aria-hidden />
+            School-wide
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums">{schoolRules.length}</span>
+            {!isAdmin && <span className="ml-auto inline-flex items-center gap-1 text-xs font-normal text-muted-foreground"><Lock className="size-3.5" aria-hidden />Read only</span>}
+          </summary>
+          {([true, false] as const).map((hard) => {
+            const group = schoolRules.filter((r) => CONSTRAINT_INFO[r.kind].hard === hard);
+            return group.length > 0 && <section key={String(hard)} className="border-t">
+              <h3 className="flex items-center gap-2 bg-muted/40 px-4 py-1.5"><StrengthBadge hard={hard} /><span className="text-xs tabular-nums text-muted-foreground">{group.length}</span></h3>
+              <ul className="divide-y">{group.map((rule) => <CompactRuleRow key={rule.id} row={rule} names={names} {...handlers} />)}</ul>
+            </section>;
+          })}
+        </details>}
+        {tab === "schedule" && <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3"><h2 className="text-sm font-semibold">Timetable defaults</h2><TimetableConfiguration terms={policyOptions.terms.map((t) => ({ id: t.value, label: `${policyOptions.years?.find((year) => year.value === t.academicYearId)?.label ?? ""} - ${t.label}` }))} departments={departments.map((d) => ({ id: d.value, name: d.label }))} canManageSchool={isAdmin} triggerLabel="Configure timetable defaults" /></section>}
         <div className="space-y-3">
           <div role="tablist" aria-label="Constraint categories" className="-mx-1 flex gap-1 overflow-x-auto border-b px-1">
             {CATEGORIES.map((c) => {
-              const count = shown.filter((r) => categoryOf(r.kind, r.params) === c.value).length;
+              const count = departmentRules.filter((r) => categoryOf(r.kind, r.params) === c.value).length;
               const selected = tab === c.value;
               return (
                 <button
@@ -176,22 +202,18 @@ export function ConstraintsManager({
               );
             })}
           </div>
-          <dl className="flex flex-wrap gap-x-6 gap-y-2 text-[13px] text-muted-foreground">
-            <div className="flex items-center gap-2"><dt><StrengthBadge hard /></dt><dd>The scheduler will never break this rule.</dd></div>
-            <div className="flex items-center gap-2"><dt><StrengthBadge hard={false} /></dt><dd>The scheduler tries to follow this rule.</dd></div>
-          </dl>
         </div>
 
         <div id="constraints-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Filter rules">
+            <div className="flex flex-wrap gap-1 rounded-lg bg-muted/60 p-1" role="group" aria-label="Filter rules">
               {FILTERS.map((f) => (
                 <button
                   key={f.value}
                   type="button"
                   aria-pressed={filter === f.value}
                   onClick={() => setFilter(f.value)}
-                  className="h-8 rounded-full border px-3 text-[13px] font-medium transition-colors duration-150 hover:bg-muted aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background"
+                  className="h-7 rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground aria-pressed:bg-card aria-pressed:text-primary aria-pressed:shadow-sm"
                 >
                   {f.label}
                 </button>
@@ -199,7 +221,7 @@ export function ConstraintsManager({
             </div>
             <div className="relative w-full sm:w-72">
               <MagnifyingGlass className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${label.toLowerCase()}`} aria-label={`Search ${label.toLowerCase()} by title`} className="h-9 pl-9" />
+              <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search" aria-label={`Search ${label.toLowerCase()} by title`} className="h-9 pl-9" />
             </div>
           </div>
 
@@ -227,7 +249,9 @@ export function ConstraintsManager({
             isAdmin={isAdmin}
             departments={departments}
             faculty={faculty}
+            rooms={rooms}
             subjects={subjects}
+            policyOptions={policyOptions}
           />
         )}
         <ConfirmDialog

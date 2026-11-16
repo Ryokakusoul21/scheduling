@@ -1,3 +1,4 @@
+import { deliveryPolicy, durationPolicy, splitPolicyMinutes } from "../class-policies";
 import { roomAllowsSection } from "@/lib/rooms/designation";
 import { timetableStarts } from "@/lib/timetable/config";
 /**
@@ -62,7 +63,7 @@ function reindex(run: Run) {
 /** Classes sharing a faculty member, room, or section with `e` at an overlapping time. */
 function blockers(run: Run, e: ResolverEntry) {
   return (run.byDay.get(e.dayOfWeek) ?? []).filter(
-    (o) => o.id !== e.id && rangesOverlap(o, e) && ((!!e.facultyId && o.facultyId === e.facultyId) || o.roomId === e.roomId || o.sectionId === e.sectionId)
+    (o) => o.id !== e.id && rangesOverlap(o, e) && ((!!e.facultyId && o.facultyId === e.facultyId) || (!!e.roomId && o.roomId === e.roomId) || o.sectionId === e.sectionId)
   );
 }
 
@@ -87,6 +88,9 @@ function subjectOf(run: Run, id: string) {
 
 /** Rooms that can hold the class: right type, enough seats, designated for the section's department; exact laboratory type first. */
 function roomsFor(run: Run, section: ResolverSection, subjectId: string, component: "LECTURE" | "LABORATORY") {
+  const policy = deliveryPolicy(run.input.rules, { sectionId: section.id, subjectId, component, semesterId: section.termId }, section, subjectOf(run, subjectId));
+  if (policy.conflicting) return [];
+  if (policy.defaultMode === "ONLINE_LIVE") return [{ id: "", roomName: "Online (live)", roomNumber: "", capacity: Number.MAX_SAFE_INTEGER, roomType: "LECTURE_ROOM" as const, status: "AVAILABLE" as const, availability: [], assignable: true, programIds: null }];
   const lab = component === "LABORATORY";
   const required = subjectOf(run, subjectId)?.requiredRoomType;
   const exact = lab && required && isLabRoom(required) ? required : null;
@@ -160,7 +164,7 @@ function placeCandidates(run: Run, task: Extract<Task, { kind: "place" }>, limit
       for (const r of preferredFirst(rooms, sameRoom ? [...(f.preferredRoomIds ?? []), sameRoom] : f.preferredRoomIds)) {
         const e: ResolverEntry = {
           id: `new-${task.issue.id}-${slot.dayOfWeek}-${slot.startMin}-${r.id}`,
-          semesterId: task.section.termId, sectionId: task.section.id, subjectId: task.subjectId, facultyId: f.id, roomId: r.id,
+          semesterId: task.section.termId, sectionId: task.section.id, subjectId: task.subjectId, facultyId: f.id, roomId: r.id, deliveryMode: r.id ? "IN_PERSON" as const : "ONLINE_LIVE" as const,
           component: task.component, dayOfWeek: slot.dayOfWeek, startMin: slot.startMin, endMin: slot.startMin + task.duration, status: "DRAFT",
         };
         if (blockers(run, e).length) continue;
@@ -168,7 +172,7 @@ function placeCandidates(run: Run, task: Extract<Task, { kind: "place" }>, limit
         if (run.stopped) return found;
         if (!valid(findings)) continue;
         const group = nextId(run, "g");
-        found.push({ changes: [change(run, "PLACED", task.issue, group, null, e, `Placed in ${r.roomName}, which seats ${r.capacity}, at a time the section and ${f.fullName} are free.`)], soft: softCount(findings) });
+        found.push({ changes: [change(run, "PLACED", task.issue, group, null, e, `Placed ${r.id ? `in ${r.roomName}` : "online"} at a time the section and ${f.fullName} are free.`)], soft: softCount(findings) });
         if (found.filter((c) => c.soft === 0).length >= limit || found.length >= limit * 8) return found.sort((a, b) => a.soft - b.soft).slice(0, limit);
       }
     }
@@ -184,14 +188,14 @@ function relocations(run: Run, entry: ResolverEntry, prefer?: { dayOfWeek: Resol
   const rooms = roomsFor(run, section, entry.subjectId, entry.component);
   const tries: ResolverEntry[] = [];
   if (prefer) tries.push({ ...entry, ...prefer, endMin: prefer.startMin + duration });
-  tries.push(...rooms.filter((r) => r.id !== entry.roomId).map((r) => ({ ...entry, roomId: r.id })));
+  tries.push(...rooms.filter((r) => r.id !== entry.roomId).map((r) => ({ ...entry, roomId: r.id, deliveryMode: r.id ? "IN_PERSON" as const : "ONLINE_LIVE" as const })));
   if (run.options.retime) {
     const times = slots(run, entry.sectionId, duration).filter((s) => s.dayOfWeek !== entry.dayOfWeek || s.startMin !== entry.startMin);
     const keepRoom = rooms.some((r) => r.id === entry.roomId);
     for (const s of times) {
       if (keepRoom) tries.push({ ...entry, ...s, endMin: s.startMin + duration });
     }
-    for (const s of times) for (const r of rooms) if (r.id !== entry.roomId) tries.push({ ...entry, ...s, endMin: s.startMin + duration, roomId: r.id });
+    for (const s of times) for (const r of rooms) if (r.id !== entry.roomId) tries.push({ ...entry, ...s, endMin: s.startMin + duration, roomId: r.id, deliveryMode: r.id ? "IN_PERSON" : "ONLINE_LIVE" });
   }
   const out: ResolverEntry[] = [];
   for (const t of tries) {
@@ -308,7 +312,7 @@ function attempt(run: Run, task: Task): Cause | null {
     }
     const section = sectionOf(run, entry.sectionId)!;
     const targets = slots(run, entry.sectionId, entry.endMin - entry.startMin).flatMap((s) =>
-      roomsFor(run, section, entry.subjectId, entry.component).map((r) => ({ ...entry, ...s, endMin: s.startMin + entry.endMin - entry.startMin, roomId: r.id }))
+      roomsFor(run, section, entry.subjectId, entry.component).map((r) => ({ ...entry, ...s, endMin: s.startMin + entry.endMin - entry.startMin, roomId: r.id, deliveryMode: r.id ? "IN_PERSON" as const : "ONLINE_LIVE" as const }))
     );
     const swap = displace(run, task, targets, entry);
     if (swap) {
@@ -331,7 +335,7 @@ function attempt(run: Run, task: Task): Cause | null {
   const targets = slots(run, task.section.id, task.duration).flatMap((s) =>
     faculty.flatMap((f) =>
       rooms.map((r) => ({
-        id: `new-${task.issue.id}-${s.dayOfWeek}-${s.startMin}-${r.id}-${f.id}`, semesterId: task.section.termId, sectionId: task.section.id, subjectId: task.subjectId, facultyId: f.id, roomId: r.id,
+        id: `new-${task.issue.id}-${s.dayOfWeek}-${s.startMin}-${r.id}-${f.id}`, semesterId: task.section.termId, sectionId: task.section.id, subjectId: task.subjectId, facultyId: f.id, roomId: r.id, deliveryMode: r.id ? "IN_PERSON" as const : "ONLINE_LIVE" as const,
         component: task.component, dayOfWeek: s.dayOfWeek, startMin: s.startMin, endMin: s.startMin + task.duration, status: "DRAFT" as const,
       }))
     )
@@ -391,6 +395,13 @@ function plan(run: Run, issues: Issue[], unresolved: Unresolved[]): Task[] {
           continue;
         }
         let remaining = required - have;
+        const policy = durationPolicy(input.rules, { sectionId: section.id, subjectId: issue.subjectId!, component: issue.component!, semesterId: section.termId }, section, subject);
+        if (policy) {
+          const lengths = splitPolicyMinutes(remaining, policy.allowedMinutes, policy.allowFinalRemainder);
+          if (!lengths) unresolved.push(explain(issue, "DATA", input));
+          else for (const duration of lengths) tasks.push({ kind: "place", issue, section, subjectId: issue.subjectId!, component: issue.component!, duration });
+          continue;
+        }
         const chunk = defaultDuration(issue.component!, section.level, input.timetables?.[section.id]);
         while (remaining > 0) {
           const duration = Math.min(chunk, remaining);

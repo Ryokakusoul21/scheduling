@@ -9,6 +9,7 @@ import { solve } from "./resolver/solver";
 import { templateSummary } from "./resolver/explain";
 import { validatePlacement } from "./validate";
 import { worldOf } from "./resolver/issues";
+import { durationPolicy } from "./class-policies";
 import { collegeLengthError } from "./timetable";
 
 export class AutoScheduleError extends Error {}
@@ -37,11 +38,12 @@ export function validateAutoPlacements(input: ResolverInput, changes: Change[]) 
     if (!need) throw new AutoScheduleError("A subject component is no longer in this section's approved curriculum.");
     const teacher = input.assignments?.find((a) => a.sectionId === e.sectionId && a.subjectId === e.subjectId && a.semesterId === e.semesterId);
     if (!teacher || teacher.facultyId !== e.facultyId || !input.faculty.some((f) => f.id === e.facultyId && f.assignable && f.teachingLevels.includes(section.level))) throw new AutoScheduleError("The assigned teacher changed or is unavailable. Generate a new preview.");
-    if (!input.rooms.some((r) => r.id === e.roomId && r.assignable)) throw new AutoScheduleError("The proposed room is no longer available to your department.");
+    if (e.deliveryMode !== "ONLINE_LIVE" && !input.rooms.some((r) => r.id === e.roomId && r.assignable)) throw new AutoScheduleError("The proposed room is no longer available to your department.");
     const scheduled = entries.filter((x) => x.status !== "ARCHIVED" && x.semesterId === e.semesterId && x.sectionId === e.sectionId && x.subjectId === e.subjectId && x.component === e.component).reduce((sum, x) => sum + x.endMin - x.startMin, 0);
     const duration = e.endMin - e.startMin;
     if (duration <= 0 || scheduled + duration > need.requiredMin) throw new AutoScheduleError("The remaining subject hours changed. Generate a new preview to avoid duplicate meetings.");
-    const lengthError = collegeLengthError(section.level, duration, need.requiredMin - scheduled, input.timetables?.[section.id]?.classSession);
+    const customDuration = durationPolicy(input.rules, e, section, input.subjects.find((s) => s.id === e.subjectId));
+    const lengthError = customDuration ? null : collegeLengthError(section.level, duration, need.requiredMin - scheduled, input.timetables?.[section.id]?.classSession);
     if (lengthError) throw new AutoScheduleError(lengthError);
     entries.push(e);
   }
@@ -86,7 +88,7 @@ export async function applyAutoSchedule(scope: Scope, proposalId: string, accept
     const stored = changes.map((c) => ({ ...c, after: { ...c.after!, id: randomUUID(), status: "DRAFT" as const } }));
     const claimed = await tx.workloadProposal.updateMany({ where: { id: record.id, status: "PENDING", version: record.version }, data: { status: "APPLIED", version: { increment: 1 }, reviewedById: scope.userId, reviewedAt: new Date(), items: stored as unknown as Prisma.InputJsonValue } });
     if (claimed.count !== 1) throw new AutoScheduleError("This preview was already applied. Refresh the timetable.");
-    await tx.schedule.createMany({ data: stored.map((c) => ({ ...c.after, departmentId: input.sections.find((s) => s.id === c.sectionId)!.departmentId, generatedBy: scope.userId, notes: "Added by Auto-Schedule; review before submitting." })) });
+    await tx.schedule.createMany({ data: stored.map((c) => ({ ...c.after, roomId: c.after!.deliveryMode === "ONLINE_LIVE" ? null : c.after!.roomId, departmentId: input.sections.find((s) => s.id === c.sectionId)!.departmentId, generatedBy: scope.userId, notes: "Added by Auto-Schedule; review before submitting." })) });
     await tx.auditLog.create({ data: { userId: scope.userId, role: scope.role, departmentId: scope.departmentId, entity: "WorkloadProposal", entityId: record.id, action: `Applied Auto-Schedule preview: ${stored.length} draft meeting(s)`, newValue: { meetings: stored.length, sectionIds: options.sectionIds } } });
     return stored;
   }, { maxWait: 10_000, timeout: 60_000, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

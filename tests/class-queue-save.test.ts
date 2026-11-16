@@ -6,7 +6,7 @@ vi.mock("@/lib/db/prisma", () => ({ prisma: {
 vi.mock("@/lib/workload/auto", () => ({ queueWorkloadCheck: vi.fn() }));
 vi.mock("@/lib/timetable/service", () => ({ getTimetableConfig: vi.fn() }));
 vi.mock("@/lib/scheduler/term-conflicts", () => ({ weeklyDoubleBooking: vi.fn(), concurrentTermIds: async () => ["t1"] }));
-vi.mock("@/lib/scheduler/constraints-server", () => ({ checkClassConstraints: vi.fn() }));
+vi.mock("@/lib/scheduler/constraints-server", () => ({ activeRules: async () => [], checkClassConstraints: vi.fn() }));
 vi.mock("@/lib/notify", () => ({ notifyUsers: vi.fn() }));
 import { writeClass } from "@/lib/scheduler/class-save";
 beforeEach(() => {

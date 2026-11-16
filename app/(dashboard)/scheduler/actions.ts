@@ -30,7 +30,9 @@ const classSchema = z
     sectionId: z.string().min(1, "Choose a section"),
     subjectId: z.string().min(1, "Choose a subject"),
     facultyId: z.string().min(1, "Choose a faculty member"),
-    roomId: z.string().min(1, "Choose a room"),
+    roomId: z.string().default(""),
+    deliveryMode: z.enum(["IN_PERSON", "ONLINE_LIVE"]).default("IN_PERSON"),
+    meetingLink: z.union([z.literal(""), z.url({ protocol: /^https?$/ })]).optional(),
     component: z.enum(["LECTURE", "LABORATORY"]),
     dayOfWeek: DAY,
     startMin: z.number().int().min(0).max(24 * 60),
@@ -41,9 +43,10 @@ const classSchema = z
     doNotMove: z.boolean().optional(),
     source: z.enum(["CURRICULUM_QUEUE"]).optional(),
   })
+  .refine((d) => d.deliveryMode === "ONLINE_LIVE" || !!d.roomId, { message: "Choose a room for an in-person class", path: ["roomId"] })
   .refine((d) => d.endMin > d.startMin, { message: "End time must be after start time", path: ["endMin"] });
 
-export type ClassInput = z.infer<typeof classSchema>;
+export type ClassInput = z.input<typeof classSchema>;
 
 /**
  * Shared path for saving and moving: the section (new and current) must be the department's own and the
@@ -106,6 +109,7 @@ export async function saveClassAction(input: ClassInput, overrideSoft = false): 
   const { changeReason, ...classData } = parsed.data;
   // Queue provenance is validated above; it is not a Schedule database column.
   delete classData.source;
+  if (classData.deliveryMode === "ONLINE_LIVE") classData.roomId = "";
   if (scope.role === "REGISTRAR" && !changeReason?.trim()) return { ok: false, error: "Explain the reason for this Registrar correction." };
   return saveScoped(scope, classData, overrideSoft, parsed.data.id ? "Edited class schedule" : "Created class schedule", changeReason);
 }
@@ -131,7 +135,7 @@ export async function moveClassAction(input: z.infer<typeof moveSchema>, overrid
   if (existing.status === "REVIEW") return { ok: false, error: LOCKED_MESSAGE };
   const e = existing;
   const moved: ClassData = {
-    id, semesterId: e.semesterId, sectionId: e.sectionId, subjectId: e.subjectId, facultyId: e.facultyId, roomId: e.roomId,
+    id, semesterId: e.semesterId, sectionId: e.sectionId, subjectId: e.subjectId, facultyId: e.facultyId, roomId: e.roomId ?? "", deliveryMode: e.deliveryMode === "ONLINE_LIVE" ? "ONLINE_LIVE" : "IN_PERSON", meetingLink: e.meetingLink,
     component: e.component, notes: e.notes ?? undefined, ...slot,
   };
   return saveScoped(scope, moved, overrideSoft, "Moved class (drag and drop)");
@@ -247,6 +251,9 @@ export async function submitClassesAction(ids: string[], overrideReason?: string
     (e.status === "PUBLISHED" ? g.linkIds : g.ids).push(e.id);
     groups.set(key, g);
   }
+  const policyReports = await Promise.all([...groups.values()].map((g) => termConstraintReport(g.semesterId, g.departmentId, scope.role)));
+  const policyProblem = policyReports.flat().find((v) => v.hard && (v.kind === "CLASS_DURATION" || v.kind === "DELIVERY_MODE"));
+  if (policyProblem) return { ok: false, error: `Review the timetable before submitting: ${policyProblem.constraintName}: ${policyProblem.message}` };
   let count = 0;
   for (const g of groups.values()) {
     const created = await createSubmission({ kind: "CLASS", ...g, userId: scope.userId, overrideReason: off.length ? reason : null });

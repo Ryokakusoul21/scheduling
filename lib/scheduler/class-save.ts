@@ -10,6 +10,8 @@ import { DIRECT_EDIT_ROLES, PUBLISH_ROLES, type AppRole } from "@/lib/permission
 import { concurrentTermIds, weeklyDoubleBooking } from "./term-conflicts";
 import { dayOfWeek, isoDate } from "@/lib/occupancy/engine";
 import { collegeLengthError, formatRange } from "./timetable";
+import { matchingPolicies } from "./class-policies";
+import { activeRules } from "./constraints-server";
 import { checkClassConstraints } from "./constraints-server";
 import type { Violation } from "./constraints";
 import type { SchedulerEntry } from "@/components/scheduler/types";
@@ -28,6 +30,8 @@ export interface ClassData {
   subjectId: string;
   facultyId: string;
   roomId: string;
+  deliveryMode?: "IN_PERSON" | "ONLINE_LIVE";
+  meetingLink?: string | null;
   component: "LECTURE" | "LABORATORY";
   dayOfWeek: SchedulerEntry["dayOfWeek"];
   startMin: number;
@@ -37,9 +41,9 @@ export interface ClassData {
   doNotMove?: boolean;
 }
 
-export function toEntry(s: Omit<SchedulerEntry, "notes"> & { notes: string | null }): SchedulerEntry {
+export function toEntry(s: Omit<SchedulerEntry, "notes" | "roomId" | "deliveryMode"> & { roomId: string | null; notes: string | null; deliveryMode?: string }): SchedulerEntry {
   return {
-    id: s.id, semesterId: s.semesterId, sectionId: s.sectionId, subjectId: s.subjectId, facultyId: s.facultyId, roomId: s.roomId,
+    id: s.id, semesterId: s.semesterId, sectionId: s.sectionId, subjectId: s.subjectId, facultyId: s.facultyId, roomId: s.roomId ?? "", deliveryMode: s.deliveryMode === "ONLINE_LIVE" ? "ONLINE_LIVE" : "IN_PERSON", meetingLink: s.meetingLink,
     component: s.component, dayOfWeek: s.dayOfWeek, startMin: s.startMin, endMin: s.endMin, status: s.status, notes: s.notes, doNotMove: s.doNotMove,
   };
 }
@@ -101,16 +105,16 @@ async function bookingClash(d: ClassData) {
 /** Every check a class must pass before it is written: archived records, double booking, constraints. */
 export async function checkClass(d: ClassData, actor: { userId: string }, opts: { overrideSoft: boolean; viewerDepartmentId?: string | null }) {
   const [section, subject, faculty, room, term] = await Promise.all([
-    prisma.section.findUnique({ where: { id: d.sectionId }, select: { id: true, archivedAt: true, departmentId: true, level: true } }),
-    prisma.subject.findUnique({ where: { id: d.subjectId }, select: { id: true, archivedAt: true, lectureHours: true, labHours: true, level: true } }),
+    prisma.section.findUnique({ where: { id: d.sectionId }, select: { id: true, archivedAt: true, departmentId: true, level: true, programId: true, yearLevel: true, gradeLevel: true } }),
+    prisma.subject.findUnique({ where: { id: d.subjectId }, select: { id: true, archivedAt: true, lectureHours: true, labHours: true, level: true, category: true } }),
     prisma.faculty.findUnique({ where: { id: d.facultyId }, select: { id: true, archivedAt: true, teachingLevels: true } }),
-    prisma.room.findUnique({ where: { id: d.roomId }, select: { id: true, archivedAt: true, isGeneralShared: true, departmentId: true, department: { select: { code: true } } } }),
+    d.deliveryMode === "ONLINE_LIVE" ? Promise.resolve(null) : prisma.room.findUnique({ where: { id: d.roomId }, select: { id: true, archivedAt: true, isGeneralShared: true, departmentId: true, department: { select: { code: true } } } }),
     prisma.semester.findUnique({ where: { id: d.semesterId }, select: { id: true, level: true } }),
   ]);
-  if (!section || !subject || !faculty || !room || !term) {
+  if (!section || !subject || !faculty || (!room && d.deliveryMode !== "ONLINE_LIVE") || !term) {
     return { ok: false as const, error: "The section, subject, faculty, room, or term no longer exists. Refresh and try again." };
   }
-  if (!roomAllowsSection({ ...room, departmentCode: room.department?.code }, section)) {
+  if (room && !roomAllowsSection({ ...room, departmentCode: room.department?.code }, section)) {
     return { ok: false as const, error: "This room is designated for another department. Choose a General / Shared room or your department\'s room." };
   }
   // Academic levels are never mixed: section, subject, and term must share one level.
@@ -136,7 +140,8 @@ export async function checkClass(d: ClassData, actor: { userId: string }, opts: 
     const total = others + d.endMin - d.startMin;
     // Only a new class or a changed length is held to the College meeting length; older classes can still move.
     const lengthChanged = !before || before.endMin - before.startMin !== d.endMin - d.startMin || before.subjectId !== d.subjectId || before.component !== d.component;
-    const lengthError = lengthChanged ? collegeLengthError(section.level, d.endMin - d.startMin, required - others, (await getTimetableConfig(d.semesterId, section.departmentId)).classSession) : null;
+    const customDuration = matchingPolicies("CLASS_DURATION", await activeRules(), d, section, subject).length > 0;
+    const lengthError = lengthChanged && !customDuration ? collegeLengthError(section.level, d.endMin - d.startMin, required - others, (await getTimetableConfig(d.semesterId, section.departmentId)).classSession) : null;
     if (lengthError) return { ok: false as const, error: lengthError };
     if (required <= 0 || total > required) return { ok: false as const, error: `This placement would exceed the required ${required / 60} weekly hours for this subject component.` };
   }
@@ -145,9 +150,9 @@ export async function checkClass(d: ClassData, actor: { userId: string }, opts: 
     { label: "subject", row: subject, prev: before?.subjectId },
     { label: "faculty member", row: faculty, prev: before?.facultyId },
     { label: "room", row: room, prev: before?.roomId },
-  ].find((p) => p.row.archivedAt && p.row.id !== p.prev);
+  ].find((p) => p.row?.archivedAt && p.row.id !== p.prev);
   if (archived) return { ok: false as const, error: `That ${archived.label} is archived. Restore it in User Management or choose another.` };
-  const clash = (await weeklyDoubleBooking(d, d.id, opts.viewerDepartmentId)) ?? (await bookingClash(d));
+  const clash = (await weeklyDoubleBooking(d, d.id, opts.viewerDepartmentId)) ?? (d.deliveryMode === "ONLINE_LIVE" ? null : await bookingClash(d));
   if (clash) return { ok: false as const, error: clash };
   return enforceConstraints(d, d.id, opts.overrideSoft, actor.userId);
 }
@@ -169,7 +174,7 @@ async function createQueuedClass(data: Prisma.ScheduleUncheckedCreateInput) {
     const plotted = meetings.reduce((sum, e) => sum + Math.max(0, e.endMin - e.startMin), 0);
     if (plotted + data.endMin - data.startMin > required) throw new QueuePlacementChanged("The remaining hours changed. Refresh Unscheduled to avoid duplicate meetings.");
     const terms = await concurrentTermIds(data.semesterId, tx);
-    const overlap = await tx.schedule.findFirst({ where: { semesterId: { in: terms }, status: { not: "ARCHIVED" }, dayOfWeek: data.dayOfWeek, startMin: { lt: data.endMin }, endMin: { gt: data.startMin }, OR: [{ sectionId: data.sectionId }, { facultyId: data.facultyId }, { roomId: data.roomId }] }, select: { id: true } });
+    const overlap = await tx.schedule.findFirst({ where: { semesterId: { in: terms }, status: { not: "ARCHIVED" }, dayOfWeek: data.dayOfWeek, startMin: { lt: data.endMin }, endMin: { gt: data.startMin }, OR: [{ sectionId: data.sectionId }, { facultyId: data.facultyId }, ...(data.roomId ? [{ roomId: data.roomId }] : [])] }, select: { id: true } });
     if (overlap) throw new QueuePlacementChanged("The teacher, room, or section was booked while placing this class. Choose another time.");
     return tx.schedule.create({ data });
   }, { maxWait: 10_000, timeout: 60_000, isolationLevel: "Serializable" });
@@ -181,7 +186,7 @@ export async function writeClass(d: ClassData, actor: { userId: string; role: Ap
   // Persist placement columns explicitly; request provenance must never become a database field.
   const data = {
     semesterId: d.semesterId, sectionId: d.sectionId, subjectId: d.subjectId, facultyId: d.facultyId,
-    roomId: d.roomId, component: d.component, dayOfWeek: d.dayOfWeek, startMin: d.startMin, endMin: d.endMin,
+    roomId: d.deliveryMode === "ONLINE_LIVE" ? null : d.roomId, deliveryMode: d.deliveryMode ?? "IN_PERSON", meetingLink: d.deliveryMode === "ONLINE_LIVE" ? d.meetingLink || null : null, component: d.component, dayOfWeek: d.dayOfWeek, startMin: d.startMin, endMin: d.endMin,
     doNotMove: d.doNotMove,
   };
   const owner = await prisma.section.findUnique({ where: { id: data.sectionId }, select: { departmentId: true } });

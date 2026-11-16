@@ -55,6 +55,7 @@ import {
   type SubjectNeed,
 } from "@/lib/scheduler/timetable";
 import { rankFaculty, rankRooms } from "@/lib/scheduler/suggest";
+import { deliveryPolicy, durationPolicy } from "@/lib/scheduler/class-policies";
 import { assignedFor } from "@/lib/subjects/assignment-rules";
 import type { DayOfWeek, SchedEntry } from "@/lib/scheduler/types";
 import { levelLabel, stageLabel } from "@/lib/academics/levels";
@@ -269,7 +270,7 @@ export function SchedulerWorkspace({
       const lines = [
         focus?.kind !== "section" ? maps.section.get(e.sectionId)?.name : null,
         focus?.kind !== "faculty" ? maps.facultyName.get(e.facultyId) : null,
-        focus?.kind !== "room" ? maps.room.get(e.roomId)?.roomName : null,
+        focus?.kind !== "room" ? (e.deliveryMode === "ONLINE_LIVE" ? "Online (live)" : maps.room.get(e.roomId)?.roomName) : null,
       ].filter(Boolean) as string[];
       return {
         title: e.busy ? "Occupied" : `${subject?.code ?? "?"}${e.component === "LABORATORY" ? " (Laboratory)" : ""}`,
@@ -296,7 +297,7 @@ export function SchedulerWorkspace({
       subjectName: e.busy ? "" : (maps.subject.get(e.subjectId)?.name ?? ""),
       section: e.busy ? "a class of another department" : (maps.section.get(e.sectionId)?.name ?? "?"),
       faculty: maps.facultyName.get(e.facultyId) ?? (e.busy ? "Unnamed" : "Not assigned"),
-      room: maps.room.get(e.roomId)?.roomName ?? "?",
+      room: e.deliveryMode === "ONLINE_LIVE" ? "Online (live)" : maps.room.get(e.roomId)?.roomName ?? "?",
     }),
     [maps]
   );
@@ -557,6 +558,8 @@ export function SchedulerWorkspace({
       const section = maps.section.get(draft.sectionId);
       const subject = maps.subject.get(draft.subjectId);
       const concurrent = concurrentWith(draft.semesterId);
+      const delivery = deliveryPolicy(data.rules, draft, section, subject);
+      const duration = durationPolicy(data.rules, draft, section, subject);
       // Suggestions never pick another department's faculty member or room (that would need approval).
       const pool = data.faculty.filter((f) => f.status === "ACTIVE" && !f.foreign);
       // The subject's assigned professor is the only suggestion when there is one.
@@ -572,9 +575,9 @@ export function SchedulerWorkspace({
         preferredRoomIds: pool.find((f) => f.id === (draft.facultyId || faculty?.id))?.preferredRoomIds,
         sameRoomId: entries.find((e) => !e.busy && e.sectionId === draft.sectionId && e.subjectId === draft.subjectId && e.semesterId === draft.semesterId)?.roomId,
       })[0];
-      return { ...draft, facultyId: draft.facultyId || faculty?.id || "", roomId: draft.roomId || room?.id || "" };
+      return { ...draft, deliveryMode: delivery.defaultMode, endMin: duration?.allowedMinutes.length ? draft.startMin + Math.min(draft.endMin - draft.startMin, Math.max(...duration.allowedMinutes)) : draft.endMin, facultyId: draft.facultyId || faculty?.id || "", roomId: delivery.defaultMode === "ONLINE_LIVE" ? "" : draft.roomId || room?.id || "" };
     },
-    [maps, concurrentWith, data.faculty, data.rooms, data.assignments, entries]
+    [maps, concurrentWith, data.faculty, data.rooms, data.assignments, data.rules, entries]
   );
 
   /** Free rooms of the right type and size for a class, as panel options. */
@@ -770,7 +773,7 @@ export function SchedulerWorkspace({
       toast.error(`${code} cannot go on ${DAY_LONG[draft.dayOfWeek]} at ${formatTime(draft.startMin)}`, { description: `${reasons.join(", ")}.` });
       return;
     }
-    await saveClass({ ...draft, source: "CURRICULUM_QUEUE", notes: "Placed from the unscheduled tray." });
+    await saveClass({ ...draft, source: "CURRICULUM_QUEUE", meetingLink: draft.meetingLink ?? "", notes: "Placed from the unscheduled tray." });
   }
 
   async function applyRoom(entryId: string, roomId: string) {

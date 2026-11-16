@@ -4,6 +4,7 @@ import { roomAllowsSection, type RoomDesignation } from "@/lib/rooms/designation
  * Pure and browser-safe; the server loads the rules and context (see constraints-server.ts).
  */
 import { z } from "zod";
+import { durationPolicySchema, deliveryPolicySchema, hoursLabel, policyMatches } from "./class-policies";
 import { rangesOverlap, type DayOfWeek, type SchedEntry } from "./types";
 
 export type ConstraintKind =
@@ -15,7 +16,10 @@ export type ConstraintKind =
   | "MAX_CONSECUTIVE"
   | "LUNCH_BREAK"
   | "SUBJECT_TIME_OF_DAY"
-  | "MINIMUM_GAP";
+  | "MINIMUM_GAP"
+  | "CLASS_DURATION"
+  | "DELIVERY_MODE"
+  | "ROOM_PRIORITY";
 
 const DAY = z.enum(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]);
 const MINUTE = z.number().int().min(0).max(24 * 60);
@@ -24,6 +28,8 @@ const empty = z.object({});
 
 /** Parameters each kind accepts; validated on save and again before checking. */
 export const PARAM_SCHEMAS = {
+  CLASS_DURATION: durationPolicySchema,
+  DELIVERY_MODE: deliveryPolicySchema,
   NO_DOUBLE_BOOKING: empty,
   ROOM_CAPACITY: empty,
   ROOM_DESIGNATION: empty,
@@ -40,11 +46,14 @@ export const PARAM_SCHEMAS = {
     .refine((p) => p.endMin > p.startMin, { message: "The lunch break must end after it starts", path: ["endMin"] }),
   SUBJECT_TIME_OF_DAY: z.object({ subjectId: z.string().min(1, "Choose a subject"), period: z.enum(["MORNING", "AFTERNOON"]) }),
   MINIMUM_GAP: z.object({ minutes: z.number().int().min(5).max(240), appliesTo: APPLIES_TO }),
+  ROOM_PRIORITY: z.object({ roomId: z.string().min(1, "Choose a room"), facultyId: z.string().min(1, "Choose a faculty member") }),
 } satisfies Record<ConstraintKind, z.ZodType>;
 
 export type ConstraintParams<K extends ConstraintKind> = z.infer<(typeof PARAM_SCHEMAS)[K]>;
 
 export const CONSTRAINT_INFO: Record<ConstraintKind, { label: string; hard: boolean; description: string }> = {
+  CLASS_DURATION: { label: "Class meeting duration", hard: true, description: "Allowed meeting lengths for selected terms, years, sections, subjects, or classes." },
+  DELIVERY_MODE: { label: "Class delivery mode", hard: true, description: "Allowed delivery modes for selected years, sections, subjects, minor subjects, or individual classes." },
   NO_DOUBLE_BOOKING: { label: "No double-booking", hard: true, description: "A faculty member, room, or section is never in two classes at once. Always enforced." },
   ROOM_CAPACITY: { label: "Room capacity fits the section", hard: true, description: "The room has at least as many seats as the section has students." },
   ROOM_DESIGNATION: { label: "Room matches department", hard: true, description: "A section only uses rooms designated for its department, or General / Shared rooms." },
@@ -54,12 +63,23 @@ export const CONSTRAINT_INFO: Record<ConstraintKind, { label: string; hard: bool
   LUNCH_BREAK: { label: "Lunch break protection", hard: false, description: "No class overlaps the lunch break." },
   SUBJECT_TIME_OF_DAY: { label: "Subject preferred time of day", hard: false, description: "The subject is taught in the morning or in the afternoon." },
   MINIMUM_GAP: { label: "Minimum gap between classes", hard: false, description: "At least the set number of minutes between two classes." },
+  ROOM_PRIORITY: { label: "Room priority", hard: false, description: "The faculty member gets this room first; others use it when it is free." },
 };
 
 export const CONSTRAINT_KINDS = Object.keys(CONSTRAINT_INFO) as ConstraintKind[];
 
 /** Kinds that cannot be disabled or deleted because the system prevents them at all times. */
 export const LOCKED_KINDS: ConstraintKind[] = ["NO_DOUBLE_BOOKING"];
+
+/** Rooms a faculty member has priority on (Room priority rules) placed ahead of their own preferences. */
+export function withPriorityRooms(facultyId: string, preferred: string[], rules: Pick<ConstraintRule, "kind" | "params">[]) {
+  const priority = rules.flatMap((r) => {
+    if (r.kind !== "ROOM_PRIORITY") return [];
+    const p = PARAM_SCHEMAS.ROOM_PRIORITY.safeParse(r.params);
+    return p.success && p.data.facultyId === facultyId ? [p.data.roomId] : [];
+  });
+  return [...new Set([...priority, ...preferred])];
+}
 
 /** Classes this close together (in minutes) count as back-to-back. */
 const BACK_TO_BACK_MINUTES = 10;
@@ -75,8 +95,8 @@ export interface ConstraintRule {
 
 export interface ConstraintContext {
   rooms: Map<string, { name: string; capacity: number; isGeneralShared: boolean; programIds: string[] } & RoomDesignation>;
-  sections: Map<string, { name: string; studentCount: number; programId: string | null; departmentId: string | null; level?: string }>;
-  subjects: Map<string, { code: string; name: string }>;
+  sections: Map<string, { name: string; studentCount: number; programId: string | null; departmentId: string | null; level?: string; yearLevel?: string | null; gradeLevel?: string | null }>;
+  subjects: Map<string, { code: string; name: string; category?: string; lectureHours?: number; labHours?: number }>;
   faculty: Map<string, { name: string }>;
   programNames: Map<string, string>;
 }
@@ -124,7 +144,7 @@ function dayLine(e: Entry, sameDay: Entry[], key: (x: Entry) => string) {
 }
 
 /** Evaluates one rule for one class against the other classes on the same day. */
-function evaluate(rule: ConstraintRule, e: Entry, sameDay: Entry[], weeklyMinutes: number, ctx: ConstraintContext): string[] {
+function evaluate(rule: ConstraintRule, e: Entry, sameDay: Entry[], weeklyMinutes: number, ctx: ConstraintContext, allOthers: Entry[] = sameDay): string[] {
   const parsed = PARAM_SCHEMAS[rule.kind].safeParse(rule.params);
   if (!parsed.success) return [];
   const p = parsed.data as Record<string, never>;
@@ -136,16 +156,34 @@ function evaluate(rule: ConstraintRule, e: Entry, sameDay: Entry[], weeklyMinute
       return sameDay
         .filter((o) => rangesOverlap(o, e))
         .flatMap((o) => {
-          const shared = [o.facultyId === e.facultyId && "faculty member", o.roomId === e.roomId && "room", o.sectionId === e.sectionId && "section"].filter(Boolean);
+          const shared = [o.facultyId === e.facultyId && "faculty member", !!e.roomId && o.roomId === e.roomId && "room", o.sectionId === e.sectionId && "section"].filter(Boolean);
           const pair = [me, label(o, ctx)].sort().join(" and ");
           return shared.length ? [`${pair} share the same ${shared.join(", ")} on ${day} at an overlapping time.`] : [];
         });
+    case "CLASS_DURATION": {
+      if (!policyMatches(rule, e, ctx.sections.get(e.sectionId), ctx.subjects.get(e.subjectId))) return [];
+      const params = durationPolicySchema.parse(rule.params);
+      const minutes = e.endMin - e.startMin;
+      if (params.allowedMinutes.includes(minutes)) return [];
+      const subject = ctx.subjects.get(e.subjectId);
+      const required = (e.component === "LECTURE" ? subject?.lectureHours : subject?.labHours) ?? 0;
+      const used = allOthers.filter((o) => o.sectionId === e.sectionId && o.subjectId === e.subjectId && o.component === e.component && o.semesterId === e.semesterId).reduce((sum, o) => sum + o.endMin - o.startMin, 0);
+      if (params.allowFinalRemainder && minutes < Math.min(...params.allowedMinutes) && minutes === Math.round(required * 60) - used) return [];
+      return [`${me}: meeting length must be ${params.allowedMinutes.map(hoursLabel).join(" or ")} (${rule.name}).`];
+    }
+    case "DELIVERY_MODE": {
+      if (!policyMatches(rule, e, ctx.sections.get(e.sectionId), ctx.subjects.get(e.subjectId))) return [];
+      const params = deliveryPolicySchema.parse(rule.params);
+      return params.allowedModes.includes((e.deliveryMode ?? "IN_PERSON") as "IN_PERSON" | "ONLINE_LIVE") ? [] : [`${me}: delivery mode must follow ${rule.name}.`];
+    }
     case "ROOM_CAPACITY": {
+      if (e.deliveryMode === "ONLINE_LIVE") return [];
       const room = ctx.rooms.get(e.roomId);
       const size = ctx.sections.get(e.sectionId)?.studentCount ?? 0;
       return room && size > room.capacity ? [`${me}: ${room.name} seats ${room.capacity}, but the section has ${size} students.`] : [];
     }
     case "ROOM_DESIGNATION": {
+      if (e.deliveryMode === "ONLINE_LIVE") return [];
       const room = ctx.rooms.get(e.roomId);
       const section = ctx.sections.get(e.sectionId);
       if (!room || roomAllowsSection({ ...room, programIds: room.isGeneralShared ? null : room.programIds }, section ?? {})) return [];
@@ -192,6 +230,9 @@ function evaluate(rule: ConstraintRule, e: Entry, sameDay: Entry[], weeklyMinute
       const ok = p.period === "MORNING" ? e.endMin <= NOON : e.startMin >= NOON;
       return ok ? [] : [`${me} should be taught in the ${p.period === "MORNING" ? "morning" : "afternoon"}.`];
     }
+    case "ROOM_PRIORITY":
+      // Guides placement only; using the room for someone else is never a violation.
+      return [];
     case "MINIMUM_GAP": {
       const line = dayLine(e, sameDay, (x) => ownerKey(x, p.appliesTo));
       const i = line.indexOf(e);
@@ -213,7 +254,7 @@ function runRules(rules: ConstraintRule[], e: Entry, others: Entry[], ctx: Const
   return rules
     .filter((r) => applies(r, e, ctx))
     .flatMap((r) =>
-      evaluate(r, e, sameDay, weekly, ctx).map((message) => ({
+      evaluate(r, e, sameDay, weekly, ctx, others.filter((o) => !sameEntry(o, e))).map((message) => ({
         constraintId: r.id,
         constraintName: r.name,
         kind: r.kind,

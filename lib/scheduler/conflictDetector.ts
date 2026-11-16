@@ -115,7 +115,7 @@ export function detectConflicts(entries: SchedEntry[], ctx: ConflictContext): De
       if (a.facultyId && a.facultyId === b.facultyId) {
         push(out, "FACULTY_CONFLICT", "CRITICAL", "Faculty is double-booked at this time.", a, b);
       }
-      if (a.roomId === b.roomId) {
+      if (!!a.roomId && a.roomId === b.roomId) {
         push(out, "ROOM_CONFLICT", "CRITICAL", "Room is double-booked at this time.", a, b);
       }
       if (a.sectionId === b.sectionId) {

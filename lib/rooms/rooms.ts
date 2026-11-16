@@ -13,6 +13,8 @@ export interface Room {
   departmentId: string;
   departmentName: string;
   isGeneralShared: boolean;
+  /** Faculty member with Room priority on this room, from an enabled constraint. */
+  priorityFaculty?: string;
 }
 export interface Floor {
   id: string;

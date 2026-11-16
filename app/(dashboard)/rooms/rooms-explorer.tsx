@@ -342,7 +342,8 @@ function FloorPanel({
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Badge variant="outline">{r.capacity} seats</Badge>
-                    <Badge variant={r.departmentId ? "default" : "outline"}>{designation(r)}</Badge>
+                    {(isAdmin || (!r.departmentId && !r.priorityFaculty)) && <Badge variant={r.departmentId ? "default" : "outline"}>{designation(r)}</Badge>}
+                    {r.priorityFaculty && <Badge variant="secondary">Priority: {r.priorityFaculty}</Badge>}
                     {r.status !== "AVAILABLE" && (
                       <Badge variant="outline" className={r.status === "UNDER_MAINTENANCE" ? "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300" : "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300"}>
                         {STATUSES.find((s) => s.value === r.status)?.label}

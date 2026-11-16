@@ -130,3 +130,21 @@ export function RuleRow({ row, names, isAdmin, ...handlers }: RowHandlers & { ro
     </li>
   );
 }
+
+/** One-line rule for compact lists: name, settings chips, status, and actions; details on hover. */
+export function CompactRuleRow({ row, names, ...handlers }: RowHandlers & { row: ConstraintRow; names: Map<string, string> }) {
+  const chips = settingChips(row.kind, row.params, names);
+  return (
+    <li className={cn("flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5", !row.enabled && "opacity-60")}>
+      <Tooltip>
+        <TooltipTrigger render={<p tabIndex={0} className="min-w-48 flex-1 truncate text-sm font-medium" />}>{row.name}</TooltipTrigger>
+        <TooltipContent>{summary(row.kind, row.params, names)}</TooltipContent>
+      </Tooltip>
+      {chips.length > 0 && <div className="order-last w-full sm:order-none sm:w-auto"><Chips items={chips} /></div>}
+      <div className="ml-auto flex items-center gap-2">
+        <StatusControl row={row} onToggle={handlers.onToggle} />
+        <RuleActions row={row} {...handlers} />
+      </div>
+    </li>
+  );
+}

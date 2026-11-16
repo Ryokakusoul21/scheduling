@@ -13,9 +13,9 @@ import { DEFAULT_TIMETABLE, TIMETABLE_DAYS, timeInputValue, timeInputMinutes, ty
 import { DAY_LONG } from "@/lib/scheduler/timetable";
 
 type Preview = Extract<Awaited<ReturnType<typeof previewTimetableConfigurationAction>>, { ok: true }>;
-export function TimetableConfiguration({ terms, departments, canManageSchool, termId, departmentId }: {
+export function TimetableConfiguration({ terms, departments, canManageSchool, termId, departmentId, triggerLabel }: {
   terms: { id: string; label: string; programId?: string | null }[]; departments: { id: string; name: string }[];
-  canManageSchool: boolean; termId?: string; departmentId?: string;
+  canManageSchool: boolean; termId?: string; departmentId?: string; triggerLabel?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -51,7 +51,7 @@ export function TimetableConfiguration({ terms, departments, canManageSchool, te
     });
   }
   const timeField = (id: string, value: number, onChange: (v: number) => void) => <Input id={id} type="time" step={60} value={timeInputValue(value)} onChange={(e) => { if (e.target.value) onChange(timeInputMinutes(e.target.value)); }} />;
-  return <><Button variant="ghost" size="icon-sm" onClick={launch} aria-label="Timetable Configuration" title="Timetable Configuration"><SlidersHorizontal className="size-4" /></Button>
+  return <><Button variant={triggerLabel ? "outline" : "ghost"} size={triggerLabel ? "default" : "icon-sm"} onClick={launch} aria-label="Timetable Configuration" title="Timetable Configuration"><SlidersHorizontal className="size-4" />{triggerLabel}</Button>
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="sm:max-w-2xl">
       <DialogHeader><DialogTitle className="font-bold">Timetable Configuration</DialogTitle><DialogDescription>Set fixed slots or flexible times for classes and examinations. Preview the impact before saving.</DialogDescription></DialogHeader>
       <fieldset disabled={pending} className="grid gap-3 sm:grid-cols-2">
@@ -60,7 +60,7 @@ export function TimetableConfiguration({ terms, departments, canManageSchool, te
       </fieldset>
       {!loaded && !error && <p role="status">Loading configuration…</p>}
       {loaded && <>
-        {!!choice.termId && <p className="text-xs text-muted-foreground">Settings must fit the school's enabled days and hours.</p>}
+        {!!choice.termId && <p className="text-xs text-muted-foreground">Settings must fit the school&apos;s enabled days and hours.</p>}
         {!!choice.termId && <label className="flex items-center gap-2"><input type="checkbox" checked={inherit} disabled={pending} onChange={(e) => { setInherit(e.target.checked); setPreview(null); }} /> Use inherited school settings</label>}
         <fieldset disabled={pending || inherit} className="grid gap-4 disabled:opacity-60">
           <div className="space-y-2 rounded-lg border bg-muted/30 p-3">

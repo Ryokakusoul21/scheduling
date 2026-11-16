@@ -34,7 +34,9 @@ const entrySchema = z.object({
   sectionId: z.string().min(1),
   subjectId: z.string().min(1),
   facultyId: z.string().min(1),
-  roomId: z.string().min(1),
+  roomId: z.string(),
+  deliveryMode: z.enum(["IN_PERSON", "ONLINE_LIVE"]).optional(),
+  meetingLink: z.string().nullable().optional(),
   component: z.enum(["LECTURE", "LABORATORY"]),
   dayOfWeek: DAY,
   startMin: z.number().int().min(0).max(24 * 60),
@@ -66,17 +68,17 @@ const TRANSACTION = { maxWait: 10_000, timeout: 60_000 };
 async function writeSlots(tx: Prisma.TransactionClient, rows: ResolverEntry[]) {
   if (!rows.length) return;
   const values = Prisma.join(
-    rows.map((r) => Prisma.sql`(${r.id}, ${r.dayOfWeek}::"DayOfWeek", ${r.startMin}::int, ${r.endMin}::int, ${r.roomId}, ${r.facultyId}, ${r.status}::"ScheduleStatus")`)
+    rows.map((r) => Prisma.sql`(${r.id}, ${r.dayOfWeek}::"DayOfWeek", ${r.startMin}::int, ${r.endMin}::int, ${r.roomId}, ${r.facultyId}, ${r.status}::"ScheduleStatus", ${r.deliveryMode ?? "IN_PERSON"}, ${r.meetingLink ?? null})`)
   );
   await tx.$executeRaw`
     UPDATE "Schedule" AS s
-    SET "dayOfWeek" = v.day, "startMin" = v.start, "endMin" = v.finish, "roomId" = v.room, "facultyId" = v.faculty, "status" = v.status, "updatedAt" = NOW()
-    FROM (VALUES ${values}) AS v(id, day, start, finish, room, faculty, status)
+    SET "dayOfWeek" = v.day, "startMin" = v.start, "endMin" = v.finish, "roomId" = NULLIF(v.room, ''), "deliveryMode" = v.delivery, "meetingLink" = v.link, "facultyId" = v.faculty, "status" = v.status, "updatedAt" = NOW()
+    FROM (VALUES ${values}) AS v(id, day, start, finish, room, faculty, status, delivery, link)
     WHERE s."id" = v.id`;
 }
 
-const SAME = ["sectionId", "subjectId", "facultyId", "roomId", "component", "dayOfWeek", "startMin", "endMin"] as const;
-const sameSlot = (a: Pick<ResolverEntry, (typeof SAME)[number]>, b: Pick<ResolverEntry, (typeof SAME)[number]>) => SAME.every((k) => a[k] === b[k]);
+const SAME = ["sectionId", "subjectId", "facultyId", "roomId", "component", "dayOfWeek", "startMin", "endMin", "deliveryMode"] as const;
+const sameSlot = (a: Pick<ResolverEntry, (typeof SAME)[number]>, b: Pick<ResolverEntry, (typeof SAME)[number]>) => SAME.every((k) => k === "deliveryMode" ? (a[k] ?? "IN_PERSON") === (b[k] ?? "IN_PERSON") : a[k] === b[k]);
 
 /** Server time the proposal is generated against; applying refuses if its classes changed after it. */
 export async function repairStampAction(): Promise<Result<{ generatedAt: string }>> {
@@ -125,7 +127,7 @@ export async function applyRepairAction(input: z.infer<typeof applySchema>): Pro
   const roomIds = [...new Set(changes.flatMap((c) => [c.before?.roomId, c.after?.roomId]).filter((id): id is string => !!id))];
   const facultyIds = [...new Set(changes.flatMap((c) => [c.before?.facultyId, c.after?.facultyId]).filter((id): id is string => !!id))];
   const newer = await prisma.schedule.count({ where: { updatedAt: { gt: since }, OR: [{ sectionId: { in: sectionIds } }, { roomId: { in: roomIds } }, { facultyId: { in: facultyIds } }] } });
-  const moved = changes.some((c) => c.before && (!byId.get(c.before.id) || byId.get(c.before.id)!.status === "ARCHIVED" || !sameSlot(byId.get(c.before.id)!, c.before)));
+  const moved = changes.some((c) => c.before && (!byId.get(c.before.id) || byId.get(c.before.id)!.status === "ARCHIVED" || !sameSlot({ ...byId.get(c.before.id)!, roomId: byId.get(c.before.id)!.roomId ?? "", deliveryMode: byId.get(c.before.id)!.deliveryMode === "ONLINE_LIVE" ? "ONLINE_LIVE" : "IN_PERSON" }, c.before)));
   if (newer || moved) return { ok: false, stale: true, error: "The timetable changed after this proposal was generated. Run Resolve issues again." };
 
   // Full re-check on the server's own data: no change may add a hard problem, and only usable rooms and faculty.
@@ -133,7 +135,7 @@ export async function applyRepairAction(input: z.infer<typeof applySchema>): Pro
   const world = await serverInput(scope, termIds);
   const facultyOk = new Set(world.faculty.filter((f) => f.assignable).map((f) => f.id));
   const roomOk = new Set(world.rooms.filter((r) => r.assignable).map((r) => r.id));
-  const unusable = changes.find((c) => c.after && ((c.after.facultyId !== c.before?.facultyId && !facultyOk.has(c.after.facultyId)) || (c.after.roomId !== c.before?.roomId && !roomOk.has(c.after.roomId))));
+  const unusable = changes.find((c) => c.after && ((c.after.facultyId !== c.before?.facultyId && !facultyOk.has(c.after.facultyId)) || (c.after.roomId !== c.before?.roomId && c.after.deliveryMode !== "ONLINE_LIVE" && !roomOk.has(c.after.roomId))));
   if (unusable) return { ok: false, error: "A proposed room or faculty member is no longer available to you. Run Resolve issues again." };
   const base = world.entries;
   const after = applyChanges(base, changes);
@@ -160,7 +162,7 @@ export async function applyRepairAction(input: z.infer<typeof applySchema>): Pro
       validateAutoPlacements({ ...current, entries: applyChanges(current.entries, stored.filter((c) => c.before)) }, stored.filter((c) => !c.before && c.after));
       await tx.schedule.createMany({
         data: created.map((a) => ({
-          id: a.id, semesterId: a.semesterId, sectionId: a.sectionId, subjectId: a.subjectId, facultyId: a.facultyId, roomId: a.roomId, component: a.component,
+          id: a.id, semesterId: a.semesterId, sectionId: a.sectionId, subjectId: a.subjectId, facultyId: a.facultyId, roomId: a.deliveryMode === "ONLINE_LIVE" ? null : a.roomId, deliveryMode: a.deliveryMode ?? "IN_PERSON", meetingLink: a.meetingLink, component: a.component,
           dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin, status: a.status, departmentId: departments.get(a.sectionId) ?? null,
           notes: "Added by Resolve issues; review before submitting.", generatedBy: scope.userId,
         })),
@@ -210,7 +212,7 @@ export async function undoRepairAction(id: string): Promise<Result<{ entries: Re
   const touched = changes.some((c) => {
     const row = rows.get((c.after ?? c.before)!.id);
     if (!row) return true;
-    return c.after ? row.status === "ARCHIVED" || !sameSlot(row, c.after) : row.status !== "ARCHIVED";
+    return c.after ? row.status === "ARCHIVED" || !sameSlot({ ...row, roomId: row.roomId ?? "", deliveryMode: row.deliveryMode === "ONLINE_LIVE" ? "ONLINE_LIVE" : "IN_PERSON" }, c.after) : row.status !== "ARCHIVED";
   });
   if (touched) return { ok: false, error: "Some of these classes were edited after the change was applied. Undo them by hand." };
 

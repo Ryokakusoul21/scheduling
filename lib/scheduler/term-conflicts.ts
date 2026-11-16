@@ -27,7 +27,7 @@ export async function detectConflictsForTerms(termIds: string[]) {
   const ids = <K extends "facultyId" | "roomId" | "subjectId" | "sectionId">(k: K) => [...new Set(schedules.map((s) => s[k]))];
   const [faculty, rooms, subjects, sections] = await Promise.all([
     prisma.faculty.findMany({ where: { id: { in: ids("facultyId") } }, include: { availability: true } }),
-    prisma.room.findMany({ where: { id: { in: ids("roomId") } }, include: { availability: true } }),
+    prisma.room.findMany({ where: { id: { in: ids("roomId").filter((id): id is string => !!id) } }, include: { availability: true } }),
     prisma.subject.findMany({ where: { id: { in: ids("subjectId") } } }),
     prisma.section.findMany({ where: { id: { in: ids("sectionId") } }, select: { id: true, studentCount: true } }),
   ]);
@@ -74,14 +74,14 @@ export async function weeklyDoubleBooking(entry: {
       dayOfWeek: entry.dayOfWeek as never,
       startMin: { lt: entry.endMin },
       endMin: { gt: entry.startMin },
-      OR: [{ facultyId: entry.facultyId }, { roomId: entry.roomId }, { sectionId: entry.sectionId }],
+      OR: [{ facultyId: entry.facultyId }, ...(entry.roomId ? [{ roomId: entry.roomId }] : []), { sectionId: entry.sectionId }],
     },
     include: { subject: { select: { code: true } }, section: { select: { name: true, departmentId: true } } },
   });
   if (!clash) return null;
   const what = [
     clash.facultyId === entry.facultyId && "faculty member",
-    clash.roomId === entry.roomId && "room",
+    !!entry.roomId && clash.roomId === entry.roomId && "room",
     clash.sectionId === entry.sectionId && "section",
   ].filter(Boolean).join(", ");
   // A Head of Department learns only that another department's resource is busy, never which class holds it.

@@ -130,7 +130,7 @@ export function SectionSheet({ source, className, highlight, flagged }: { source
 
   const subjectIds = [...new Set(rows.classes.map((e) => e.subjectId))];
   const fillOf = (id: string) => FILLS[subjectIds.indexOf(id) % FILLS.length];
-  const roomName = (id: string) => rooms.get(id)?.roomName ?? "Room to be announced";
+  const roomName = (id: string) => id ? rooms.get(id)?.roomName ?? "Room to be announced" : "Online (live)";
   const teachers = (subjectId: string) => [...new Set(rows.classes.filter((e) => e.subjectId === subjectId).map((e) => {
     const teacher = faculty.get(e.facultyId);
     return teacher ? `${teacher.fullName}${teacher.department ? ` (${teacher.department})` : ""}` : undefined;

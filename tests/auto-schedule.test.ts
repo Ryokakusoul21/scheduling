@@ -12,6 +12,26 @@ import { applyAutoSchedule, autoScheduleBasis, previewAutoSchedule, validateAuto
 
 const scope = { userId: "head", role: "HEAD_OF_DEPARTMENT", departmentId: "cs" } as Scope;
 const options = (input: ResolverInput) => ({ ...DEFAULT_OPTIONS, sectionIds: input.sections.map((s) => s.id), kinds: ["UNSCHEDULED", "HOURS"] as ("UNSCHEDULED" | "HOURS")[], placementOnly: true, keepFaculty: true, retime: false, moveCompleteSections: false });
+it("automatically places first-year minor lectures online in two 90-minute meetings without a physical room", () => {
+  const input = autoFixture(1);
+  input.rooms = [];
+  input.sections[0].yearLevel = "FIRST";
+  input.subjects[0].category = "MINOR";
+  input.ruleCtx.sections.set("s0", { ...input.ruleCtx.sections.get("s0")!, yearLevel: "FIRST" });
+  input.ruleCtx.subjects.set("cc101", { ...input.ruleCtx.subjects.get("cc101")!, category: "MINOR", lectureHours: 3, labHours: 0 });
+  input.rules = [
+    { id: "online", kind: "DELIVERY_MODE", name: "First-year minor subjects online", departmentId: "cs", params: { target: { yearLevel: "FIRST", subjectCategory: "MINOR" }, allowedModes: ["ONLINE_LIVE"], defaultMode: "ONLINE_LIVE" } },
+    { id: "duration", kind: "CLASS_DURATION", name: "90-minute lectures", departmentId: "cs", params: { target: { component: "LECTURE" }, allowedMinutes: [90], allowFinalRemainder: false } },
+  ];
+  const result = solve(input, options(input));
+  expect(result.changes).toHaveLength(2);
+  expect(result.unresolved).toHaveLength(0);
+  for (const change of result.changes) {
+    expect(change.after).toMatchObject({ deliveryMode: "ONLINE_LIVE", roomId: "" });
+    expect(change.after!.endMin - change.after!.startMin).toBe(90);
+  }
+  expect(() => validateAutoPlacements(input, result.changes)).not.toThrow();
+});
 let world: ResolverInput;
 let record: Record<string, unknown>;
 beforeEach(() => {

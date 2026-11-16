@@ -12,11 +12,11 @@ export function buildResolverInput(data: SchedulerData, entries: SchedulerEntry[
     assignments: data.assignments.flatMap((a) => a.sectionId ? [{ ...a, sectionId: a.sectionId, semesterId: a.semesterId ?? termOf(a.sectionId) }] : []),
     // Other departments' classes come in as anonymous busy blocks: they block time and are never moved.
     entries: [...entries, ...data.busy].filter((e) => e.status !== "ARCHIVED").map((e) => ({
-      id: e.id, semesterId: e.semesterId, sectionId: e.sectionId, subjectId: e.subjectId, facultyId: e.facultyId, roomId: e.roomId,
+      id: e.id, semesterId: e.semesterId, sectionId: e.sectionId, subjectId: e.subjectId, facultyId: e.facultyId, roomId: e.roomId, deliveryMode: e.deliveryMode, meetingLink: e.meetingLink,
       component: e.component, dayOfWeek: e.dayOfWeek, startMin: e.startMin, endMin: e.endMin, status: e.status, busy: e.busy,
     })),
     sections: data.sections.filter((s) => !s.archived).map((s) => ({
-      id: s.id, name: s.shortName, level: s.level, programId: s.programId, departmentId: s.departmentId, termId: termOf(s.id),
+      id: s.id, name: s.shortName, level: s.level, yearLevel: s.yearLevel, gradeLevel: s.gradeLevel, programId: s.programId, departmentId: s.departmentId, termId: termOf(s.id),
       studentCount: s.studentCount, editable: s.editable,
       curriculum: s.curriculum.flatMap((c) => {
         const subject = subjects.get(c.subjectId);
@@ -24,7 +24,7 @@ export function buildResolverInput(data: SchedulerData, entries: SchedulerEntry[
         return subject && !subject.archived && hours ? [{ ...c, requiredMin: Math.round(hours * 60) }] : [];
       }),
     })),
-    subjects: data.subjects.map((s) => ({ id: s.id, code: s.code, name: s.name, lectureHours: s.lectureHours, labHours: s.labHours, requiredRoomType: s.requiredRoomType })),
+    subjects: data.subjects.map((s) => ({ id: s.id, code: s.code, name: s.name, category: s.category, lectureHours: s.lectureHours, labHours: s.labHours, requiredRoomType: s.requiredRoomType })),
     faculty: data.faculty.map((f) => ({
       id: f.id, fullName: f.fullName, maxHours: f.maxHours, assignedHours: 0, teachingLevels: f.teachingLevels,
       dayOff: (f.dayOff as DayOfWeek | null) ?? null, availability: f.availability,
@@ -37,8 +37,8 @@ export function buildResolverInput(data: SchedulerData, entries: SchedulerEntry[
     rules: data.rules,
     ruleCtx: {
       rooms: new Map(data.rooms.map((r) => [r.id, { name: r.roomName, capacity: r.capacity, departmentId: r.departmentId, departmentCode: r.departmentCode, isGeneralShared: r.programIds === null, programIds: r.programIds ?? [] }])),
-      sections: new Map(data.sections.map((s) => [s.id, { name: s.shortName, studentCount: s.studentCount, level: s.level, programId: s.programId, departmentId: s.departmentId }])),
-      subjects: new Map(data.subjects.map((s) => [s.id, { code: s.code, name: s.name }])),
+      sections: new Map(data.sections.map((s) => [s.id, { name: s.shortName, studentCount: s.studentCount, level: s.level, yearLevel: s.yearLevel, gradeLevel: s.gradeLevel, programId: s.programId, departmentId: s.departmentId }])),
+      subjects: new Map(data.subjects.map((s) => [s.id, { code: s.code, name: s.name, category: s.category, lectureHours: s.lectureHours, labHours: s.labHours }])),
       faculty: new Map(data.faculty.map((f) => [f.id, { name: f.fullName }])),
       programNames: new Map(data.programs.map((p) => [p.id, p.name])),
     },

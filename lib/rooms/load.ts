@@ -6,6 +6,7 @@ import type { Scope } from "@/lib/permissions/scope";
 import { photoUrl, type BuildingPurpose } from "./buildings";
 import type { Building } from "./rooms";
 import { submittedTimetableFilter } from "@/lib/scheduler/visibility";
+import { PARAM_SCHEMAS } from "@/lib/scheduler/constraints";
 
 /** Mon to Sat, 7 AM to 7 PM, the week a room's "use this term" is measured against. */
 const AVAILABLE_MIN_PER_WEEK = 6 * 12 * 60;
@@ -18,13 +19,22 @@ export interface LoadedBuilding extends Building {
   photo: string | null;
 }
 
+/** Room id to the faculty member named by an enabled Room priority constraint. */
+async function priorityByRoom() {
+  const rules = await prisma.schedulingConstraint.findMany({ where: { kind: "ROOM_PRIORITY", enabled: true }, select: { params: true } });
+  const pairs = rules.flatMap((r) => { const p = PARAM_SCHEMAS.ROOM_PRIORITY.safeParse(r.params); return p.success ? [p.data] : []; });
+  const faculty = await prisma.faculty.findMany({ where: { id: { in: pairs.map((p) => p.facultyId) } }, select: { id: true, fullName: true } });
+  const names = new Map(faculty.map((f) => [f.id, f.fullName]));
+  return new Map(pairs.flatMap((p) => names.has(p.facultyId) ? [[p.roomId, names.get(p.facultyId)!] as const] : []));
+}
+
 /**
  * Buildings with floors and active rooms (archived rooms left out), without the photo bytes. A Head of
  * Department gets only their department's rooms and shared rooms, and only buildings that hold one.
  */
 export async function loadBuildings(scope: Scope, where: Prisma.BuildingWhereInput = {}): Promise<LoadedBuilding[]> {
   const visibleRooms = { archivedAt: null, ...departmentWhere.room(scope) };
-  const rows = await prisma.building.findMany({
+  const [rows, priority] = await Promise.all([prisma.building.findMany({
     where: scope.isAdmin ? where : { ...where, floors: { some: { rooms: { some: visibleRooms } } } },
     omit: { photo: true },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -43,7 +53,7 @@ export async function loadBuildings(scope: Scope, where: Prisma.BuildingWhereInp
         },
       },
     },
-  });
+  }), priorityByRoom()]);
 
   return rows.map((b) => ({
     id: b.id,
@@ -74,6 +84,7 @@ export async function loadBuildings(scope: Scope, where: Prisma.BuildingWhereInp
           departmentId: r.departmentId ?? "",
           departmentName: r.department?.name ?? "",
           isGeneralShared: r.isGeneralShared,
+          priorityFaculty: priority.get(r.id),
           utilization: Math.min(Math.round((booked / AVAILABLE_MIN_PER_WEEK) * 100), 100),
         };
       }),

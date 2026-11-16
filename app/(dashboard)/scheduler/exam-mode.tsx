@@ -77,7 +77,7 @@ export async function ExamMode({ scope, academicYearId, academicYearControl, mod
     })),
     // Other departments' examinations are known only as busy rooms and times, never as which examination they are.
     busy: busyRows.map((e) => ({ id: `busy-${e.id}`, date: day(e.date), startMin: e.startMin, endMin: e.endMin, sectionId: `busy-${e.id}`, roomId: e.roomId, proctorId: facultyIds.has(e.proctorId) ? e.proctorId : "" })),
-    classes,
+    classes: classes.map((c) => ({ ...c, roomId: c.roomId ?? "" })),
     windows: contexts.map((c) => ({ type: c.type, window: c.window })),
     blocked: [...(contexts[0]?.blockedDates ?? new Map<string, string>())],
     unavailable: unavailable.map((u) => ({ facultyId: u.facultyId, roomId: u.roomId, start: day(u.startDate), end: day(u.endDate), startMin: u.startMin, endMin: u.endMin })),

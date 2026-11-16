@@ -4,6 +4,8 @@ import type { ConstraintRule } from "@/lib/scheduler/constraints";
 export type ScheduleStatus = "DRAFT" | "REVIEW" | "PUBLISHED" | "ARCHIVED";
 
 export interface SchedulerEntry {
+  deliveryMode?: "IN_PERSON" | "ONLINE_LIVE";
+  meetingLink?: string | null;
   id: string;
   semesterId: string;
   sectionId: string;
@@ -69,6 +71,7 @@ export interface SectionOption {
 }
 
 export interface SubjectOption {
+  category?: string;
   id: string;
   code: string;
   name: string;

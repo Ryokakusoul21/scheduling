@@ -4,6 +4,7 @@ import { loadTimetableBundle } from "@/lib/timetable/service";
 import { getScope, policyUserFromScope } from "@/lib/permissions/scope";
 import { can } from "@/lib/permissions/policy";
 import { activeRules } from "@/lib/scheduler/constraints-server";
+import { withPriorityRooms } from "@/lib/scheduler/constraints";
 import { departmentWhere, isForeign } from "@/lib/permissions/department";
 import { prisma } from "@/lib/db/prisma";
 import { DIRECT_EDIT_ROLES, PUBLISH_ROLES, STAFF_ROLES } from "@/lib/permissions/roles";
@@ -120,7 +121,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
   const policyUser = policyUserFromScope(scope);
   const programCode = new Map(programs.map((p) => [p.id, p.code]));
   const toEntry = (e: (typeof allEntries)[number]) => ({
-    id: e.id, semesterId: e.semesterId, sectionId: e.sectionId, subjectId: e.subjectId, facultyId: e.facultyId, roomId: e.roomId,
+    id: e.id, semesterId: e.semesterId, sectionId: e.sectionId, subjectId: e.subjectId, facultyId: e.facultyId, roomId: e.roomId ?? "",
     component: e.component, dayOfWeek: e.dayOfWeek, startMin: e.startMin, endMin: e.endMin, status: e.status, notes: e.notes, doNotMove: e.doNotMove,
   });
 
@@ -159,7 +160,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
     })),
     subjects: subjects.map((s) => ({
       id: s.id,
-      code: s.code,
+      code: s.code, category: s.category,
       name: s.name,
       level: s.level,
       programId: s.programId,
@@ -183,7 +184,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
       status: f.archivedAt ? "ARCHIVED" : f.status,
       foreign: isForeign(scope, f.departmentId),
       // Room preferences are for the Head of Department and the Registrar only.
-      preferredRoomIds: scope.role === "HEAD_OF_DEPARTMENT" || scope.role === "REGISTRAR" ? f.roomPreferences.map((p) => p.roomId) : [],
+      preferredRoomIds: scope.role === "HEAD_OF_DEPARTMENT" || scope.role === "REGISTRAR" ? withPriorityRooms(f.id, f.roomPreferences.map((p) => p.roomId), rules) : [],
       availability: f.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startMin: a.startMin, endMin: a.endMin })),
     })),
     rooms: rooms.map((r) => ({
@@ -213,7 +214,7 @@ export default async function SchedulerPage({ searchParams }: { searchParams: Pr
     // Other departments' classes: only who and where is busy, never which class (each gets its own placeholder section).
     busy: STAFF_ROLES.includes(role)
       ? [...allEntries.filter((e) => !visible(e)), ...busyRows.map((e) => ({ ...e, sectionId: "", subjectId: "" }))].map((e, i) => ({
-          id: `busy-${i}`, semesterId: e.semesterId, sectionId: `busy-${i}`, subjectId: "", roomId: e.roomId, component: "LECTURE" as const,
+          id: `busy-${i}`, semesterId: e.semesterId, sectionId: `busy-${i}`, subjectId: "", roomId: e.roomId ?? "", component: "LECTURE" as const,
           dayOfWeek: e.dayOfWeek, startMin: e.startMin, endMin: e.endMin, status: "PUBLISHED" as const, notes: null, busy: true,
           // Faculty of other departments stay unnamed; the id is kept only for people this scope already sees.
           facultyId: facultyIds.has(e.facultyId) ? e.facultyId : "",

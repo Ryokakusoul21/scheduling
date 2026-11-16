@@ -100,6 +100,8 @@ export interface SchedRoom {
 
 /** A placed (or candidate) class meeting. */
 export interface SchedEntry {
+  deliveryMode?: "IN_PERSON" | "ONLINE_LIVE";
+  meetingLink?: string | null;
   id?: string;
   /** Term (semester/quarter) the entry belongs to; used to skip pairs from non-overlapping terms. */
   semesterId?: string;

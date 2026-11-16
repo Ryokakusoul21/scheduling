@@ -15,6 +15,8 @@ import { detectConflicts, isOverlapConflict } from "@/lib/scheduler/conflictDete
 import { DAY_LONG, collegeLengthError, formatTime, subjectAppliesToSection } from "@/lib/scheduler/timetable";
 import type { DetectedConflict } from "@/lib/scheduler/types";
 import { rankFaculty, rankRooms } from "@/lib/scheduler/suggest";
+import { deliveryPolicy, durationPolicy, DELIVERY_LABELS } from "@/lib/scheduler/class-policies";
+import { Input } from "@/components/ui/input";
 import { assignedFor } from "@/lib/subjects/assignment-rules";
 import { projectionWarning } from "@/lib/workload/projection";
 import type { ClassInput } from "@/app/(dashboard)/scheduler/actions";
@@ -32,6 +34,8 @@ export interface ClassDraft {
   subjectId: string;
   facultyId: string;
   roomId: string;
+  deliveryMode?: "IN_PERSON" | "ONLINE_LIVE";
+  meetingLink?: string | null;
   component: "LECTURE" | "LABORATORY";
   dayOfWeek: SchedulerEntry["dayOfWeek"];
   startMin: number;
@@ -122,7 +126,7 @@ function ClassForm({
   onDelete: (id: string, reason?: string) => Promise<boolean>;
   onClose: () => void;
 }) {
-  const [form, setForm] = useState<ClassDraft>(draft);
+  const [form, setForm] = useState<ClassDraft>(() => ({ ...draft, deliveryMode: draft.deliveryMode ?? deliveryPolicy(data.rules, draft, data.sections.find((s) => s.id === draft.sectionId), data.subjects.find((s) => s.id === draft.subjectId)).defaultMode }));
   const [changeReason, setChangeReason] = useState("");
   const [pending, startTransition] = useTransition();
   const locked = readOnly || draft.status === "REVIEW" || (draft.status === "PUBLISHED" && !canPublish);
@@ -130,6 +134,8 @@ function ClassForm({
 
   const section = data.sections.find((s) => s.id === form.sectionId);
   const subject = data.subjects.find((s) => s.id === form.subjectId);
+  const delivery = deliveryPolicy(data.rules, { ...form }, section ? { ...section } : undefined, subject ? { ...subject } : undefined);
+  const duration = durationPolicy(data.rules, { ...form }, section ? { ...section } : undefined, subject ? { ...subject } : undefined);
   const term = data.terms.find((t) => t.id === form.semesterId);
 
   const termOptions = data.terms
@@ -190,7 +196,7 @@ function ClassForm({
 
   // Live conflict preview for the candidate placement.
   // Projected teaching loads: the new teacher gains this meeting, a replaced teacher loses it.
-  const loadWarnings = useMemo(() => {
+  const loadWarnings = (() => {
     const unit = data.workload.measure === "HOURS" ? "hours" : "units";
     const teaches = (facultyId: string) => entries.some((e) => e.id !== draft.id && e.facultyId === facultyId && e.sectionId === form.sectionId && e.subjectId === form.subjectId);
     const amount = (facultyId: string) => (data.workload.measure === "HOURS" ? (form.endMin - form.startMin) / 60 : teaches(facultyId) ? 0 : (subject?.units ?? 0));
@@ -200,10 +206,10 @@ function ClassForm({
     if (draft.id && draft.facultyId && draft.facultyId !== form.facultyId) changes.push([draft.facultyId, -((draft.endMin - draft.startMin) / 60)]);
     if (draft.id && form.facultyId === draft.facultyId && data.workload.measure === "HOURS") changes.push([form.facultyId, (form.endMin - form.startMin - (draft.endMin - draft.startMin)) / 60]);
     return changes.flatMap(([id, delta]) => { const l = loadOf(id); const w = l && delta ? projectionWarning(l, delta, unit) : null; return w ? [w] : []; });
-  }, [data.workload, entries, draft, form.facultyId, form.sectionId, form.subjectId, form.startMin, form.endMin, subject?.units]);
+  })();
 
   const preview: DetectedConflict[] = useMemo(() => {
-    if (!form.sectionId || !form.subjectId || !form.facultyId || !form.roomId || !form.semesterId) return [];
+    if (!form.sectionId || !form.subjectId || !form.facultyId || (!form.roomId && form.deliveryMode !== "ONLINE_LIVE") || !form.semesterId) return [];
     const candidate = { ...form, id: form.id ?? "__candidate__" };
     return detectConflicts([candidate, ...concurrent], buildContext()).filter(
       (c) => c.entryA.id === candidate.id || c.entryB?.id === candidate.id
@@ -221,7 +227,7 @@ function ClassForm({
   const meetingMinutes = form.endMin - form.startMin;
   const weeklyChanged = timeChanged || form.subjectId !== draft.subjectId || form.component !== draft.component;
   const lengthChanged = !draft.id || draft.endMin - draft.startMin !== meetingMinutes || form.subjectId !== draft.subjectId || form.component !== draft.component;
-  const lengthError = lengthChanged ? collegeLengthError(section?.level ?? "", meetingMinutes, remainingMinutes, timeConfig.classSession) : null;
+  const lengthError = duration ? (duration.allowedMinutes.includes(meetingMinutes) || duration.allowFinalRemainder && meetingMinutes === remainingMinutes && meetingMinutes < Math.min(...duration.allowedMinutes) ? null : "Meeting length does not satisfy the applicable duration rules.") : lengthChanged ? collegeLengthError(section?.level ?? "", meetingMinutes, remainingMinutes, timeConfig.classSession) : null;
   const weeklyError = remainingMinutes !== null && meetingMinutes > remainingMinutes ? "This meeting would exceed the subject’s required weekly hours." : null;
   const lengthFits = (min: number) => min >= LENGTH_STEP && form.startMin + min <= 1440 && (remainingMinutes === null || min <= remainingMinutes);
   const setLength = (min: number) => set("endMin", form.startMin + min);
@@ -231,6 +237,7 @@ function ClassForm({
     e.preventDefault();
     if (weeklyChanged && weeklyError) { toast.error(weeklyError); return; }
     if (lengthError) { toast.error(lengthError); return; }
+    if (!delivery.allowed.includes(form.deliveryMode ?? "IN_PERSON")) { toast.error("The delivery mode does not satisfy the matching delivery rules."); return; }
     if (timeChanged && timeError) { toast.error(timeError); return; }
     if (form.endMin <= form.startMin) {
       toast.error("End time must be after start time.");
@@ -241,7 +248,7 @@ function ClassForm({
       return;
     }
     startTransition(async () => {
-      const ok = await onSave({ ...form, notes: form.notes ?? "", changeReason });
+      const ok = await onSave({ ...form, roomId: form.deliveryMode === "ONLINE_LIVE" ? "" : form.roomId, meetingLink: form.meetingLink ?? "", notes: form.notes ?? "", changeReason });
       if (ok) onClose();
     });
   }
@@ -319,7 +326,7 @@ function ClassForm({
             <Button type="button" variant="outline" size="icon-sm" aria-label="Shorter by 30 minutes" disabled={meetingMinutes <= LENGTH_STEP} onClick={() => setLength(meetingMinutes - LENGTH_STEP)}><Minus className="size-4" /></Button>
             <span className="min-w-14 text-center text-sm font-semibold tabular-nums">{hours(meetingMinutes)} h</span>
             <Button type="button" variant="outline" size="icon-sm" aria-label="Longer by 30 minutes" disabled={!lengthFits(meetingMinutes + LENGTH_STEP)} onClick={() => setLength(meetingMinutes + LENGTH_STEP)}><Plus className="size-4" /></Button>
-            {LENGTH_CHIPS.map((min) => <Button key={min} type="button" size="sm" variant={min === meetingMinutes ? "default" : "outline"} disabled={min !== meetingMinutes && !lengthFits(min)} onClick={() => setLength(min)}>{hours(min)}</Button>)}
+            {(duration?.allowedMinutes ?? LENGTH_CHIPS).map((min) => <Button key={min} type="button" size="sm" variant={min === meetingMinutes ? "default" : "outline"} disabled={min !== meetingMinutes && !lengthFits(min)} onClick={() => setLength(min)}>{hours(min)}</Button>)}
             {remainingMinutes !== null && remainingMinutes > 0 && remainingMinutes !== meetingMinutes && lengthFits(remainingMinutes) && <Button type="button" size="sm" variant="ghost" onClick={() => setLength(remainingMinutes)}>Fill remaining</Button>}
           </div>
           {requiredMinutes !== null && requiredMinutes > 0 && <p className="text-xs text-muted-foreground">{hours(requiredMinutes)} h needed · {hours(Math.max(0, requiredMinutes - otherMinutes - meetingMinutes))} left</p>}
@@ -341,9 +348,14 @@ function ClassForm({
           {assignedFaculty && <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={showAllFaculty} onChange={(e) => setShowAllFaculty(e.target.checked)} /> Show all faculty</label>}
         </Field>
         <Field>
+          <FieldLabel htmlFor="cls-delivery">Delivery mode</FieldLabel>
+          <NativeSelect id="cls-delivery" value={form.deliveryMode ?? "IN_PERSON"} onChange={(e) => setForm((f) => ({ ...f, deliveryMode: e.target.value as "IN_PERSON" | "ONLINE_LIVE", roomId: e.target.value === "ONLINE_LIVE" ? "" : f.roomId }))} options={[...new Set([...delivery.allowed, form.deliveryMode ?? "IN_PERSON"])].map((value) => ({ value, label: `${DELIVERY_LABELS[value]}${delivery.allowed.includes(value) ? "" : " ? not allowed by current rules"}` }))} />
+          {delivery.conflicting && <p role="alert" className="text-xs text-destructive">Matching delivery rules conflict. Update Scheduling Constraints before saving.</p>}
+        </Field>
+        {form.deliveryMode === "ONLINE_LIVE" ? <Field><FieldLabel htmlFor="cls-meeting-link">Meeting link / Joining instructions in Notes</FieldLabel><Input id="cls-meeting-link" type="url" value={form.meetingLink ?? ""} onChange={(e) => set("meetingLink", e.target.value)} placeholder="https://?" /><p className="text-xs text-muted-foreground">The teacher and section remain busy. No physical room is reserved.</p></Field> : <Field>
           <FieldLabel htmlFor="cls-room">Room</FieldLabel>
           <NativeSelect id="cls-room" value={form.roomId} onChange={(e) => set("roomId", e.target.value)} placeholder="Select room" options={roomOptions} required />
-        </Field>
+        </Field>}
         <Field>
           <FieldLabel htmlFor="cls-status">Status</FieldLabel>
           <NativeSelect
@@ -382,7 +394,7 @@ function ClassForm({
         )}
         {loadWarnings.map((w) => <ConflictAlert key={w} severity="warning" title={w} />)}
         {warnings.map((c, i) => <ConflictAlert key={`w${i}`} severity="warning" title={c.description} />)}
-        {preview.length === 0 && form.facultyId && form.roomId && <NoConflict>No conflicts for this time slot.</NoConflict>}
+        {preview.length === 0 && form.facultyId && (form.roomId || form.deliveryMode === "ONLINE_LIVE") && <NoConflict>No conflicts for this time slot.</NoConflict>}
       </div>
 
       </fieldset>

@@ -1,3 +1,4 @@
+import { termConstraintReport } from "./constraints-server";
 import { roomLabel } from "@/lib/rooms/label";
 import "server-only";
 import type { ExaminationType, Prisma, SubmissionKind, TimetableSubmissionStatus } from "@prisma/client";
@@ -64,13 +65,13 @@ export async function submissionRows(id: string, kind: SubmissionKind): Promise<
       where: { submissionId: id }, orderBy: [{ date: "asc" }, { startMin: "asc" }],
       include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomNumber: true, roomName: true } }, proctor: { select: { fullName: true } } },
     });
-    return rows.map((e) => ({ id: e.id, section: e.section.name, subject: e.subject.code, when: `${e.date.toISOString().slice(0, 10)}, ${formatRange(e.startMin, e.endMin)}`, room: roomLabel(e.room), person: e.proctor.fullName }));
+    return rows.map((e) => ({ id: e.id, section: e.section.name, subject: e.subject.code, when: `${e.date.toISOString().slice(0, 10)}, ${formatRange(e.startMin, e.endMin)}`, room: (roomLabel(e.room) || "Online (live)"), person: e.proctor.fullName }));
   }
   const rows = await prisma.schedule.findMany({
     where: { submissionId: id }, orderBy: [{ sectionId: "asc" }, { dayOfWeek: "asc" }, { startMin: "asc" }],
     include: { subject: { select: { code: true } }, section: { select: { name: true } }, room: { select: { roomNumber: true, roomName: true } }, faculty: { select: { fullName: true } } },
   });
-  return rows.map((e) => ({ id: e.id, section: e.section.name, subject: `${e.subject.code}${e.component === "LABORATORY" ? " (Laboratory)" : ""}`, when: `${DAY(e.dayOfWeek)}, ${formatRange(e.startMin, e.endMin)}`, room: roomLabel(e.room), person: e.faculty.fullName }));
+  return rows.map((e) => ({ id: e.id, section: e.section.name, subject: `${e.subject.code}${e.component === "LABORATORY" ? " (Laboratory)" : ""}`, when: `${DAY(e.dayOfWeek)}, ${formatRange(e.startMin, e.endMin)}`, room: (roomLabel(e.room) || "Online (live)"), person: e.faculty.fullName }));
 }
 
 /**
@@ -145,15 +146,26 @@ export async function withdrawSubmission(id: string, departmentIds: string[], us
  * Applies the Registrar's decision to whole submissions. Approve keeps the timetable locked
  * (optionally until publishAt), Publish makes it live, Return and Reject send every row back to draft.
  */
+export class ClassPolicyReviewError extends Error {}
+
 export async function decideSubmissions(ids: string[], decision: SubmissionDecision, userId: string | null, reason?: string, publishAt?: Date) {
   const open = await prisma.timetableSubmission.findMany({
     where: { id: { in: ids }, status: { in: decision === "PUBLISH" ? ["APPROVED"] : ["SUBMITTED"] } },
     include: { department: { select: { name: true } } },
   });
   const status: TimetableSubmissionStatus = decision === "APPROVE" ? "APPROVED" : decision === "PUBLISH" ? "PUBLISHED" : decision === "RETURN" ? "RETURNED" : "REJECTED";
+  const blocked = new Set<string>();
+  if (decision === "APPROVE" || decision === "PUBLISH") {
+    for (const submission of open.filter((s) => s.kind === "CLASS")) {
+      const problem = (await termConstraintReport(submission.semesterId, submission.departmentId)).find((v) => v.hard && (v.kind === "CLASS_DURATION" || v.kind === "DELIVERY_MODE"));
+      if (problem && userId) throw new ClassPolicyReviewError(`Return this timetable for review: ${problem.constraintName}: ${problem.message}`);
+      if (problem) blocked.add(submission.id);
+    }
+  }
   const decidedAt = new Date();
   let rows = 0;
   for (const s of open) {
+    if (blocked.has(s.id)) continue;
     const back = decision === "RETURN" || decision === "REJECT";
     rows += await prisma.$transaction(async (tx) => {
       await tx.timetableSubmission.update({
@@ -178,7 +190,7 @@ export async function decideSubmissions(ids: string[], decision: SubmissionDecis
     if (decision === "PUBLISH") await announce(s.id, s.kind, s.department.name, userId);
   }
   if (open.length) await prisma.auditLog.create({ data: { userId, action: `${decision} ${open.length} timetable submission(s) with ${rows} row(s)${reason ? `: ${reason}` : ""}`, entity: "TimetableSubmission" } });
-  return open.length;
+  return open.length - blocked.size;
 }
 
 /** Tells faculty (and, for examinations, proctors and students) that the published timetable is live. */
@@ -203,6 +215,5 @@ async function announce(id: string, kind: SubmissionKind, department: string, us
 /** Publishes approved timetables whose publish time has passed; called on page loads since there is no scheduler process. */
 export async function publishDueSubmissions() {
   const due = await prisma.timetableSubmission.findMany({ where: { status: "APPROVED", publishAt: { lte: new Date() } }, select: { id: true } });
-  if (due.length) await decideSubmissions(due.map((d) => d.id), "PUBLISH", null);
-  return due.length;
+  return due.length ? decideSubmissions(due.map((d) => d.id), "PUBLISH", null) : 0;
 }

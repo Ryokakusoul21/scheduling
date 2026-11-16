@@ -6,6 +6,8 @@ export type IssueKind = "UNSCHEDULED" | "HOURS" | "ROOM_TYPE" | "CONFLICT";
 export const ISSUE_KINDS: IssueKind[] = ["UNSCHEDULED", "HOURS", "ROOM_TYPE", "CONFLICT"];
 
 export interface ResolverEntry {
+  deliveryMode?: "IN_PERSON" | "ONLINE_LIVE";
+  meetingLink?: string | null;
   id: string;
   semesterId: string;
   sectionId: string;
@@ -25,6 +27,8 @@ export interface ResolverSection {
   id: string;
   name: string;
   level: string;
+  yearLevel?: string | null;
+  gradeLevel?: string | null;
   programId: string | null;
   departmentId: string | null;
   termId: string;
@@ -36,6 +40,7 @@ export interface ResolverSection {
 }
 
 export interface ResolverSubject {
+  category?: string;
   id: string;
   code: string;
   name: string;

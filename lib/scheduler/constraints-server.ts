@@ -17,15 +17,15 @@ export async function activeRules(db: Prisma.TransactionClient = prisma): Promis
 export async function loadContext(db: Prisma.TransactionClient = prisma): Promise<ConstraintContext> {
   const [rooms, sections, subjects, faculty, programs] = await Promise.all([
     db.room.findMany({ select: { id: true, roomNumber: true, roomName: true, capacity: true, departmentId: true, department: { select: { code: true } }, isGeneralShared: true, programs: { select: { id: true } } } }),
-    db.section.findMany({ select: { id: true, name: true, studentCount: true, level: true, programId: true, departmentId: true } }),
-    db.subject.findMany({ select: { id: true, code: true, name: true } }),
+    db.section.findMany({ select: { id: true, name: true, studentCount: true, level: true, yearLevel: true, gradeLevel: true, programId: true, departmentId: true } }),
+    db.subject.findMany({ select: { id: true, code: true, name: true, category: true, lectureHours: true, labHours: true } }),
     db.faculty.findMany({ select: { id: true, fullName: true } }),
     db.program.findMany({ select: { id: true, name: true } }),
   ]);
   return {
     rooms: new Map(rooms.map((r) => [r.id, { name: roomLabel(r), capacity: r.capacity, departmentId: r.departmentId, departmentCode: r.department?.code, isGeneralShared: r.isGeneralShared, programIds: r.programs.map((p) => p.id) }])),
-    sections: new Map(sections.map((s) => [s.id, { name: s.name, studentCount: s.studentCount, level: s.level, programId: s.programId, departmentId: s.departmentId ?? null }])),
-    subjects: new Map(subjects.map((s) => [s.id, { code: s.code, name: s.name }])),
+    sections: new Map(sections.map((s) => [s.id, { name: s.name, studentCount: s.studentCount, level: s.level, yearLevel: s.yearLevel, gradeLevel: s.gradeLevel, programId: s.programId, departmentId: s.departmentId ?? null }])),
+    subjects: new Map(subjects.map((s) => [s.id, { code: s.code, name: s.name, category: s.category, lectureHours: s.lectureHours, labHours: s.labHours }])),
     faculty: new Map(faculty.map((f) => [f.id, { name: f.fullName }])),
     programNames: new Map(programs.map((p) => [p.id, p.name])),
   };

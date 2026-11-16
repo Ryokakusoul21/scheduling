@@ -7,7 +7,7 @@ vi.mock("@/lib/timetable/service", () => ({ getTimetableConfig: m.config }));
 vi.mock("@/lib/workload/auto", () => ({ queueWorkloadCheck: vi.fn() }));
 vi.mock("@/lib/notify", () => ({ notifyUsers: vi.fn() }));
 vi.mock("@/lib/scheduler/term-conflicts", () => ({ weeklyDoubleBooking: vi.fn().mockResolvedValue(null) }));
-vi.mock("@/lib/scheduler/constraints-server", () => ({ checkClassConstraints: m.constraints }));
+vi.mock("@/lib/scheduler/constraints-server", () => ({ activeRules: async () => [], checkClassConstraints: m.constraints }));
 vi.mock("@/lib/db/prisma", () => ({ prisma: {
   section: { findUnique: m.section }, semester: { findUnique: m.term }, subject: { findUnique: m.subject },
   faculty: { findUnique: m.faculty }, room: { findUnique: async () => ({ id: "r", archivedAt: null }) },
@@ -23,6 +23,11 @@ describe("configured class saves", () => {
     m.faculty.mockResolvedValue({ id: "f", archivedAt: null, teachingLevels: ["COLLEGE"] });
     m.term.mockResolvedValue({ id: "term", level: "COLLEGE", startDate: new Date("2026-11-01"), endDate: new Date("2026-12-01") });
     m.bookings.mockResolvedValue([]); m.constraints.mockResolvedValue([]); m.meetings.mockResolvedValue([]);
+  });
+  it("validates a live online class without reserving or requiring a physical room", async () => {
+    expect(await checkClass({ ...draft, startMin: 420, endMin: 600, roomId: "", deliveryMode: "ONLINE_LIVE", meetingLink: "https://example.com/class" }, { userId: "head" }, { overrideSoft: false })).toBeNull();
+    expect(m.bookings).not.toHaveBeenCalled();
+    expect(m.constraints).toHaveBeenCalledWith(expect.objectContaining({ roomId: "", deliveryMode: "ONLINE_LIVE" }), undefined);
   });
   it("rejects a subject or term from a different academic level than the section", async () => {
     m.subject.mockResolvedValue({ id: "it", archivedAt: null, lectureHours: 3, labHours: 3, level: "JUNIOR_HIGH" });
