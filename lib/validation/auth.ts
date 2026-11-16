@@ -32,6 +32,8 @@ export function passwordScore(pw: string) {
 export const registerSchema = z
   .object({
     name: z.string().trim().min(2, "Enter your full name").max(100),
+    suffix: z.string().trim().max(10, "Suffix must be at most 10 characters").optional(),
+    sex: z.enum(["MALE", "FEMALE"], { error: "Select your sex" }),
     employeeId: employeeIdSchema.max(40, "Employee ID must be at most 40 characters"),
     departmentId: z.string().trim().min(1, "Select the department you are applying to").max(100),
     employmentType: z.enum(["FULL_TIME", "PART_TIME"], { error: "Select your employment type" }),

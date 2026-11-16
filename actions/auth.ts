@@ -67,7 +67,8 @@ export async function registerAction(
     return { ok: false, error: "CAPTCHA verification failed. Please try again." };
   }
 
-  const { name, email, password, employeeId, departmentId, employmentType } = parsed.data;
+  const { name: givenName, suffix, sex, email, password, employeeId, departmentId, employmentType } = parsed.data;
+  const name = suffix ? `${givenName} ${suffix}` : givenName;
   if (await findUserByEmail(email)) {
     return { ok: false, fieldErrors: { email: "An account with this email already exists." } };
   }
@@ -97,6 +98,8 @@ export async function registerAction(
         termsAcceptedAt: new Date(),
         faculty: { create: {
           fullName: name,
+          suffix: suffix || null,
+          sex,
           email,
           employeeId,
           department: { connect: { id: department.id } },

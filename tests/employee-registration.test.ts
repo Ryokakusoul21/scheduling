@@ -20,7 +20,7 @@ import { registerSchema, studentRegisterSchema } from "@/lib/validation/auth";
 
 const input = () => ({
   name: "Juan Dela Cruz", email: "juan@example.com", employeeId: "GC-001", departmentId: "computing",
-  employmentType: "PART_TIME" as const, password: "Password123!", confirmPassword: "Password123!", acceptTerms: true,
+  employmentType: "PART_TIME" as const, sex: "FEMALE" as const, password: "Password123!", confirmPassword: "Password123!", acceptTerms: true,
 });
 
 describe("employee registration", () => {
@@ -41,7 +41,7 @@ describe("employee registration", () => {
       name: "Juan Dela Cruz", email: "juan@example.com", passwordHash: expect.stringMatching(/^\$2[aby]\$/), role: "FACULTY",
       status: required ? "PENDING" : "ACTIVE", termsAcceptedAt: expect.any(Date),
       faculty: { create: {
-        fullName: "Juan Dela Cruz", email: "juan@example.com", employeeId: "GC-001", department: { connect: { id: "computing" } },
+        fullName: "Juan Dela Cruz", suffix: null, sex: "FEMALE", email: "juan@example.com", employeeId: "GC-001", department: { connect: { id: "computing" } },
         employmentType: "PART_TIME", status: "INACTIVE",
       } },
     } });
@@ -105,5 +105,17 @@ describe("employee registration", () => {
       name: "Student Name", email: "student@example.com", studentNumber: "GC-2026-001", programId: "bsit", yearLevel: "FIRST", sectionId: "section-1",
       password: "Password123!", confirmPassword: "Password123!", acceptTerms: true,
     }).success).toBe(true);
+  });
+});
+
+describe("registration name suffix", () => {
+  it("appends the suffix to the full name and stores it separately", async () => {
+    mocks.captcha.mockResolvedValue(true); mocks.user.mockResolvedValue(null); mocks.employee.mockResolvedValue(null);
+    mocks.department.mockResolvedValue({ id: "computing" }); mocks.setting.mockResolvedValue({ value: false });
+    mocks.create.mockResolvedValue({ id: "new-user", name: "Juan Dela Cruz Jr.", email: "juan@example.com" });
+    await registerAction({ ...input(), suffix: "Jr." });
+    const data = mocks.create.mock.calls[0][0].data;
+    expect(data.name).toBe("Juan Dela Cruz Jr.");
+    expect(data.faculty.create).toMatchObject({ fullName: "Juan Dela Cruz Jr.", suffix: "Jr.", sex: "FEMALE" });
   });
 });

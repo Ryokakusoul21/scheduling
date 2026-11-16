@@ -16,7 +16,7 @@ import { PasswordInput } from "@/components/auth/password-input";
 import { registerAction, resendVerificationAction } from "@/actions/auth";
 import { registerSchema, type RegisterInput } from "@/lib/validation/auth";
 
-const EMPLOYEE_FIELDS: FieldPath<RegisterInput>[] = ["name", "email", "employeeId", "employmentType", "departmentId"];
+const EMPLOYEE_FIELDS: FieldPath<RegisterInput>[] = ["name", "suffix", "sex", "email", "employeeId", "employmentType", "departmentId"];
 const LINK_CLASS = "rounded-sm font-medium text-brand-link underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring";
 
 type Department = { id: string; code: string; name: string };
@@ -30,7 +30,7 @@ export function RegisterForm({ requiresApproval, departments }: { requiresApprov
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle");
   const { register, handleSubmit, control, setError, trigger, setFocus, getValues, formState: { errors, isSubmitting } } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", employeeId: "", email: "", departmentId: "", employmentType: "FULL_TIME", password: "", confirmPassword: "", acceptTerms: false },
+    defaultValues: { name: "", suffix: "", sex: undefined, employeeId: "", email: "", departmentId: "", employmentType: "FULL_TIME", password: "", confirmPassword: "", acceptTerms: false },
   });
   const password = useWatch({ control, name: "password" });
 
@@ -116,10 +116,22 @@ export function RegisterForm({ requiresApproval, departments }: { requiresApprov
         <legend className="sr-only">{step === 1 ? "Employee details" : "Account security"}</legend>
         <div hidden={step !== 1}>
           <FieldGroup className="gap-5">
-            <Field data-invalid={!!errors.name}>
-              <FieldLabel htmlFor="name">Full name</FieldLabel>
-              <Input id="name" autoComplete="name" placeholder="Juan Dela Cruz" aria-invalid={!!errors.name} aria-describedby={errors.name ? "name-error" : undefined} {...register("name")} />
-              <FieldError id="name-error" errors={[errors.name]} />
+            <div className="grid gap-5 sm:grid-cols-[1fr_7rem]">
+              <Field data-invalid={!!errors.name}>
+                <FieldLabel htmlFor="name">Full name</FieldLabel>
+                <Input id="name" autoComplete="name" placeholder="Juan Dela Cruz" aria-invalid={!!errors.name} aria-describedby={errors.name ? "name-error" : undefined} {...register("name")} />
+                <FieldError id="name-error" errors={[errors.name]} />
+              </Field>
+              <Field data-invalid={!!errors.suffix}>
+                <FieldLabel htmlFor="suffix">Suffix</FieldLabel>
+                <Input id="suffix" autoComplete="honorific-suffix" placeholder="Jr." maxLength={10} aria-invalid={!!errors.suffix} aria-describedby="suffix-error" {...register("suffix")} />
+                <FieldError id="suffix-error" errors={[errors.suffix]} />
+              </Field>
+            </div>
+            <Field data-invalid={!!errors.sex}>
+              <FieldLabel htmlFor="sex">Sex / Gender</FieldLabel>
+              <NativeSelect id="sex" placeholder="Select" options={[{ value: "MALE", label: "Male" }, { value: "FEMALE", label: "Female" }]} aria-invalid={!!errors.sex} aria-describedby="sex-error" {...register("sex")} />
+              <FieldError id="sex-error" errors={[errors.sex]} />
             </Field>
             <Field data-invalid={!!errors.email}>
               <FieldLabel htmlFor="email">Email address</FieldLabel>
