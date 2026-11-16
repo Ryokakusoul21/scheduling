@@ -3,178 +3,192 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowSquareOut, Buildings, Plus, Trash } from "@phosphor-icons/react/ssr";
+import { ArrowSquareOut, CaretRight, MagnifyingGlass, PencilSimple, Plus, Trash } from "@phosphor-icons/react/ssr";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CollectionView, RecordsTable } from "@/components/ux/collection-view";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { assignDepartmentHeadAction, removeDepartmentHeadAssignmentAction, saveDepartmentAction } from "./actions";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { NativeSelect } from "@/components/ux/native-select";
+import { ConfirmDialog } from "@/components/ux/form-dialog";
 import { DepartmentLogo } from "@/components/departments/department-logo";
+import { DEFAULT_SHS_STRANDS, levelLabel } from "@/lib/academics/levels";
+import { cn } from "@/lib/utils";
+import { deleteProgramAction, saveProgramAction } from "../../programs/actions";
+import { assignDepartmentHeadAction, deleteDepartmentAction, removeDepartmentHeadAssignmentAction, saveDepartmentAction } from "./actions";
 
+type Program = { id: string; code: string; name: string; level: string; sections: number; subjects: number };
 type Department = {
   id: string;
   code: string;
   name: string;
   logoUrl: string | null;
-  counts: { programs: number; faculty: number; sections: number; rooms: number };
+  counts: { programs: number; faculty: number; sections: number; rooms: number; subjects: number };
+  programs: Program[];
   heads: { id: string; name: string; email: string; acting: boolean; linkedThroughFaculty: boolean }[];
   headOptions: { id: string; label: string }[];
   facultyCandidates: { id: string; name: string; detail: string }[];
 };
+type Result = { ok: boolean; error?: string };
+
+// Programs can be College courses or Senior High School strands; one level is shown at a time.
+const PROGRAM_LEVELS = ["COLLEGE", "SENIOR_HIGH"] as const;
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export function DepartmentManager({ departments }: { departments: Department[] }) {
-  const [pending, startTransition] = useTransition();
-  const [managing, setManaging] = useState<string | null>(null);
-  const [selectedHeads, setSelectedHeads] = useState<Record<string, string>>({});
+  const [pending, start] = useTransition();
+  const [query, setQuery] = useState("");
+  const [noHead, setNoHead] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState<Department | null>(null);
+  const [program, setProgram] = useState<{ departmentId: string; row: Program | null; level: string } | null>(null);
+  const [level, setLevel] = useState<string>("COLLEGE");
+  const [headId, setHeadId] = useState("");
 
-  function save(id: string | null, formData: FormData) {
-    startTransition(async () => {
-      const result = await saveDepartmentAction(id, formData);
-      if (result.ok) toast.success(id ? "Department details saved." : "Department created.");
-      else toast.error(result.error);
-    });
-  }
+  const open = departments.find((d) => d.id === openId) ?? null;
+  const q = query.trim().toLowerCase();
+  const rows = departments.filter((d) => (!noHead || !d.heads.length) && (!q || `${d.code} ${d.name}`.toLowerCase().includes(q)));
+  const headless = departments.filter((d) => !d.heads.length).length;
 
-  function assign(departmentId: string) {
-    const userId = selectedHeads[departmentId];
-    if (!userId) {
-      toast.error("Choose an active Head of Department.");
-      return;
-    }
-    startTransition(async () => {
-      const result = await assignDepartmentHeadAction(departmentId, userId);
-      if (result.ok) {
-        toast.success("Head of Department assigned.");
-        setSelectedHeads((current) => ({ ...current, [departmentId]: "" }));
-      } else toast.error(result.error);
-    });
-  }
-
-  function remove(departmentId: string, userId: string) {
-    startTransition(async () => {
-      const result = await removeDepartmentHeadAssignmentAction(departmentId, userId);
-      if (result.ok) toast.success("Department assignment removed.");
-      else toast.error(result.error);
-    });
-  }
-
-  const renderDepartment = (department: Department) => (
-          <Card key={department.id}>
-            <CardContent className="grid gap-5 pt-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,1fr)]">
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <DepartmentLogo name={department.name} logoUrl={department.logoUrl} className="size-12 rounded-xl" />
-                  <Link href={`/department?department=${encodeURIComponent(department.id)}`} className="text-sm font-medium text-primary hover:underline">Open department profile <ArrowSquareOut className="inline size-3.5" /></Link>
-                </div>
-                <form action={(formData) => save(department.id, formData)}>
-                  <FieldGroup className="grid gap-3 sm:grid-cols-[minmax(7rem,0.45fr)_minmax(14rem,1.55fr)_auto] sm:items-end">
-                    <Field>
-                      <FieldLabel htmlFor={`code-${department.id}`}>Department code</FieldLabel>
-                      <Input id={`code-${department.id}`} name="code" defaultValue={department.code} maxLength={20} required />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor={`name-${department.id}`}>Department name</FieldLabel>
-                      <Input id={`name-${department.id}`} name="name" defaultValue={department.name} maxLength={150} required />
-                    </Field>
-                    <Button type="submit" variant="outline" disabled={pending}>Save details</Button>
-                  </FieldGroup>
-                </form>
-
-                <div className="flex flex-wrap gap-2" aria-label={`${department.name} record counts`}>
-                  <Badge variant="secondary">{department.counts.programs} programs</Badge>
-                  <Badge variant="secondary">{department.counts.faculty} faculty records</Badge>
-                  <Badge variant="secondary">{department.counts.sections} sections</Badge>
-                  <Badge variant="secondary">{department.counts.rooms} rooms</Badge>
-                  <Link href={`/analytics?department=${encodeURIComponent(department.id)}`} className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
-                    Department analytics <ArrowSquareOut className="size-3.5" />
-                  </Link>
-                </div>
-              </div>
-
-              <div className="space-y-3 rounded-lg border p-3">
-                <div className="flex items-center gap-2 font-medium"><Buildings className="size-4 text-primary" /> Head of Department</div>
-                <p className="text-xs text-muted-foreground">One active head per department, including acting appointments and linked faculty accounts.</p>
-                {department.heads.length > 1 && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">Multiple heads have authority. Remove the extra assignments.</p>}
-                {department.heads.length ? (
-                  <ul className="space-y-2">
-                    {department.heads.map((head) => (
-                      <li key={head.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                        <span className="min-w-0">
-                          <span className="block font-medium">{head.name}{head.acting ? " · Acting" : ""}</span>
-                          <span className="block truncate text-xs text-muted-foreground">{head.email}</span>
-                        </span>
-                        {!head.linkedThroughFaculty && (
-                          <Button type="button" size="icon-sm" variant="ghost" disabled={pending} aria-label={`Remove ${head.name} from ${department.name}`} onClick={() => remove(department.id, head.id)}>
-                            <Trash className="size-4" />
-                          </Button>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                ) : <p className="text-sm text-muted-foreground">No active Head of Department is assigned.</p>}
-
-                {department.heads.length === 0 ? <>
-                <div className="rounded-md bg-muted/50 p-3 text-sm">
-                  <p className="font-medium">Recommended next step</p>
-                  <p className="mt-1 text-muted-foreground">Appoint an active faculty member from this department.</p>
-                  {department.facultyCandidates.length > 0 && <>
-                    <p className="mt-3 text-xs font-medium">Department faculty to consider</p>
-                    <ul className="mt-1 space-y-1">{department.facultyCandidates.slice(0, 3).map((faculty) => <li key={faculty.id}>{faculty.name}<span className="block text-xs text-muted-foreground">{faculty.detail}</span></li>)}</ul>
-                    {department.facultyCandidates.length > 3 && <p className="mt-1 text-xs text-muted-foreground">{department.facultyCandidates.length - 3} more active faculty in this department.</p>}
-                    <p className="mt-2 text-xs text-muted-foreground">These accounts need the Head of Department role enabled.</p>
-                  </>}
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <select
-                    aria-label={`Select Head of Department for ${department.name}`}
-                    className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm"
-                    value={selectedHeads[department.id] ?? ""}
-                    onChange={(event) => setSelectedHeads((current) => ({ ...current, [department.id]: event.target.value }))}
-                    disabled={pending || department.headOptions.length === 0}
-                  >
-                    <option value="">{department.headOptions.length ? "Choose an eligible Head of Department" : "No eligible Head of Department accounts"}</option>
-                    {department.headOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-                  </select>
-                  <Button type="button" variant="outline" disabled={pending || !department.headOptions.some((option) => option.id === selectedHeads[department.id])} onClick={() => assign(department.id)}>Assign head</Button>
-                </div>
-                </> : <p className="text-xs text-muted-foreground">A head is already assigned. End the existing authority before appointing a replacement.{department.heads.some((head) => head.linkedThroughFaculty) ? " For a faculty-linked head, ask the Super Administrator to update the account role or faculty link." : ""}</p>}
-              </div>
-            </CardContent>
-          </Card>
-  );
+  const run = (task: () => Promise<Result>, done: string, after?: () => void) => start(async () => {
+    const res = await task();
+    if (res.ok) { toast.success(done); after?.(); } else toast.error(res.error ?? "Something went wrong.");
+  });
+  const blockers = (d: Department) => (["programs", "faculty", "rooms", "sections", "subjects"] as const).filter((k) => d.counts[k] > 0).map((k) => plural(d.counts[k], k.replace(/s$/, "")));
 
   return (
-    <div className="space-y-5">
-      <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Plus className="size-5 text-primary" /> Add a department</CardTitle></CardHeader>
-        <CardContent>
-          <form action={(formData) => save(null, formData)}>
-            <FieldGroup className="grid gap-3 sm:grid-cols-[minmax(8rem,0.5fr)_minmax(14rem,1.5fr)_auto] sm:items-end">
-              <Field>
-                <FieldLabel htmlFor="new-department-code">Department code</FieldLabel>
-                <Input id="new-department-code" name="code" maxLength={20} required placeholder="SCI" />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="new-department-name">Department name</FieldLabel>
-                <Input id="new-department-name" name="name" maxLength={150} required placeholder="College of Science" />
-              </Field>
-              <Button type="submit" disabled={pending}><Plus className="size-4" /> Create department</Button>
-            </FieldGroup>
-          </form>
-        </CardContent>
-      </Card>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="relative min-w-60 flex-1"><MagnifyingGlass className="absolute top-2.5 left-3 size-4 text-muted-foreground" aria-hidden />
+          <Input aria-label="Search departments" placeholder="Search" className="pl-9" value={query} onChange={(e) => setQuery(e.target.value)} /></label>
+        <div role="group" aria-label="Filter departments" className="flex gap-1 rounded-lg bg-muted/60 p-1">
+          {[false, true].map((v) => <button key={String(v)} type="button" aria-pressed={noHead === v} onClick={() => setNoHead(v)}
+            className="h-7 rounded-md px-3 text-xs font-medium text-muted-foreground aria-pressed:bg-card aria-pressed:text-primary aria-pressed:shadow-sm">
+            {v ? "No head" : "All"}<span className="ml-1.5 tabular-nums opacity-70">{v ? headless : departments.length}</span></button>)}
+        </div>
+        <Button onClick={() => setAdding(true)}><Plus className="size-4" />Add department</Button>
+      </div>
 
-      <section className="space-y-3" aria-label="Departments">
-        <h2 className="text-lg font-semibold">Departments <span className="text-sm font-normal text-muted-foreground">({departments.length})</span></h2>
-        {departments.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No departments yet. Create one to begin organizing academic records.</p>
-        ) : <CollectionView storageKey="departments:view" label="Departments" table={<RecordsTable label="Departments" columns={["Department", "Head of Department", "Programs", "Faculty", "Sections", "Rooms", "Actions"]} rows={departments.map((d) => ({ id: d.id, cells: [<div key="department" className="flex items-center gap-2"><DepartmentLogo name={d.name} logoUrl={d.logoUrl} className="size-9 shrink-0" /><span><b>{d.code}</b><span className="block">{d.name}</span></span></div>, d.heads.map((h) => `${h.name}${h.acting ? " (Acting)" : ""}`).join(", ") || "Unassigned", d.counts.programs, d.counts.faculty, d.counts.sections, d.counts.rooms, <div key="actions" className="flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" onClick={() => setManaging(d.id)}>Manage department</Button><Link href={`/department?department=${encodeURIComponent(d.id)}`} className="text-primary hover:underline">Profile</Link><Link href={`/analytics?department=${encodeURIComponent(d.id)}`} className="text-primary hover:underline">Analytics</Link></div>] }))} />}>{departments.map(renderDepartment)}</CollectionView>}
-      </section>
-      <Dialog open={!!managing} onOpenChange={(on) => !on && !pending && setManaging(null)}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle>Manage department</DialogTitle><DialogDescription>Update details and available settings.</DialogDescription></DialogHeader>{departments.filter((item) => item.id === managing).map(renderDepartment)}</DialogContent></Dialog>
-      <p className="text-xs text-muted-foreground">One active Head of Department per department. Changes are audited.</p>
+      <ul className="divide-y rounded-xl border bg-card">
+        {rows.map((d) => (
+          <li key={d.id}>
+            <button type="button" onClick={() => { setOpenId(d.id); setLevel("COLLEGE"); setHeadId(""); }} className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-left hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none">
+              <DepartmentLogo name={d.name} logoUrl={d.logoUrl} className="size-10 shrink-0 rounded-lg" />
+              <span className="min-w-48 flex-1"><span className="block font-medium">{d.name}</span><span className="block text-xs text-muted-foreground">{d.code}</span></span>
+              <span className="text-sm">{d.heads.length ? d.heads.map((h) => h.name + (h.acting ? " (Acting)" : "")).join(", ") : <Badge variant="outline" className="border-amber-500/30 bg-amber-500/5 text-amber-800 dark:text-amber-200">No head</Badge>}</span>
+              <span className="flex flex-wrap gap-1.5 text-xs">{(["programs", "faculty", "sections", "rooms"] as const).map((k) => <span key={k} className="rounded-md bg-muted px-2 py-1 tabular-nums">{d.counts[k]} {k}</span>)}</span>
+              <CaretRight className="size-4 text-muted-foreground" aria-hidden />
+            </button>
+          </li>
+        ))}
+        {!rows.length && <li className="py-10 text-center text-sm text-muted-foreground">No matches</li>}
+      </ul>
+
+      <Sheet open={!!open} onOpenChange={(o) => !o && !pending && setOpenId(null)}>
+        <SheetContent className="overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-xl">
+          {open && <>
+            <SheetHeader className="flex-row items-center gap-3">
+              <DepartmentLogo name={open.name} logoUrl={open.logoUrl} className="size-11 shrink-0 rounded-lg" />
+              <div className="min-w-0"><SheetTitle className="truncate">{open.name}</SheetTitle>
+                <div className="flex gap-3 text-xs"><Link className="text-primary hover:underline" href={`/department?department=${encodeURIComponent(open.id)}`}>Profile <ArrowSquareOut className="inline size-3" /></Link><Link className="text-primary hover:underline" href={`/analytics?department=${encodeURIComponent(open.id)}`}>Analytics <ArrowSquareOut className="inline size-3" /></Link></div></div>
+            </SheetHeader>
+            <Tabs defaultValue="details" className="px-4 pb-6">
+              <TabsList className="w-full"><TabsTrigger value="details">Details</TabsTrigger><TabsTrigger value="programs">Programs <span className="ml-1 tabular-nums opacity-70">{open.programs.length}</span></TabsTrigger><TabsTrigger value="head">Head</TabsTrigger></TabsList>
+
+              <TabsContent value="details" className="space-y-5 pt-4">
+                <form key={open.id} className="space-y-3" action={(fd) => run(() => saveDepartmentAction(open.id, fd), "Department saved.")}>
+                  <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
+                    <label className="grid gap-1 text-sm font-medium">Code<Input name="code" defaultValue={open.code} maxLength={20} required /></label>
+                    <label className="grid gap-1 text-sm font-medium">Name<Input name="name" defaultValue={open.name} maxLength={150} required /></label>
+                  </div>
+                  <Button type="submit" disabled={pending}>Save</Button>
+                </form>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/20 p-3">
+                  <span className="text-sm">{blockers(open).length ? <span className="text-muted-foreground">Linked: {blockers(open).join(", ")}</span> : "Empty department"}</span>
+                  <Button variant="destructive" size="sm" disabled={pending || blockers(open).length > 0} onClick={() => setDeleting(open)}><Trash className="size-4" />Delete</Button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="programs" className="space-y-3 pt-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div role="tablist" aria-label="Academic level" className="flex gap-1 rounded-lg bg-muted/60 p-1">
+                    {PROGRAM_LEVELS.map((l) => <button key={l} type="button" role="tab" aria-selected={level === l} onClick={() => setLevel(l)}
+                      className="h-7 rounded-md px-3 text-xs font-medium text-muted-foreground aria-selected:bg-card aria-selected:text-primary aria-selected:shadow-sm">
+                      {levelLabel(l)}<span className="ml-1.5 tabular-nums opacity-70">{open.programs.filter((p) => p.level === l).length}</span></button>)}
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setProgram({ departmentId: open.id, row: null, level })}><Plus className="size-4" />{level === "SENIOR_HIGH" ? "Strand" : "Program"}</Button>
+                </div>
+                <ul className="divide-y rounded-lg border">
+                  {open.programs.filter((p) => p.level === level).map((p) => {
+                    const used = p.sections + p.subjects > 0;
+                    return <li key={p.id} className="flex items-center gap-3 px-3 py-2.5">
+                      <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{p.name}</span><span className="block text-xs text-muted-foreground">{[p.code, p.sections && plural(p.sections, "section"), p.subjects && plural(p.subjects, "subject")].filter(Boolean).join(" · ")}</span></span>
+                      <Button size="icon-sm" variant="ghost" aria-label={`Edit ${p.name}`} onClick={() => setProgram({ departmentId: open.id, row: p, level: p.level })}><PencilSimple className="size-4" /></Button>
+                      <Button size="icon-sm" variant="ghost" aria-label={`Delete ${p.name}`} disabled={pending || used} title={used ? "In use" : undefined}
+                        onClick={() => run(() => deleteProgramAction(p.id), `${p.code} deleted.`)}><Trash className="size-4" /></Button>
+                    </li>;
+                  })}
+                  {!open.programs.some((p) => p.level === level) && <li className="py-6 text-center text-sm text-muted-foreground">None</li>}
+                </ul>
+              </TabsContent>
+
+              <TabsContent value="head" className="space-y-3 pt-4">
+                {open.heads.length > 1 && <p role="alert" className="text-sm text-destructive">More than one head. Remove the extra assignment.</p>}
+                {open.heads.map((h) => <div key={h.id} className="flex items-center gap-3 rounded-lg border p-3">
+                  <span className="min-w-0 flex-1"><span className="block font-medium">{h.name}{h.acting && <Badge variant="outline" className="ml-2">Acting</Badge>}</span><span className="block truncate text-xs text-muted-foreground">{h.email}</span></span>
+                  {h.linkedThroughFaculty ? <span className="text-xs text-muted-foreground">Faculty link</span>
+                    : <Button size="sm" variant="ghost" disabled={pending} onClick={() => run(() => removeDepartmentHeadAssignmentAction(open.id, h.id), "Head removed.")}>Remove</Button>}
+                </div>)}
+                {!open.heads.length && <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <NativeSelect aria-label="Head of Department" className="flex-1" value={headId} onChange={(e) => setHeadId(e.target.value)} disabled={!open.headOptions.length}
+                      placeholder={open.headOptions.length ? "Choose a Head of Department" : "No eligible accounts"} options={open.headOptions.map((o) => ({ value: o.id, label: o.label }))} />
+                    <Button disabled={pending || !headId} onClick={() => run(() => assignDepartmentHeadAction(open.id, headId), "Head assigned.", () => setHeadId(""))}>Assign</Button>
+                  </div>
+                  {open.facultyCandidates.length > 0 && <details className="text-sm"><summary className="cursor-pointer text-xs text-muted-foreground">{plural(open.facultyCandidates.length, "faculty candidate")}</summary>
+                    <ul className="mt-2 space-y-1">{open.facultyCandidates.map((f) => <li key={f.id}>{f.name} <span className="text-xs text-muted-foreground">{f.detail}</span></li>)}</ul></details>}
+                </div>}
+              </TabsContent>
+            </Tabs>
+          </>}
+        </SheetContent>
+      </Sheet>
+
+      {adding && <Dialog open onOpenChange={(o) => !o && !pending && setAdding(false)}><DialogContent className="sm:max-w-md">
+        <DialogHeader><DialogTitle>Add department</DialogTitle></DialogHeader>
+        <form className="space-y-3" action={(fd) => run(() => saveDepartmentAction(null, fd), "Department created.", () => setAdding(false))}>
+          <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
+            <label className="grid gap-1 text-sm font-medium">Code<Input name="code" maxLength={20} required placeholder="SCI" autoFocus /></label>
+            <label className="grid gap-1 text-sm font-medium">Name<Input name="name" maxLength={150} required placeholder="College of Science" /></label>
+          </div>
+          <Button type="submit" className="w-full" disabled={pending}>Create</Button>
+        </form>
+      </DialogContent></Dialog>}
+
+      {program && <Dialog open onOpenChange={(o) => !o && !pending && setProgram(null)}><DialogContent className="sm:max-w-md">
+        <DialogHeader><DialogTitle>{program.row ? `Edit ${program.row.code}` : program.level === "SENIOR_HIGH" ? "Add strand" : "Add program"}</DialogTitle></DialogHeader>
+        <form className="space-y-3" action={(fd) => run(() => saveProgramAction(program.row?.id ?? null, fd), program.row ? "Saved." : "Added.", () => setProgram(null))}>
+          <input type="hidden" name="level" value={program.level} />
+          <input type="hidden" name="departmentId" value={program.departmentId} />
+          {program.level === "SENIOR_HIGH"
+            ? <NativeSelect name="code" aria-label="Strand" required defaultValue={program.row?.code ?? ""} placeholder="Choose a strand" options={DEFAULT_SHS_STRANDS.map((s) => ({ value: s.code, label: `${s.code} · ${s.name}` }))} />
+            : <Input name="code" aria-label="Code" required maxLength={20} placeholder="Code, for example BSIT" defaultValue={program.row?.code} />}
+          <Input name="name" aria-label="Name" required maxLength={150} placeholder="Name" defaultValue={program.row?.name} />
+          <Button type="submit" className={cn("w-full")} disabled={pending}>Save</Button>
+        </form>
+      </DialogContent></Dialog>}
+
+      <ConfirmDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        title={`Delete ${deleting?.name}?`}
+        description="This cannot be undone."
+        onConfirm={async () => { const res = await deleteDepartmentAction(deleting!.id); if (res.ok) setOpenId(null); return res; }}
+        successMessage="Department deleted"
+      />
     </div>
   );
 }

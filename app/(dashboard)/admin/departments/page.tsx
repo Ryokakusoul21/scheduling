@@ -12,7 +12,7 @@ export default async function DepartmentManagementPage() {
   const [departments, leaders, facultyCandidates] = await Promise.all([
     prisma.department.findMany({
       orderBy: { name: "asc" },
-      include: { _count: { select: { programs: true, faculty: true, sections: true, rooms: true } } },
+      include: { _count: { select: { programs: true, faculty: true, sections: true, rooms: true, subjects: true } }, programs: { orderBy: [{ level: "asc" }, { sortOrder: "asc" }], select: { id: true, code: true, name: true, level: true, _count: { select: { sections: true, subjects: true } } } } },
     }),
     prisma.user.findMany({
       where: { role: "HEAD_OF_DEPARTMENT", status: "ACTIVE", archivedAt: null },
@@ -44,7 +44,9 @@ export default async function DepartmentManagementPage() {
       faculty: department._count.faculty,
       sections: department._count.sections,
       rooms: department._count.rooms,
+      subjects: department._count.subjects,
     },
+    programs: department.programs.map((p) => ({ id: p.id, code: p.code, name: p.name, level: p.level, sections: p._count.sections, subjects: p._count.subjects })),
     facultyCandidates: facultyCandidates.filter((faculty) => faculty.departmentId === department.id).map((faculty) => ({
       id: faculty.id, name: faculty.fullName, detail: [faculty.employeeId, faculty.position].filter(Boolean).join(" · "),
     })),
@@ -62,10 +64,7 @@ export default async function DepartmentManagementPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="Department Management"
-        description="Assign one active Head of Department per department, review faculty to consider, and maintain department records."
-      />
+      <PageHeader title="Department Management" description="Departments, programs, and heads." />
       <DepartmentManager
         departments={rows}
       />

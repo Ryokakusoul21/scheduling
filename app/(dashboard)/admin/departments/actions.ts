@@ -144,3 +144,26 @@ export async function removeDepartmentHeadAssignmentAction(departmentId: string,
   refreshDepartments();
   return { ok: true };
 }
+
+/** Deletes a department only when nothing is linked to it; returns what still blocks it otherwise. */
+export async function deleteDepartmentAction(id: string): Promise<Result> {
+  const scope = await requireScope("REGISTRAR");
+  const department = await prisma.department.findUnique({
+    where: { id },
+    select: { code: true, name: true, _count: { select: { programs: true, faculty: true, rooms: true, sections: true, subjects: true } } },
+  });
+  if (!department) return { ok: false, error: "This department no longer exists." };
+  const c = department._count;
+  const blockers = [[c.programs, "programs"], [c.faculty, "faculty"], [c.rooms, "rooms"], [c.sections, "sections"], [c.subjects, "subjects"]].filter(([n]) => Number(n) > 0).map(([n, label]) => `${n} ${label}`);
+  if (blockers.length) return { ok: false, error: `Still linked: ${blockers.join(", ")}.` };
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.department.delete({ where: { id } });
+      await tx.auditLog.create({ data: { userId: scope.userId, role: scope.role, action: "Deleted department", entity: "Department", entityId: id, oldValue: { code: department.code, name: department.name } } });
+    });
+  } catch {
+    return { ok: false, error: "Still linked to calendar activities, examinations, or requests." };
+  }
+  refreshDepartments();
+  return { ok: true };
+}

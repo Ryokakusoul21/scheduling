@@ -25,6 +25,7 @@ const READ_ONLY = "Programs and strands are managed by the Registrar. You can re
 
 function revalidate(id?: string) {
   revalidatePath("/programs");
+  revalidatePath("/admin/departments");
   if (id) revalidatePath(`/programs/${id}`);
   revalidatePath("/scheduler");
 }
