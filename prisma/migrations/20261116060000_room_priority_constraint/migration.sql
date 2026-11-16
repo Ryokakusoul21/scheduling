@@ -1,0 +1,1 @@
+ALTER TYPE "ConstraintKind" ADD VALUE 'ROOM_PRIORITY';

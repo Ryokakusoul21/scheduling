@@ -290,6 +290,9 @@ enum ConstraintKind {
   LUNCH_BREAK
   SUBJECT_TIME_OF_DAY
   MINIMUM_GAP
+  CLASS_DURATION
+  DELIVERY_MODE
+  ROOM_PRIORITY
 }
 
 enum NotificationType {
@@ -704,10 +707,18 @@ enum EmploymentType {
   PART_TIME
 }
 
+enum Sex {
+  MALE
+  FEMALE
+}
+
 model Faculty {
   id             String          @id @default(cuid())
   employeeId     String          @unique
   fullName       String
+  /// Name suffix such as Jr. or III; already included at the end of fullName.
+  suffix         String?
+  sex            Sex?
   email          String          @unique
   position       String?
   specialization String?
@@ -897,8 +908,10 @@ model Schedule {
   facultyId String
   faculty   Faculty @relation(fields: [facultyId], references: [id])
 
-  roomId String
-  room   Room   @relation(fields: [roomId], references: [id])
+  roomId String?
+  room   Room?  @relation(fields: [roomId], references: [id])
+  deliveryMode String @default("IN_PERSON")
+  meetingLink String?
 
   component SubjectComponent
   dayOfWeek DayOfWeek

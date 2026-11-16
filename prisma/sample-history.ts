@@ -42,9 +42,10 @@ async function pastBookings(db: PrismaClient, term: Semester, from: string, to: 
     const overClass = rand() < 0.55;
     let req: { roomId: string; date: string; startMin: number; endMin: number; purpose: string };
     if (overClass) {
-      const classes = await db.schedule.findMany({ where: { semesterId: term.id, dayOfWeek: dayOfWeek(date), component: "LECTURE" } });
+      const classes = await db.schedule.findMany({ where: { semesterId: term.id, dayOfWeek: dayOfWeek(date), component: "LECTURE", roomId: { not: null } } });
       if (!classes.length) continue;
       const c = classes[Math.floor(rand() * classes.length)];
+      if (!c.roomId) continue;
       req = { roomId: c.roomId, date, startMin: c.startMin, endMin: c.endMin, purpose };
     } else {
       const start = (8 + Math.floor(rand() * 8)) * 60;

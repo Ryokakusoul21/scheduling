@@ -21,6 +21,7 @@ export async function addBookingSamples(db: PrismaClient) {
     take: 40,
   });
   for (const c of classes) {
+    if (!c.room || !c.roomId) continue;
     const date = new Date();
     date.setUTCHours(0, 0, 0, 0);
     date.setUTCDate(date.getUTCDate() + 2);
@@ -29,7 +30,7 @@ export async function addBookingSamples(db: PrismaClient) {
     // A room of the same type that seats the section and has no class at that weekday and time.
     const busy = await db.schedule.findMany({ where: { dayOfWeek: c.dayOfWeek, startMin: { lt: c.endMin }, endMin: { gt: c.startMin }, status: { not: "ARCHIVED" } }, select: { roomId: true } });
     const alt = await db.room.findFirst({
-      where: { id: { notIn: [c.roomId, ...busy.map((b) => b.roomId)] }, roomType: c.room.roomType, capacity: { gte: c.section.studentCount }, status: "AVAILABLE", archivedAt: null, OR: [{ departmentId }, { departmentId: null }] },
+      where: { id: { notIn: [c.roomId, ...busy.flatMap((b) => b.roomId ? [b.roomId] : [])] }, roomType: c.room.roomType, capacity: { gte: c.section.studentCount }, status: "AVAILABLE", archivedAt: null, OR: [{ departmentId }, { departmentId: null }] },
       orderBy: { capacity: "asc" },
     });
     if (!alt) continue;

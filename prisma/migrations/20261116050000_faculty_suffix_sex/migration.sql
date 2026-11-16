@@ -1,0 +1,2 @@
+CREATE TYPE "Sex" AS ENUM ('MALE', 'FEMALE');
+ALTER TABLE "Faculty" ADD COLUMN "suffix" TEXT, ADD COLUMN "sex" "Sex";
