@@ -123,7 +123,7 @@ export function AdjustmentWorkspace(props: {
   const kind = KINDS.find((k) => k.value === form.kind)!;
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+    <div className="grid gap-4 [&>*]:min-w-0 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="space-y-4">
         <Card>
           <CardHeader><CardTitle className="text-base">New adjustment</CardTitle></CardHeader>

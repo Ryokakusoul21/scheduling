@@ -3,14 +3,42 @@
 import * as React from "react"
 import { cn } from "cn"
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+/** Copies each column header into its cells as data-label so phones can show rows as labelled cards. */
+function useStackLabels(ref: React.RefObject<HTMLTableElement | null>) {
+  React.useEffect(() => {
+    const table = ref.current
+    if (!table) return
+    const label = () => {
+      const heads = [...table.querySelectorAll("thead tr:last-child th")].map((th) => th.textContent?.trim() ?? "")
+      for (const row of table.querySelectorAll("tbody tr")) {
+        let col = 0
+        for (const cell of row.children) {
+          const text = heads[col] ?? ""
+          if (cell.getAttribute("data-label") !== text) cell.setAttribute("data-label", text)
+          col += (cell as HTMLTableCellElement).colSpan || 1
+        }
+      }
+    }
+    label()
+    const observer = new MutationObserver(label)
+    observer.observe(table, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [ref])
+}
+
+/** Stacks into cards below the sm breakpoint unless stack={false} (grids such as timetables). */
+function Table({ className, stack = true, ...props }: React.ComponentProps<"table"> & { stack?: boolean }) {
+  const ref = React.useRef<HTMLTableElement>(null)
+  useStackLabels(ref)
   return (
     <div
       data-slot="table-container"
       className="relative w-full overflow-x-auto"
     >
       <table
+        ref={ref}
         data-slot="table"
+        data-stack={stack ? "" : undefined}
         className={cn("w-full caption-bottom text-sm", className)}
         {...props}
       />

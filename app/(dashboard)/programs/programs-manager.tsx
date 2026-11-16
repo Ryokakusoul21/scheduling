@@ -131,7 +131,7 @@ function ProgramSection({
           {programs.map((p) => (
               <div
                 key={p.id}
-                className="group relative rounded-xl border bg-card p-4 shadow-xs transition-shadow hover:shadow-md"
+                className="group relative min-w-0 rounded-xl border bg-card p-4 shadow-xs transition-shadow hover:shadow-md"
               >
                 <div className="flex items-start gap-2">
                   <Link

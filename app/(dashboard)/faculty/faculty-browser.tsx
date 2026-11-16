@@ -118,8 +118,9 @@ export function FacultyBrowser({
     },
   ];
 
-  const menu = (f: FacultyRow) => (
-    <div className="flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap">
+  // Cards wrap their actions on narrow screens; table rows keep them on one line.
+  const menu = (f: FacultyRow, wrap = false) => (
+    <div className={wrap ? "flex flex-wrap items-center gap-1.5" : "flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap"}>
       <ActionButton kind={canManage ? "edit" : "view"} onClick={() => dialog.openEdit(f)}>
         {canManage ? "Edit" : "Details"}
       </ActionButton>
@@ -175,8 +176,8 @@ export function FacultyBrowser({
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <NativeSelect aria-label="Filter by department" className="w-52" value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="All departments" options={departments} />
-        <NativeSelect aria-label="Filter by status" className="w-36" value={status} onChange={(e) => setStatus(e.target.value)} placeholder="Any status" options={STATUS} />
+        <NativeSelect aria-label="Filter by department" className="w-full sm:w-52" value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="All departments" options={departments} />
+        <NativeSelect aria-label="Filter by status" className="min-w-0 flex-1 sm:w-36 sm:flex-none" value={status} onChange={(e) => setStatus(e.target.value)} placeholder="Any status" options={STATUS} />
         {filtersOn && (
           <Button
             variant="ghost"
@@ -205,7 +206,7 @@ export function FacultyBrowser({
       ) : view === "cards" ? (
         <div ref={gridRef} onKeyDown={onGridKeyDown} onFocus={onGridFocus} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {filtered.map((f) => (
-            <div key={f.id} className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs transition-shadow hover:shadow-md">
+            <div key={f.id} className="flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs transition-shadow hover:shadow-md">
               <div className="flex items-start gap-3">
                 <UserAvatar name={f.fullName} image={f.image} className="size-11" />
                 <button
@@ -231,7 +232,7 @@ export function FacultyBrowser({
                 ))}
               </div>
               {loadBar(f)}
-              <div className="mt-auto border-t pt-3">{menu(f)}</div>
+              <div className="mt-auto border-t pt-3">{menu(f, true)}</div>
             </div>
           ))}
         </div>

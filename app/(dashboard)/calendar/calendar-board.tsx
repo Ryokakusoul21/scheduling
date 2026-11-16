@@ -215,6 +215,8 @@ export function CalendarBoard(props: {
           </p>
         )}
 
+        <AgendaList dates={view === "day" ? [date] : eachDate(from, to).filter((d) => view !== "month" || d.slice(0, 7) === date.slice(0, 7))} today={today} events={visible} colorOf={colorOf} conflicts={conflicts} onSelect={setSelected} />
+        <div className="hidden sm:block">
         {view === "month" ? (
           <MonthGrid from={from} to={to} month={date.slice(0, 7)} today={today} events={visible} colorOf={colorOf} onDay={(d) => go({ view: "day", date: d })} onSelect={setSelected} />
         ) : (
@@ -230,6 +232,7 @@ export function CalendarBoard(props: {
             onMore={(list, label) => setGroup({ events: list, label })}
           />
         )}
+        </div>
       </CardContent>
 
       <Dialog open={!!group} onOpenChange={(o) => { if (!o) { setGroup(null); setMoreQuery(""); } }}>
@@ -281,6 +284,35 @@ export function CalendarBoard(props: {
       />
       <ActivityDialog state={editing} isAdmin={props.isAdmin} options={props.formOptions} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); router.refresh(); }} />
     </Card>
+  );
+}
+
+/** Phones: the visible range as a list of days that have items, instead of a wide grid. */
+function AgendaList({ dates, today, events, colorOf, conflicts, onSelect }: { dates: string[]; today: string; events: CalendarEvent[]; colorOf: (e: CalendarEvent) => string; conflicts: Conflicts; onSelect: (e: CalendarEvent) => void }) {
+  const days = dates.map((d) => [d, events.filter((e) => onDate(e, d)).sort((a, b) => Number(isAllDay(b)) - Number(isAllDay(a)) || (a.startMin ?? 0) - (b.startMin ?? 0))] as const).filter(([, list]) => list.length);
+  return (
+    <div className="space-y-4 sm:hidden">
+      {days.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">Nothing scheduled</p>}
+      {days.map(([d, list]) => (
+        <section key={d} aria-label={formatLongDate(d, { weekday: "long", month: "long", day: "numeric" })}>
+          <h3 className={cn("mb-1.5 text-xs font-semibold", d === today ? "text-primary" : "text-muted-foreground")}>{formatLongDate(d, { weekday: "short", month: "short", day: "numeric" })}{d === today && " · Today"}</h3>
+          <ul className="space-y-1.5">
+            {list.map((e) => (
+              <li key={`${e.id}-${d}`}>
+                <button type="button" onClick={() => onSelect(e)} className="flex min-h-12 w-full items-center gap-3 rounded-lg border bg-card px-3 py-2 text-left active:bg-muted">
+                  <span className={cn("size-3 shrink-0 rounded-full border", colorOf(e))} aria-hidden />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1 truncate text-sm font-medium">{conflicts.has(e.id) && <WarningCircle weight="fill" className="size-4 shrink-0 text-red-600" aria-label="Conflict" />}{e.info?.code ?? e.title}</span>
+                    {(e.info?.room || e.info?.section) && <span className="block truncate text-xs text-muted-foreground">{[e.info?.room, e.info?.section].filter(Boolean).join(" · ")}</span>}
+                  </span>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{isAllDay(e) ? "Whole day" : formatRange(e.startMin!, e.endMin!)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
   );
 }
 
