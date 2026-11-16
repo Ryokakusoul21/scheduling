@@ -17,11 +17,14 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { readFileSync } from "node:fs";
 import bcrypt from "bcryptjs";
 import { DEFAULT_COLLEGE_PROGRAMS, DEFAULT_SHS_STRANDS } from "../lib/academics/levels";
+import { BASIC_EDUCATION_DEPARTMENTS } from "../lib/departments/catalog";
 import { placeCollegeClasses } from "./sample-timetable";
 import { addSampleHistory } from "./sample-history";
+import { clearSchedules } from "./clear-schedules";
 import { addArchiveAndApprovalSamples } from "./sample-archive-activities";
 import { addScopeAndExamSamples } from "./sample-scope";
 import { addBookingSamples } from "./sample-bookings";
+import { replaceComputingCurriculum } from "./replace-computing-curriculum";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -76,6 +79,7 @@ async function main() {
     { code: "CAS", name: "College of Arts and Sciences" },
     { code: "GENED", name: "General Education Department" },
     { code: "BED", name: "Basic Education Department" },
+    ...BASIC_EDUCATION_DEPARTMENTS,
   ];
   const dept: Record<string, string> = {};
   for (const d of departmentDefs) dept[d.code] = (await prisma.department.create({ data: d })).id;
@@ -189,6 +193,7 @@ async function main() {
         roomType: r.type,
         equipment: r.equipment,
         departmentId: r.dept ? dept[r.dept] : null,
+        isGeneralShared: !r.dept,
         availability: { create: SCHOOL_DAYS.map((d) => ({ dayOfWeek: d, startMin: 7 * 60, endMin: 19 * 60 })) },
       },
     });
@@ -353,24 +358,24 @@ async function main() {
   // Faculty (honorifics omitted; the position field carries the rank)
   // -------------------------------------------------------------------
   const facultyDefs: { id: string; name: string; email: string; dept: string; position: string; specialization: string; maxHours: number; levels: AcademicLevel[] }[] = [
-    { id: "F-001", name: "Ana Santos", email: "santos@granby.edu.ph", dept: "CCS", position: "Associate Professor", specialization: "Programming", maxHours: 24, levels: ["COLLEGE"] },
-    { id: "F-002", name: "Ramon Reyes", email: "reyes@granby.edu.ph", dept: "CCS", position: "Assistant Professor", specialization: "Web Development", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
-    { id: "F-003", name: "Liza Cruz", email: "cruz@granby.edu.ph", dept: "CCS", position: "Professor", specialization: "Database Systems", maxHours: 21, levels: ["COLLEGE"] },
-    { id: "F-004", name: "Miguel Torres", email: "torres@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Networking", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
-    { id: "F-005", name: "Carla Dizon", email: "dizon@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Data Structures", maxHours: 24, levels: ["COLLEGE"] },
-    { id: "F-006", name: "Noel Villanueva", email: "villanueva@granby.edu.ph", dept: "CCS", position: "Assistant Professor", specialization: "Information Security", maxHours: 21, levels: ["COLLEGE"] },
-    { id: "F-007", name: "Grace Mercado", email: "mercado@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Systems Analysis", maxHours: 24, levels: ["COLLEGE"] },
-    { id: "F-008", name: "Daniel Ramos", email: "ramos@granby.edu.ph", dept: "GENED", position: "Professor", specialization: "Mathematics", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
-    { id: "F-009", name: "Ella Fernandez", email: "fernandez@granby.edu.ph", dept: "CAS", position: "Assistant Professor", specialization: "Communication", maxHours: 21, levels: ["COLLEGE", "SENIOR_HIGH"] },
-    { id: "F-010", name: "Victor Aquino", email: "aquino@granby.edu.ph", dept: "CAS", position: "Instructor", specialization: "History", maxHours: 24, levels: ["COLLEGE"] },
-    { id: "F-011", name: "Sonia Bautista", email: "bautista@granby.edu.ph", dept: "CAS", position: "Instructor", specialization: "Chemistry", maxHours: 21, levels: ["COLLEGE", "SENIOR_HIGH"] },
-    { id: "F-012", name: "Ricardo Lim", email: "lim@granby.edu.ph", dept: "CBA", position: "Associate Professor", specialization: "Management", maxHours: 24, levels: ["COLLEGE"] },
-    { id: "F-013", name: "Teresa Navarro", email: "navarro@granby.edu.ph", dept: "CTE", position: "Assistant Professor", specialization: "Education", maxHours: 24, levels: ["COLLEGE"] },
-    { id: "F-014", name: "Paolo Garcia", email: "garcia@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Discrete Mathematics and Programming", maxHours: 24, levels: ["COLLEGE"] },
-    { id: "F-015", name: "Mika Alonzo", email: "alonzo@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Automata Theory and Programming", maxHours: 24, levels: ["COLLEGE"] },
-    { id: "F-016", name: "Arnel Castillo", email: "castillo@granby.edu.ph", dept: "CCJE", position: "Instructor", specialization: "Criminology", maxHours: 24, levels: ["COLLEGE"] },
-    { id: "F-017", name: "Joy Salazar", email: "salazar@granby.edu.ph", dept: "CBA", position: "Instructor", specialization: "Accounting", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
-    { id: "F-018", name: "Karen Ocampo", email: "ocampo@granby.edu.ph", dept: "CHTM", position: "Instructor", specialization: "Tourism", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "GC-001", name: "Ana Santos", email: "santos@granby.edu.ph", dept: "CCS", position: "Associate Professor", specialization: "Programming", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "GC-002", name: "Ramon Reyes", email: "reyes@granby.edu.ph", dept: "CCS", position: "Assistant Professor", specialization: "Web Development", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
+    { id: "GC-003", name: "Liza Cruz", email: "cruz@granby.edu.ph", dept: "CCS", position: "Professor", specialization: "Database Systems", maxHours: 21, levels: ["COLLEGE"] },
+    { id: "GC-004", name: "Miguel Torres", email: "torres@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Networking", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
+    { id: "GC-005", name: "Carla Dizon", email: "dizon@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Data Structures", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "GC-006", name: "Noel Villanueva", email: "villanueva@granby.edu.ph", dept: "CCS", position: "Assistant Professor", specialization: "Information Security", maxHours: 21, levels: ["COLLEGE"] },
+    { id: "GC-007", name: "Grace Mercado", email: "mercado@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Systems Analysis", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "GC-008", name: "Daniel Ramos", email: "ramos@granby.edu.ph", dept: "GENED", position: "Professor", specialization: "Mathematics", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
+    { id: "GC-009", name: "Ella Fernandez", email: "fernandez@granby.edu.ph", dept: "CAS", position: "Assistant Professor", specialization: "Communication", maxHours: 21, levels: ["COLLEGE", "SENIOR_HIGH"] },
+    { id: "GC-010", name: "Victor Aquino", email: "aquino@granby.edu.ph", dept: "CAS", position: "Instructor", specialization: "History", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "GC-011", name: "Sonia Bautista", email: "bautista@granby.edu.ph", dept: "CAS", position: "Instructor", specialization: "Chemistry", maxHours: 21, levels: ["COLLEGE", "SENIOR_HIGH"] },
+    { id: "GC-012", name: "Ricardo Lim", email: "lim@granby.edu.ph", dept: "CBA", position: "Associate Professor", specialization: "Management", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "GC-013", name: "Teresa Navarro", email: "navarro@granby.edu.ph", dept: "CTE", position: "Assistant Professor", specialization: "Education", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "GC-014", name: "Paolo Garcia", email: "garcia@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Discrete Mathematics and Programming", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "GC-015", name: "Mika Alonzo", email: "alonzo@granby.edu.ph", dept: "CCS", position: "Instructor", specialization: "Automata Theory and Programming", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "GC-016", name: "Arnel Castillo", email: "castillo@granby.edu.ph", dept: "CCJE", position: "Instructor", specialization: "Criminology", maxHours: 24, levels: ["COLLEGE"] },
+    { id: "GC-017", name: "Joy Salazar", email: "salazar@granby.edu.ph", dept: "CBA", position: "Instructor", specialization: "Accounting", maxHours: 24, levels: ["COLLEGE", "SENIOR_HIGH"] },
+    { id: "GC-018", name: "Karen Ocampo", email: "ocampo@granby.edu.ph", dept: "CHTM", position: "Instructor", specialization: "Tourism", maxHours: 24, levels: ["COLLEGE"] },
     { id: "T-001", name: "Liza Domingo", email: "domingo@granby.edu.ph", dept: "BED", position: "Teacher II", specialization: "English", maxHours: 30, levels: ["JUNIOR_HIGH"] },
     { id: "T-002", name: "Jerome Pascual", email: "pascual@granby.edu.ph", dept: "BED", position: "Teacher I", specialization: "Mathematics", maxHours: 30, levels: ["JUNIOR_HIGH", "SENIOR_HIGH"] },
     { id: "T-003", name: "Rhea Manalo", email: "manalo@granby.edu.ph", dept: "BED", position: "Teacher III", specialization: "Science", maxHours: 30, levels: ["JUNIOR_HIGH"] },
@@ -379,9 +384,9 @@ async function main() {
     { id: "T-006", name: "Benjie Tolentino", email: "tolentino@granby.edu.ph", dept: "BED", position: "Teacher I", specialization: "Music, Arts, Physical Education and Health", maxHours: 30, levels: ["ELEMENTARY", "JUNIOR_HIGH", "PRE_ELEMENTARY"] },
   ];
   // Ana Santos teaches only Friday mornings, which the scheduler and the automatic adjustments respect.
-  const fridayMorningOnly = new Set(["F-001"]);
+  const fridayMorningOnly = new Set(["GC-001"]);
   // Part-time faculty keep one day off.
-  const partTimeDayOff: Record<string, DayOfWeek> = { "F-010": "WEDNESDAY", "F-018": "SATURDAY", "T-006": "FRIDAY" };
+  const partTimeDayOff: Record<string, DayOfWeek> = { "GC-010": "WEDNESDAY", "GC-018": "SATURDAY", "T-006": "FRIDAY" };
   const faculty: Record<string, { id: string; windows: { day: DayOfWeek; start: number; end: number }[] }> = {};
   for (const f of facultyDefs) {
     const windows = WEEKDAYS.map((d) => ({ day: d, start: 7 * 60, end: d === "FRIDAY" && fridayMorningOnly.has(f.id) ? 12 * 60 : 18 * 60 }));
@@ -403,7 +408,7 @@ async function main() {
       section: "Grade 11 - Newton",
       termId: quarterTerm.SENIOR_HIGH!.id,
       meetings: [
-        { subject: "SHS-ORALCOM", faculty: "F-009", room: "3201", day: "MONDAY", start: "07:30", end: "08:30" },
+        { subject: "SHS-ORALCOM", faculty: "GC-009", room: "3201", day: "MONDAY", start: "07:30", end: "08:30" },
         { subject: "SHS-GENMATH", faculty: "T-002", room: "3201", day: "MONDAY", start: "13:00", end: "14:00" },
         { subject: "SHS-PRECAL", faculty: "T-002", room: "3201", day: "TUESDAY", start: "07:30", end: "08:30" },
         { subject: "SHS-EARTHSCI", faculty: "T-003", room: "2102", day: "THURSDAY", start: "13:00", end: "15:00", lab: true },
@@ -459,15 +464,15 @@ async function main() {
   const userDefs = [
     { email: "superadministrator@granby.edu.ph", name: "Ramon Villanueva", role: "SUPER_ADMINISTRATOR" as const },
     { email: "registrar@granby.edu.ph", name: "Cecilia Robles", role: "REGISTRAR" as const },
-    { email: "head.computing@granby.edu.ph", name: "Liza Cruz", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["F-003"].id },
+    { email: "head.computing@granby.edu.ph", name: "Liza Cruz", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["GC-003"].id },
     { email: "head.basiceducation@granby.edu.ph", name: "Rhea Manalo", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["T-003"].id },
-    { email: "head.generaleducation@granby.edu.ph", name: "Daniel Ramos", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["F-008"].id },
-    { email: "head.business@granby.edu.ph", name: "Ricardo Lim", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["F-012"].id },
-    { email: "acting.head@granby.edu.ph", name: "Joy Salazar", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["F-017"].id },
-    { email: "faculty@granby.edu.ph", name: "Ana Santos", role: "FACULTY" as const, facultyId: faculty["F-001"].id },
-    { email: "dizon@granby.edu.ph", name: "Carla Dizon", role: "FACULTY" as const, facultyId: faculty["F-005"].id },
+    { email: "head.generaleducation@granby.edu.ph", name: "Daniel Ramos", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["GC-008"].id },
+    { email: "head.business@granby.edu.ph", name: "Ricardo Lim", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["GC-012"].id },
+    { email: "acting.head@granby.edu.ph", name: "Joy Salazar", role: "HEAD_OF_DEPARTMENT" as const, facultyId: faculty["GC-017"].id },
+    { email: "faculty@granby.edu.ph", name: "Ana Santos", role: "FACULTY" as const, facultyId: faculty["GC-001"].id },
+    { email: "dizon@granby.edu.ph", name: "Carla Dizon", role: "FACULTY" as const, facultyId: faculty["GC-005"].id },
     // Underloaded on purpose (3 hours) so the Faculty dashboard shows a load below the minimum.
-    { email: "alonzo@granby.edu.ph", name: "Mika Alonzo", role: "FACULTY" as const, facultyId: faculty["F-015"].id },
+    { email: "alonzo@granby.edu.ph", name: "Mika Alonzo", role: "FACULTY" as const, facultyId: faculty["GC-015"].id },
   ];
   const user: Record<string, string> = {};
   for (const u of userDefs) {
@@ -534,11 +539,11 @@ async function main() {
   // -------------------------------------------------------------------
   const examDay = nextWeekday(6, 3);
   const examDefs = [
-    { section: "Information Technology 1-A", subject: "IT101", room: "101", proctor: "F-005", start: "08:00", end: "10:00" },
-    { section: "Information Technology 1-B", subject: "IT101", room: "102", proctor: "F-014", start: "08:00", end: "10:00" },
-    { section: "Information Technology 2-A", subject: "IT202", room: "201", proctor: "F-003", start: "10:30", end: "12:30" },
-    { section: "Information Technology 2-B", subject: "IT202", room: "202", proctor: "F-015", start: "10:30", end: "12:30" },
-    { section: "Computer Science 2-A", subject: "CS201", room: "203", proctor: "F-014", start: "13:00", end: "15:00" },
+    { section: "Information Technology 1-A", subject: "IT101", room: "101", proctor: "GC-005", start: "08:00", end: "10:00" },
+    { section: "Information Technology 1-B", subject: "IT101", room: "102", proctor: "GC-014", start: "08:00", end: "10:00" },
+    { section: "Information Technology 2-A", subject: "IT202", room: "201", proctor: "GC-003", start: "10:30", end: "12:30" },
+    { section: "Information Technology 2-B", subject: "IT202", room: "202", proctor: "GC-015", start: "10:30", end: "12:30" },
+    { section: "Computer Science 2-A", subject: "CS201", room: "203", proctor: "GC-014", start: "13:00", end: "15:00" },
   ];
   for (const e of examDefs) {
     await prisma.examination.create({
@@ -574,11 +579,11 @@ async function main() {
       date: date(nextWeekday(3, 2)), startMin: 13 * 60, endMin: 15 * 60, attendees: 12,
     },
   });
-  const dizonDay = (await prisma.schedule.findFirst({ where: { facultyId: faculty["F-005"].id, semesterId: collegeTerm.id } }))?.dayOfWeek ?? "TUESDAY";
+  const dizonDay = (await prisma.schedule.findFirst({ where: { facultyId: faculty["GC-005"].id, semesterId: collegeTerm.id } }))?.dayOfWeek ?? "TUESDAY";
   const dizonDate = nextWeekday(["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"].indexOf(dizonDay), 4);
   await prisma.unavailability.create({
     data: {
-      kind: "FACULTY", facultyId: faculty["F-005"].id, startDate: date(dizonDate), endDate: date(dizonDate),
+      kind: "FACULTY", facultyId: faculty["GC-005"].id, startDate: date(dizonDate), endDate: date(dizonDate),
       reason: "Attending the regional data science seminar", reportedById: user["dizon@granby.edu.ph"],
     },
   });
@@ -610,7 +615,7 @@ async function main() {
       { kind: "LUNCH_BREAK", name: "Lunch break", params: { startMin: toMin("12:00"), endMin: toMin("13:00") } },
       { kind: "MAX_CONSECUTIVE", name: "At most 4 back-to-back classes per section", params: { maxConsecutive: 4, appliesTo: "SECTION" } },
       { kind: "SUBJECT_TIME_OF_DAY", name: "Junior High Mathematics in the morning", params: { subjectId: subject["MATHEM7"].id, period: "MORNING" } },
-      { kind: "PREFERRED_TIME", name: "Ana Santos prefers Saturdays off", params: { facultyId: faculty["F-001"].id, startMin: toMin("07:00"), endMin: toMin("17:00"), daysOff: ["SATURDAY"] } },
+      { kind: "PREFERRED_TIME", name: "Ana Santos prefers Saturdays off", params: { facultyId: faculty["GC-001"].id, startMin: toMin("07:00"), endMin: toMin("17:00"), daysOff: ["SATURDAY"] } },
       { kind: "MINIMUM_GAP", name: "Fifteen minutes between faculty classes", params: { minutes: 15, appliesTo: "FACULTY" }, enabled: false },
     ],
   });
@@ -625,7 +630,13 @@ async function main() {
   await addScopeAndExamSamples(prisma);
   await addBookingSamples(prisma);
 
-  console.log(`Seed complete: ${placed} college class meetings placed in ${collegeTerm.name} ${ay.name}.`);
+  // Apply the supplied First Semester 2026-2027 curricula after retaining the older demo history.
+  await replaceComputingCurriculum(prisma);
+
+  // Class timetables start empty; only subjects, sections, rooms, and faculty are seeded.
+  await clearSchedules(prisma);
+
+  console.log(`Seed complete for ${collegeTerm.name} ${ay.name}; class schedules left empty (${placed} generated then cleared).`);
   console.log(`Demo login password for every demo account: ${DEV_PASSWORD}`);
 }
 

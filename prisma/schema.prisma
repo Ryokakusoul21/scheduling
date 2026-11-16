@@ -304,6 +304,8 @@ enum NotificationType {
 // ---------------------------------------------------------------------------
 
 model User {
+  suspensionsIssued   ClassSuspension[]     @relation("SuspensionIssuer")
+  suspensionsLifted   ClassSuspension[]     @relation("SuspensionLifter")
   timetableComments   TimetableComment[]    @relation("TimetableCommentAuthor")
   timetablesSubmitted TimetableSubmission[] @relation("TimetableSubmitter")
   timetablesDecided   TimetableSubmission[] @relation("TimetableDecider")
@@ -321,6 +323,8 @@ model User {
   failedLoginAttempts    Int       @default(0)
   lockedUntil            DateTime?
   lastLoginAt            DateTime?
+  /// Set when an administrator issues a password; the user must choose a new one before using the system.
+  mustChangePassword     Boolean   @default(false)
   /// Bumped to invalidate every existing session (password reset, "sign out everywhere").
   sessionVersion         Int       @default(0)
   twoFactorEnabled       Boolean   @default(false)
@@ -351,6 +355,8 @@ model User {
   sessions                UserSession[]
   bookings                RoomBooking[]
   subjectChangesRequested SubjectChangeRequest[]     @relation("SubjectChangesRequested")
+  assignmentProposalsMade SubjectAssignmentProposal[] @relation("SubjectAssignmentProposalRequester")
+  assignmentProposalsReviewed SubjectAssignmentProposal[] @relation("SubjectAssignmentProposalReviewer")
   departmentAssignments   UserDepartmentAssignment[]
   programAssignments      HeadProgramAssignment[]
 
@@ -392,6 +398,7 @@ model LoginAttempt {
 // ---------------------------------------------------------------------------
 
 model Department {
+  classSuspensions     ClassSuspension[]
   timetableSubmissions TimetableSubmission[]
   id                   String                @id @default(cuid())
   code                 String                @unique
@@ -407,6 +414,7 @@ model Department {
   subjects              Subject[]
   examBatches           ExamBatch[]
   subjectChangeRequests SubjectChangeRequest[]
+  assignmentProposals  SubjectAssignmentProposal[]
   userAssignments       UserDepartmentAssignment[]
 
   createdAt DateTime @default(now())
@@ -486,7 +494,6 @@ model AcademicYear {
 /// A term: a College semester (optionally per program) or a basic-education quarter.
 model Semester {
   timetableSubmissions TimetableSubmission[]
-  schedulingPeriods    SchedulingPeriod[]
   id                   String                @id @default(cuid())
   academicYearId       String
   academicYear         AcademicYear          @relation(fields: [academicYearId], references: [id])
@@ -505,40 +512,12 @@ model Semester {
   examinations       Examination[]
   activityProposals  ActivityProposal[]
   subjectAssignments SubjectAssignment[]
+  assignmentProposals SubjectAssignmentProposal[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([academicYearId, level])
-}
-
-enum SchedulingPeriodKind {
-  CLASS_TIMETABLE
-  EXAMINATION
-}
-
-enum SchedulingPeriodStatus {
-  OPEN
-  CLOSED
-}
-
-/// Registrar-managed submission window for one term and scheduling workflow.
-model SchedulingPeriod {
-  id          String                 @id @default(cuid())
-  semesterId  String
-  semester    Semester               @relation(fields: [semesterId], references: [id], onDelete: Cascade)
-  kind        SchedulingPeriodKind
-  name        String
-  startsAt    DateTime
-  endsAt      DateTime
-  status      SchedulingPeriodStatus @default(CLOSED)
-  createdById String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([semesterId, kind])
-  @@index([status, startsAt, endsAt])
 }
 
 model Subject {
@@ -572,6 +551,7 @@ model Subject {
   examinations      Examination[]
   changeRequests    SubjectChangeRequest[]
   assignments       SubjectAssignment[]
+  assignmentProposals SubjectAssignmentProposal[]
 
   archivedAt    DateTime?
   archivedById  String?
@@ -622,6 +602,7 @@ model Section {
   examinations       Examination[]
   students           Student[]
   subjectAssignments SubjectAssignment[]
+  assignmentProposals SubjectAssignmentProposal[]
   classPlaceholders  SectionClassPlaceholder[]
 
   archivedAt    DateTime?
@@ -657,6 +638,12 @@ enum AssignmentStatus {
   ARCHIVED
 }
 
+enum SubjectAssignmentProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 /// The faculty member who teaches a subject in a term, for one section or (sectionId null) every section.
 /// Active rows are unique per subject, section, and term through a partial index in the migration.
 model SubjectAssignment {
@@ -665,6 +652,7 @@ model SubjectAssignment {
   subject      Subject          @relation(fields: [subjectId], references: [id])
   facultyId    String
   faculty      Faculty          @relation(fields: [facultyId], references: [id])
+  /// Active assignments require a section; null is retained only for archived legacy defaults.
   sectionId    String?
   section      Section?         @relation(fields: [sectionId], references: [id])
   semesterId   String
@@ -677,6 +665,34 @@ model SubjectAssignment {
   @@index([semesterId, status])
   @@index([facultyId])
   @@index([subjectId])
+}
+
+/// A proposed section-level subject assignment, reviewed by the proposed faculty member's department.
+model SubjectAssignmentProposal {
+  id                 String                           @id @default(cuid())
+  subjectId          String
+  subject            Subject                          @relation(fields: [subjectId], references: [id])
+  facultyId          String
+  faculty            Faculty                          @relation(fields: [facultyId], references: [id])
+  sectionId          String
+  section            Section                          @relation(fields: [sectionId], references: [id])
+  semesterId         String
+  semester           Semester                         @relation(fields: [semesterId], references: [id])
+  reviewDepartmentId String
+  reviewDepartment   Department                       @relation(fields: [reviewDepartmentId], references: [id])
+  requestedById      String
+  requestedBy        User                             @relation("SubjectAssignmentProposalRequester", fields: [requestedById], references: [id])
+  reviewedById       String?
+  reviewedBy         User?                            @relation("SubjectAssignmentProposalReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  status             SubjectAssignmentProposalStatus @default(PENDING)
+  decisionNote       String?
+  decidedAt          DateTime?
+  createdAt          DateTime                         @default(now())
+  updatedAt          DateTime                         @updatedAt
+
+  @@index([reviewDepartmentId, status, createdAt])
+  @@index([requestedById])
+  @@index([facultyId])
 }
 
 // ---------------------------------------------------------------------------
@@ -712,6 +728,8 @@ model Faculty {
   proctoring         Examination[]
   unavailability     Unavailability[]
   subjectAssignments SubjectAssignment[]
+  assignmentProposals SubjectAssignmentProposal[]
+  roomPreferences    FacultyRoomPreference[]
 
   archivedAt    DateTime?
   archivedById  String?
@@ -719,6 +737,19 @@ model Faculty {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// A room a faculty member prefers, in order (rank 1 first); visible only to the Head of Department and the Registrar.
+model FacultyRoomPreference {
+  id        String  @id @default(cuid())
+  facultyId String
+  faculty   Faculty @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  roomId    String
+  room      Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  rank      Int
+
+  @@unique([facultyId, roomId])
+  @@index([facultyId, rank])
 }
 
 model FacultyAvailability {
@@ -803,19 +834,21 @@ model Room {
   roomType        RoomType
   equipment       String[]
   status          RoomStatus  @default(AVAILABLE)
-  /// Owning department; null means a shared room managed by the Administrator.
+  /// Owning and designated department; null means shared or unassigned (see isGeneralShared).
   departmentId    String?
   department      Department? @relation(fields: [departmentId], references: [id])
-  /// Usable by every program and strand; otherwise only by the designated programs.
+  /// True for General / Shared. A null department with false means Unassigned.
   isGeneralShared Boolean     @default(true)
+  /// Legacy program designations; current room forms use departmentId.
   programs        Program[]   @relation("RoomPrograms")
 
-  availability   RoomAvailability[]
-  schedules      Schedule[]
-  examinations   Examination[]
-  bookings       RoomBooking[]
-  unavailability Unavailability[]
-  activities     Activity[]
+  availability       RoomAvailability[]
+  schedules          Schedule[]
+  examinations       Examination[]
+  bookings           RoomBooking[]
+  unavailability     Unavailability[]
+  activities         Activity[]
+  facultyPreferences FacultyRoomPreference[]
 
   archivedAt    DateTime?
   archivedById  String?
@@ -915,7 +948,7 @@ enum SubmissionKind {
   EXAMINATION
 }
 
-/// A department's full class timetable for one term, sent by the Head of Department and decided by the Super Administrator.
+/// A department's full class timetable for one term, sent by the Head of Department and decided and published only by the Registrar.
 model TimetableSubmission {
   id             String                    @id @default(cuid())
   departmentId   String
@@ -1247,6 +1280,49 @@ model AdjustmentBatch {
   booking        RoomBooking?
   activity       Activity?
   unavailability Unavailability?
+  suspension     ClassSuspension?
+}
+
+/// Class suspension order: the record behind the calendar entry and the cancelled classes.
+model ClassSuspension {
+  id           String           @id @default(cuid())
+  title        String
+  reason       String
+  startDate    DateTime         @db.Date
+  endDate      DateTime         @db.Date
+  /// Null times mean whole days.
+  startMin     Int?
+  endMin       Int?
+  /// Affected sections; empty means every section within the scope.
+  sectionIds   String[]
+  /// One level per order; null only for an explicit all-levels Registrar order.
+  level        AcademicLevel?
+  /// Department of a Head of Department order; null for a school-wide Registrar order.
+  departmentId String?
+  department   Department?      @relation(fields: [departmentId], references: [id])
+  status       SuspensionStatus @default(ACTIVE)
+
+  issuedById String
+  issuedBy   User      @relation("SuspensionIssuer", fields: [issuedById], references: [id])
+  /// Role of the issuer at the time of the order.
+  issuedRole Role
+  liftedById String?
+  liftedBy   User?     @relation("SuspensionLifter", fields: [liftedById], references: [id])
+  liftedAt   DateTime?
+
+  batchId String?          @unique
+  batch   AdjustmentBatch? @relation(fields: [batchId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([startDate, endDate])
+  @@index([departmentId, status])
+}
+
+enum SuspensionStatus {
+  ACTIVE
+  LIFTED
 }
 
 /// Overrides one dated meeting of a weekly class (moved, cancelled, or a make-up session).

@@ -38,11 +38,11 @@ export async function addScopeAndExamSamples(db: PrismaClient) {
   if (section && sub.IT102) {
     await db.sectionClassPlaceholder.updateMany({
       where: { sectionId: section.id, subjectId: sub.IT102 },
-      data: { rememberedFacultyId: fac["F-001"], rememberedRoomId: rooms[0]?.id },
+      data: { rememberedFacultyId: fac["GC-001"], rememberedRoomId: rooms[0]?.id },
     });
   }
   if (section && sub.GE103) {
-    await db.sectionClassPlaceholder.updateMany({ where: { sectionId: section.id, subjectId: sub.GE103 }, data: { preferredFacultyId: fac["F-010"] } });
+    await db.sectionClassPlaceholder.updateMany({ where: { sectionId: section.id, subjectId: sub.GE103 }, data: { preferredFacultyId: fac["GC-010"] } });
   }
 
   // Approved examination windows: the midterm window around the seeded Saturday examinations and a later final window.
@@ -54,9 +54,18 @@ export async function addScopeAndExamSamples(db: PrismaClient) {
       { type: "EXAMINATION_WEEK", title: "Midterm Examination Week", examinationType: "MIDTERM", startDate: shift(saturday, -5), endDate: saturday, status: "APPROVED", sectionIds: [] },
       { type: "EXAMINATION_WEEK", title: "Final Examination Week", examinationType: "FINAL", startDate: shift(saturday, 70), endDate: shift(saturday, 75), status: "APPROVED", sectionIds: [] },
       { type: "SCHOOL_EVENT", title: "Intramurals Opening", startDate: shift(saturday, -4), endDate: shift(saturday, -4), status: "APPROVED", sectionIds: [] },
-      { type: "CLASS_SUSPENSION", title: "Class Suspension: Typhoon Advisory", startDate: shift(saturday, -2), endDate: shift(saturday, -2), status: "APPROVED", sectionIds: [] },
     ],
   });
+
+  // A school-wide suspension ordered by the Registrar, with its calendar entry; no classes meet on that date in the sample.
+  const registrar = await db.user.findFirst({ where: { role: "REGISTRAR" }, select: { id: true } });
+  if (registrar) {
+    const when = { startDate: shift(saturday, -2), endDate: shift(saturday, -2) };
+    const reason = "Typhoon advisory (ordered by the Registrar)";
+    const batch = await db.adjustmentBatch.create({ data: { cause: "CLASS_SUSPENSION", summary: `Class suspension (${when.startDate.toISOString().slice(0, 10)}): ${reason}`, createdById: registrar.id } });
+    await db.classSuspension.create({ data: { title: "Class Suspension: Typhoon Advisory", reason, ...when, sectionIds: [], level: null, issuedById: registrar.id, issuedRole: "REGISTRAR", batchId: batch.id } });
+    await db.activity.create({ data: { type: "CLASS_SUSPENSION", title: "Class Suspension: Typhoon Advisory", description: reason, ...when, status: "APPROVED", sectionIds: [], batchId: batch.id, createdById: registrar.id } });
+  }
 
   // Seeded examinations count as approved; one stays in a submitted examination timetable for the Super Administrator to decide on.
   await db.examination.updateMany({ data: { status: "PUBLISHED" } });

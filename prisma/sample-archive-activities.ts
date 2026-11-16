@@ -27,7 +27,7 @@ export async function addArchiveAndApprovalSamples(db: PrismaClient, passwordHas
 
   // Two more Heads of Department so submissions come from several departments.
   // The main seed may already have created these accounts.
-  for (const [email, name, employeeId] of [["head.business@granby.edu.ph", "Ricardo Lim", "F-012"]] as const) {
+  for (const [email, name, employeeId] of [["head.business@granby.edu.ph", "Ricardo Lim", "GC-012"]] as const) {
     if (!(await db.user.findUnique({ where: { email } }))) await db.user.create({ data: { ...account, email, name, role: "HEAD_OF_DEPARTMENT", facultyId: await facultyId(employeeId) } });
   }
 
@@ -40,7 +40,7 @@ export async function addArchiveAndApprovalSamples(db: PrismaClient, passwordHas
 
   const resigned = "Resigned at the end of the previous semester.";
   const lacson = await db.faculty.create({
-    data: { employeeId: "F-019", fullName: "Rosario Lacson", email: "lacson@granby.edu.ph", departmentId: dept.CBA, position: "Instructor", specialization: "Marketing", maxHours: 24, ...archived(24, resigned) },
+    data: { employeeId: "GC-019", fullName: "Rosario Lacson", email: "lacson@granby.edu.ph", departmentId: dept.CBA, position: "Instructor", specialization: "Marketing", maxHours: 24, ...archived(24, resigned) },
   });
   const lacsonUser = await db.user.create({ data: { ...account, email: "lacson@granby.edu.ph", name: "Rosario Lacson", role: "FACULTY", facultyId: lacson.id, ...archived(24, resigned) } });
   await audit('Archived user account "Rosario Lacson"', "User account", lacsonUser.id, 24, resigned);

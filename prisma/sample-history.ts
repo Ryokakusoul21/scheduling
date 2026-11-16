@@ -65,7 +65,7 @@ async function pastBookings(db: PrismaClient, term: Semester, from: string, to: 
 /** Demo login for a faculty member with an underloaded schedule (added to older databases too). */
 async function ensureUnderloadedAccount(db: PrismaClient) {
   if (await db.user.findUnique({ where: { email: "alonzo@granby.edu.ph" } })) return;
-  const faculty = await db.faculty.findUnique({ where: { employeeId: "F-015" } });
+  const faculty = await db.faculty.findUnique({ where: { employeeId: "GC-015" } });
   const template = await db.user.findUnique({ where: { email: "faculty@granby.edu.ph" }, select: { passwordHash: true } });
   if (!faculty || !template) return;
   await db.user.create({

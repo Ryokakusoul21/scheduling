@@ -6,15 +6,15 @@
 import type { DayOfWeek, PrismaClient } from "@prisma/client";
 
 export const TEACHER_FOR: Record<string, string[]> = {
-  GE101: ["F-008", "F-014"], GE102: ["F-009", "F-013"], GE103: ["F-010"], GE104: ["F-009", "F-010", "F-013"],
-  GRANBY100: ["F-010", "F-013"], IT101: ["F-001", "F-005"], IT102: ["F-001", "F-005"], IT103: ["F-001", "F-005"], IT201: ["F-005", "F-001"],
-  IT202: ["F-003", "F-001"], IT203: ["F-004"], IT301: ["F-002"], IT302: ["F-007"], IT303: ["F-006"], IT401: ["F-007", "F-002"],
-  CS201: ["F-014"], CS202: ["F-015"], SCI101: ["F-011"], CRIM101: ["F-016"], ACC101: ["F-017"], BA101: ["F-012"],
-  TM101: ["F-018"], ISM101: ["F-016"], EED101: ["F-013"], ED101: ["F-013"],
+  GE101: ["GC-008", "GC-014"], GE102: ["GC-009", "GC-013"], GE103: ["GC-010"], GE104: ["GC-009", "GC-010", "GC-013"],
+  GRANBY100: ["GC-010", "GC-013"], IT101: ["GC-001", "GC-005"], IT102: ["GC-001", "GC-005"], IT103: ["GC-001", "GC-005"], IT201: ["GC-005", "GC-001"],
+  IT202: ["GC-003", "GC-001"], IT203: ["GC-004"], IT301: ["GC-002"], IT302: ["GC-007"], IT303: ["GC-006"], IT401: ["GC-007", "GC-002"],
+  CS201: ["GC-014"], CS202: ["GC-015"], SCI101: ["GC-011"], CRIM101: ["GC-016"], ACC101: ["GC-017"], BA101: ["GC-012"],
+  TM101: ["GC-018"], ISM101: ["GC-016"], EED101: ["GC-013"], ED101: ["GC-013"],
 };
 
 /** Ana Santos gets extra laboratory sections on purpose so the workload engine has someone to rebalance. */
-export const OVERLOAD_EXTRAS: Record<string, string> = { "Information Technology 2-B|IT201": "F-001", "Computer Science 2-A|IT201": "F-001" };
+export const OVERLOAD_EXTRAS: Record<string, string> = { "Information Technology 2-B|IT201": "GC-001", "Computer Science 2-A|IT201": "GC-001" };
 
 export interface SectionPlan {
   id: string;
