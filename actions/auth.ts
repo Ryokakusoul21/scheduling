@@ -51,7 +51,8 @@ function findUserByEmail(email: string) {
 
 export async function requiresAdminApproval() {
   const setting = await prisma.systemSetting.findUnique({ where: { key: SETTING_REQUIRE_APPROVAL } });
-  return setting?.value === true;
+  // New registrations wait for Super Administrator approval unless the setting is explicitly turned off.
+  return setting?.value !== false;
 }
 
 // ---------------------------------------------------------------------------

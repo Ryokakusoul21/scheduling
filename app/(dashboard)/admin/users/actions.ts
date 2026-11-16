@@ -250,6 +250,8 @@ export async function approveUserAction(id: string) {
   const admin = await requireRole(...ADMIN);
   const user = await prisma.user.findUnique({ where: { id } });
   if (!user || user.status !== "PENDING") return { ok: false, error: "This account is not awaiting approval." };
+  // Email verification proves the person is real; approval then confirms they are Granby faculty.
+  if (!user.emailVerified) return { ok: false, error: "The user has not verified their email yet." };
 
   try {
     await prisma.$transaction(async (tx) => {

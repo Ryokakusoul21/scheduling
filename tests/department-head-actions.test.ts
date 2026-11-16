@@ -88,7 +88,7 @@ describe("department head assignment boundaries", () => {
   });
 
   it("blocks conflicting account approvals before sending approval messages", async () => {
-    mocks.user.mockResolvedValue({ ...leader("candidate"), status: "PENDING" });
+    mocks.user.mockResolvedValue({ ...leader("candidate"), status: "PENDING", emailVerified: new Date() });
     expect(await approveUserAction("candidate")).toMatchObject({ ok: false, error: expect.stringContaining("Only one active") });
     expect(mocks.notify).not.toHaveBeenCalled();
     expect(mocks.mail).not.toHaveBeenCalled();
@@ -108,5 +108,14 @@ describe("department head assignment boundaries", () => {
   it("allows archiving a head to release authority even when legacy duplicates exist", async () => {
     expect(await setArchived("USER", "candidate", "admin", true)).toBe("candidate");
     expect(mocks.heads).not.toHaveBeenCalled();
+  });
+});
+
+describe("account approval requires a verified email", () => {
+  it("refuses to approve before the user verifies their email", async () => {
+    mocks.role.mockResolvedValue({ id: "admin" });
+    mocks.user.mockResolvedValue({ ...leader("candidate"), status: "PENDING", emailVerified: null });
+    expect(await approveUserAction("candidate")).toEqual({ ok: false, error: "The user has not verified their email yet." });
+    expect(mocks.mail).not.toHaveBeenCalled();
   });
 });

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Copy, DotsThree, MagnifyingGlass, Plus } from "@phosphor-icons/react/ssr";
+import { Check, Copy, DotsThree, MagnifyingGlass, Plus } from "@phosphor-icons/react/ssr";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import type { FacultyAccountRecord } from "@/lib/admin/faculty-alignment";
 import { cn } from "@/lib/utils";
 import { BulkAccounts } from "./bulk-accounts";
-import { changeEmailAction, createFacultyAccountAction, resetPasswordAction, setAccountStatusAction } from "./actions";
+import { approveUserAction, changeEmailAction, createFacultyAccountAction, resetPasswordAction, setAccountStatusAction } from "./actions";
 
 type Account = NonNullable<FacultyAccountRecord["account"]>;
 
@@ -45,7 +45,7 @@ export function FacultyAccountAlignment({ faculty, onReview }: { faculty: Facult
 
   const departments = [...new Map(faculty.filter((f) => f.departmentId).map((f) => [f.departmentId!, f.departmentName ?? ""])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const inDepartment = faculty.filter((f) => department === "ALL" || f.departmentId === department);
-  const counts = { ALL: inDepartment.length, NONE: 0, ACTIVE: 0, SUSPENDED: 0 } as Record<string, number>;
+  const counts = { ALL: inDepartment.length, PENDING: 0, NONE: 0, ACTIVE: 0, SUSPENDED: 0 } as Record<string, number>;
   for (const f of inDepartment) { const s = statusOf(f); if (s in counts) counts[s]++; }
   const q = query.trim().toLowerCase();
   const rows = inDepartment.filter((f) => (filter === "ALL" || statusOf(f) === filter) &&
@@ -71,7 +71,7 @@ export function FacultyAccountAlignment({ faculty, onReview }: { faculty: Facult
         <Input aria-label="Search faculty" placeholder="Search name, employee ID, email" className="pl-9" value={query} onChange={(e) => setQuery(e.target.value)} /></label>
       <NativeSelect aria-label="Filter by department" className="sm:w-64" value={department} onChange={(e) => setDepartment(e.target.value)} options={[{ value: "ALL", label: "All departments" }, ...departments.map(([value, label]) => ({ value, label }))]} />
       <div role="group" aria-label="Account status" className="flex flex-wrap gap-1 rounded-lg bg-muted/60 p-1">
-        {(["ALL", "NONE", "ACTIVE", "SUSPENDED"] as const).map((s) => <button key={s} type="button" aria-pressed={filter === s} onClick={() => setFilter(s)}
+        {(["ALL", "PENDING", "NONE", "ACTIVE", "SUSPENDED"] as const).filter((s) => s !== "PENDING" || counts.PENDING > 0 || filter === "PENDING").map((s) => <button key={s} type="button" aria-pressed={filter === s} onClick={() => setFilter(s)}
           className={cn("rounded-md px-3 py-1.5 text-xs font-medium", filter === s ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground")}>
           {s === "ALL" ? "All" : STATUS_LABEL[s]}<span className="ml-1.5 tabular-nums opacity-70">{counts[s]}</span></button>)}
       </div>
@@ -84,6 +84,9 @@ export function FacultyAccountAlignment({ faculty, onReview }: { faculty: Facult
           <TableCell className="text-sm">{a?.email}</TableCell>
           <TableCell><Badge variant="outline" className={cn(STATUS_STYLE[s] ?? "border-destructive/25 text-destructive")}>{STATUS_LABEL[s] ?? s}</Badge></TableCell>
           <TableCell><div className="flex justify-end gap-1.5">
+            {a && !a.archived && a.status === "PENDING" && (a.emailVerified
+              ? <Button size="sm" disabled={pending} onClick={() => run(() => approveUserAction(a.id), "Account approved.")}><Check className="size-3.5" />Approve</Button>
+              : <span className="self-center text-xs text-muted-foreground">Awaiting email verification</span>)}
             {!a ? <Button size="sm" disabled={pending} onClick={() => { setError(null); setCreating(f); }}><Plus className="size-3.5" />Create account</Button>
               : a.archived ? <Link className="text-xs text-primary hover:underline" href="/admin/users/archived">Archived</Link>
               : <DropdownMenu><DropdownMenuTrigger render={<Button size="icon-sm" variant="ghost" disabled={pending} aria-label={`Actions for ${f.fullName}`} />}><DotsThree className="size-5" /></DropdownMenuTrigger>

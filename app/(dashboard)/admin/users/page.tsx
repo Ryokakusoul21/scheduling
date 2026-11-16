@@ -29,7 +29,7 @@ export default async function UsersPage() {
     prisma.program.findMany({ where: PROGRAM_CATALOG_FILTER, select: { id: true, code: true, name: true, departmentId: true }, orderBy: [{ level: "asc" }, { sortOrder: "asc" }] }),
     prisma.faculty.findMany({ where: { archivedAt: null }, orderBy: { fullName: "asc" }, select: {
       id: true, fullName: true, employeeId: true, email: true, status: true, departmentId: true, department: { select: { name: true } },
-      user: { select: { id: true, name: true, email: true, role: true, status: true, archivedAt: true } },
+      user: { select: { id: true, name: true, email: true, role: true, status: true, archivedAt: true, emailVerified: true } },
     } }),
   ]);
   const day = (d: Date) => d.toISOString().slice(0, 10);
@@ -43,7 +43,7 @@ export default async function UsersPage() {
       <UsersManager
         faculty={faculty.map((f) => ({ id: f.id, fullName: f.fullName, employeeId: f.employeeId, email: f.email, status: f.status,
           departmentId: f.departmentId, departmentName: f.department?.name ?? null,
-          account: f.user ? { id: f.user.id, name: f.user.name, email: f.user.email, role: f.user.role, status: f.user.status, archived: !!f.user.archivedAt } : null }))}
+          account: f.user ? { id: f.user.id, name: f.user.name, email: f.user.email, role: f.user.role, status: f.user.status, archived: !!f.user.archivedAt, emailVerified: !!f.user.emailVerified } : null }))}
         viewerId={viewer.id}
         departments={departments.map((department) => ({ value: department.id, label: department.name }))}
         allDepartments={allDepartments.map((department) => ({ value: department.id, label: department.name }))}

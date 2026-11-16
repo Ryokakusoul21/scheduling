@@ -1,7 +1,7 @@
 export type FacultyAccountRecord = {
   id: string; fullName: string; employeeId: string; email: string; status: string;
   departmentId: string | null; departmentName: string | null;
-  account: { id: string; name: string; email: string; role: string; status: string; archived: boolean } | null;
+  account: { id: string; name: string; email: string; role: string; status: string; archived: boolean; emailVerified?: boolean } | null;
 };
 
 export function facultyContactPending(email: string) {

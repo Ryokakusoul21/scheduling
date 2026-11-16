@@ -119,3 +119,13 @@ describe("registration name suffix", () => {
     expect(data.faculty.create).toMatchObject({ fullName: "Juan Dela Cruz Jr.", suffix: "Jr.", sex: "FEMALE" });
   });
 });
+
+describe("registration approval default", () => {
+  it("keeps new accounts pending when the approval setting has never been saved", async () => {
+    mocks.captcha.mockResolvedValue(true); mocks.user.mockResolvedValue(null); mocks.employee.mockResolvedValue(null);
+    mocks.department.mockResolvedValue({ id: "computing" }); mocks.setting.mockResolvedValue(null);
+    mocks.create.mockResolvedValue({ id: "new-user", name: "Juan Dela Cruz", email: "juan@example.com" });
+    await registerAction(input());
+    expect(mocks.create.mock.calls.at(-1)![0].data.status).toBe("PENDING");
+  });
+});
