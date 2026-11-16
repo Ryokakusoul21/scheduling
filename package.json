@@ -12,7 +12,8 @@
     "postinstall": "prisma generate",
     "test": "vitest run",
     "test:watch": "vitest",
-    "audit:owners": "tsx scripts/report-unowned-records.mts"
+    "audit:owners": "tsx scripts/report-unowned-records.mts",
+    "seed:departments": "tsx prisma/seed-departments.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
