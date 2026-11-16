@@ -2,14 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Scope } from "@/lib/permissions/scope";
 
 const mocks = vi.hoisted(() => ({
-  sections: vi.fn(), submissions: vi.fn(), periods: vi.fn(), schedule: vi.fn(), drafts: vi.fn(), requests: vi.fn(), bookings: vi.fn(), plan: vi.fn(), notifications: vi.fn(), me: vi.fn(), term: vi.fn(), counts: vi.fn(),
+  sections: vi.fn(), submissions: vi.fn(), schedule: vi.fn(), drafts: vi.fn(), requests: vi.fn(), bookings: vi.fn(), plan: vi.fn(), notifications: vi.fn(), me: vi.fn(), term: vi.fn(), counts: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/analytics/department-staffing", () => ({ departmentStaffing: vi.fn() }));
 vi.mock("@/lib/settings", () => ({ getWorkloadSettings: vi.fn(async () => ({ measure: "HOURS", maximum: 24 })) }));
 vi.mock("@/lib/occupancy/load", () => ({ loadPlan: mocks.plan }));
+vi.mock("@/lib/scheduler/class-moves", () => ({ upcomingClassMoves: async () => [] }));
 vi.mock("@/lib/db/prisma", () => ({ prisma: {
-  section: { findMany: mocks.sections }, timetableSubmission: { findMany: mocks.submissions, groupBy: mocks.counts }, schedulingPeriod: { findMany: mocks.periods },
+  section: { findMany: mocks.sections }, timetableSubmission: { findMany: mocks.submissions, groupBy: mocks.counts },
   schedule: { findMany: mocks.schedule, count: mocks.drafts }, scheduleRequest: { count: mocks.requests }, roomBooking: { count: mocks.bookings },
   notification: { findMany: mocks.notifications }, faculty: { findUniqueOrThrow: mocks.me }, semester: { findUniqueOrThrow: mocks.term },
 } }));
@@ -21,7 +22,7 @@ const scope: Scope = { userId: "user", name: "Teacher", role: "HEAD_OF_DEPARTMEN
 describe("landing page data boundaries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.sections.mockResolvedValue([]); mocks.submissions.mockResolvedValue([]); mocks.periods.mockResolvedValue([]); mocks.counts.mockResolvedValue([]);
+    mocks.sections.mockResolvedValue([]); mocks.submissions.mockResolvedValue([]); mocks.counts.mockResolvedValue([]);
     mocks.drafts.mockResolvedValue(0); mocks.requests.mockResolvedValue(0); mocks.bookings.mockResolvedValue(0); mocks.notifications.mockResolvedValue([]);
     mocks.term.mockResolvedValue({ id: "term", level: "COLLEGE" }); mocks.me.mockResolvedValue({ maxHours: 24 });
   });

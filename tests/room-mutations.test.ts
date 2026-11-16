@@ -18,6 +18,7 @@ vi.mock("@/lib/workload/auto", () => ({ queueWorkloadCheck: vi.fn(), runWorkload
 vi.mock("@/lib/notify", () => ({ notifyFacultyEach: vi.fn() }));
 vi.mock("@/lib/archive/archive", () => ({ activeClassesOf: m.active, setArchived: m.archived }));
 vi.mock("@/lib/db/prisma", () => ({ prisma: {
+  department: { findUnique: m.find },
   room: { findUnique: m.find, findMany: m.find, aggregate: m.aggregate, count: m.count, create: m.create, update: m.update },
   $transaction: m.transaction,
 } }));
@@ -52,10 +53,29 @@ describe("room mutation entry points", () => {
   it("keeps buildings, floors, and photos administrative", async () => {
     for (const action of [() => saveBuildingAction(null, new FormData()), () => saveFloorAction(null, new FormData()), () => deleteFloorAction("floor"), () => deleteBuildingAction("building"), () => uploadBuildingPhotoAction("building", new FormData()), () => removeBuildingPhotoAction("building")]) await expect(action()).rejects.toThrow("FORBIDDEN");
   });
+  it("uses one designation and clears legacy program selections when sharing a room", async () => {
+    m.role = "REGISTRAR";
+    const fd = form(); fd.set("departmentId", ""); fd.append("programIds", "legacy-program");
+    expect(await saveRoomAction("room", fd)).toEqual({ ok: true });
+    expect(m.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ departmentId: null, isGeneralShared: true, programs: { set: [] } }) }));
+  });
+  it.each([null, "room"])("saves Unassigned without treating it as a department or a shared room (%s)", async (id) => {
+    m.role = "REGISTRAR";
+    const fd = form(); fd.set("departmentId", "UNASSIGNED");
+    expect(await saveRoomAction(id, fd)).toEqual({ ok: true });
+    const write = id ? m.update : m.create;
+    expect(write).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ departmentId: null, isGeneralShared: false }) }));
+    expect(m.find).not.toHaveBeenCalledWith(expect.objectContaining({ where: { id: "UNASSIGNED" } }));
+  });
+  it("rejects a department that was removed before saving", async () => {
+    m.role = "REGISTRAR"; m.find.mockResolvedValueOnce(null);
+    expect(await saveRoomAction(null, form())).toMatchObject({ ok: false, error: expect.stringContaining("department no longer exists") });
+    expect(m.create).not.toHaveBeenCalled();
+  });
   it.each(["REGISTRAR", "SUPER_ADMINISTRATOR"])("keeps %s room creation and editing operational", async (role) => {
     m.role = role;
     expect(await saveRoomAction(null, form())).toEqual({ ok: true });
-    expect(m.create).toHaveBeenCalled();
+    expect(m.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ departmentId: "cs", isGeneralShared: false, programs: { connect: [] } }) }));
     expect(await saveRoomAction("room", form())).toEqual({ ok: true });
     expect(m.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "room" } }));
   });

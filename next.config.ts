@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Allow the configured app host when testing development links from another device.
+  allowedDevOrigins: process.env.NEXT_PUBLIC_APP_URL
+    ? [new URL(process.env.NEXT_PUBLIC_APP_URL).hostname]
+    : [],
   devIndicators: {
     position: "bottom-right",
   },

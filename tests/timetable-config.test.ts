@@ -9,7 +9,7 @@ describe("shared timetable configuration", () => {
   it("loads old configurations with existing defaults and lets the department choose split or block meetings", () => {
     const legacy = { ...DEFAULT_TIMETABLE, classSession: undefined };
     expect(timetableConfigSchema.parse(legacy).classSession).toBe("DEFAULT");
-    expect(defaultDuration("LECTURE", "COLLEGE", timetableConfigSchema.parse(legacy))).toBe(90);
+    expect(defaultDuration("LECTURE", "COLLEGE", timetableConfigSchema.parse(legacy))).toBe(180);
     expect(defaultDuration("LABORATORY", "COLLEGE", { classSession: "SPLIT_90" })).toBe(90);
     expect(defaultDuration("LECTURE", "COLLEGE", { classSession: "BLOCK_180" })).toBe(180);
     expect(timetableConfigSchema.safeParse({ ...DEFAULT_TIMETABLE, classSession: "SPLIT_90", gridInterval: 60 }).success).toBe(false);

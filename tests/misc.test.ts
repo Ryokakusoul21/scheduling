@@ -39,6 +39,22 @@ describe("suggestions", () => {
     );
     expect(ranked[0].id).toBe("ok");
   });
+
+  it("puts a free preferred room first, falls back when it is busy, and otherwise takes the tightest fit", () => {
+    const rooms = [
+      { id: "big", capacity: 80, roomType: "LECTURE_ROOM" as const, status: "AVAILABLE" },
+      { id: "snug", capacity: 40, roomType: "LECTURE_ROOM" as const, status: "AVAILABLE" },
+      { id: "mine", capacity: 60, roomType: "LECTURE_ROOM" as const, status: "AVAILABLE" },
+    ];
+    const opts = { studentCount: 35, component: "LECTURE" as const };
+    expect(rankRooms(rooms, slot, [], opts)[0].id).toBe("snug");
+    expect(rankRooms(rooms, slot, [], { ...opts, preferredRoomIds: ["mine"] })[0].id).toBe("mine");
+    const busy = [{ ...slot, roomId: "mine" }] as Parameters<typeof rankRooms>[2];
+    expect(rankRooms(rooms, slot, busy, { ...opts, preferredRoomIds: ["mine"] })[0].id).toBe("snug");
+    // Without a preference, the room the subject already uses for the section comes next.
+    expect(rankRooms(rooms, slot, [], { ...opts, sameRoomId: "big" })[0].id).toBe("big");
+    expect(rankRooms(rooms, slot, [], { ...opts, preferredRoomIds: ["mine"], sameRoomId: "big" })[0].id).toBe("mine");
+  });
 });
 
 describe("level helpers", () => {
@@ -116,13 +132,13 @@ describe("RBAC route guards", () => {
   });
 
   it("shows tabs only where a role can open more than one page of a group", () => {
-    expect(tabsForPath("/rooms/abc", "SUPER_ADMINISTRATOR")?.map((t) => t.href)).toContain("/academic-years");
+    expect(tabsForPath("/rooms/abc", "SUPER_ADMINISTRATOR")?.map((t) => t.href)).toContain("/programs");
+    expect(tabsForPath("/rooms/abc", "SUPER_ADMINISTRATOR")?.map((t) => t.href)).not.toContain("/academic-years");
     expect(tabsForPath("/rooms/abc", "REGISTRAR")?.map((t) => t.href)).toContain("/admin/departments");
     expect(tabsForPath("/rooms", "HEAD_OF_DEPARTMENT")?.map((t) => t.href)).not.toContain("/academic-years");
     expect(tabsForPath("/requests", "FACULTY")).toBeNull();
     expect(tabsForPath("/workload", "FACULTY")).toBeNull();
-    expect(tabsForPath("/workload", "HEAD_OF_DEPARTMENT")).toBeNull();
-    expect(tabsForPath("/analytics", "HEAD_OF_DEPARTMENT")?.map((t) => t.href)).toEqual(["/analytics", "/reports"]);
+    expect(tabsForPath("/workload", "HEAD_OF_DEPARTMENT")?.map((t) => t.href)).toEqual(["/analytics", "/workload", "/reports"]);
     expect(tabsForPath("/dashboard", "REGISTRAR")).toBeNull();
     expect(tabsForPath("/rooms", "STUDENT")).toBeNull();
   });
@@ -151,7 +167,7 @@ describe("keyboard shortcuts", () => {
 describe("application breadcrumbs", () => {
   it("builds deep review queue paths from a direct link", () => {
     const items = buildBreadcrumbs("/admin/review-center", new URLSearchParams("queue=room-bookings"), "REGISTRAR");
-    expect(items.map((item) => item.label)).toEqual(["Dashboard", "Registrar Review Center", "Room Booking Requests"]);
+    expect(items.map((item) => item.label)).toEqual(["Dashboard", "Submission Monitoring", "Room Booking Requests"]);
     expect(items.at(-1)?.href).toBeUndefined();
   });
 

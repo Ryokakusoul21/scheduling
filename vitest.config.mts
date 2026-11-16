@@ -10,6 +10,7 @@ export default defineConfig({
       // Next-only modules throw outside a Next request, so tests get inert stand-ins.
       { find: /^server-only$/, replacement: `${root}/tests/stubs/server-only.ts` },
       { find: /^next\/cache$/, replacement: `${root}/tests/stubs/next-cache.ts` },
+      { find: /^next\/headers$/, replacement: `${root}/tests/stubs/next-headers.ts` },
     ],
   },
   test: {

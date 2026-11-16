@@ -49,12 +49,14 @@ describe("printable reports", () => {
     expect(html).toContain("2026-2027 · First Semester");
     expect(html).toContain("Date Generated:");
     expect(html).toContain("A4 landscape");
-    expect(html).toContain("break-inside: avoid");
+    expect(html).toMatch(/break-inside:\s*avoid/);
   });
 
   it("escapes cell text and sorts by day then time", () => {
     const html = reportHtml(doc);
-    expect(html).not.toContain("<script>");
+    expect(html).toContain("&#60;script&#62;");
+    // The document has one trusted layout script; subject text must never add another.
+    expect(html.match(/<script>/g)).toHaveLength(1);
     expect(doc.rows.map((r) => r.dayOfWeek)).toEqual(["MONDAY", "TUESDAY"]);
   });
 });

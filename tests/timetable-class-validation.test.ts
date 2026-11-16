@@ -14,7 +14,7 @@ vi.mock("@/lib/db/prisma", () => ({ prisma: {
   schedule: { findUnique: m.before, findMany: m.meetings }, roomBooking: { findMany: m.bookings }, scheduleAdjustment: { findMany: async () => [] },
 } }));
 import { checkClass, type ClassData } from "@/lib/scheduler/class-save";
-const draft: ClassData = { sectionId: "s", subjectId: "it", facultyId: "f", roomId: "r", semesterId: "term", component: "LECTURE", dayOfWeek: "MONDAY", startMin: 425, endMin: 470 };
+const draft: ClassData = { sectionId: "s", subjectId: "it", facultyId: "f", roomId: "r", semesterId: "term", component: "LECTURE", dayOfWeek: "MONDAY", startMin: 425, endMin: 605 };
 describe("configured class saves", () => {
   beforeEach(() => {
     vi.clearAllMocks(); m.config.mockResolvedValue(DEFAULT_TIMETABLE); m.before.mockResolvedValue(null);
@@ -47,7 +47,7 @@ describe("configured class saves", () => {
     m.before.mockResolvedValue({ ...draft, id: "existing" });
     expect(await checkClass({ ...draft, id: "existing", facultyId: "new-faculty" }, { userId: "head" }, { overrideSoft: false })).toBeNull();
     expect(m.config).not.toHaveBeenCalled();
-    expect(await checkClass({ ...draft, id: "existing", startMin: 430, endMin: 475 }, { userId: "head" }, { overrideSoft: true })).toMatchObject({ ok: false });
+    expect(await checkClass({ ...draft, id: "existing", startMin: 430, endMin: 610 }, { userId: "head" }, { overrideSoft: true })).toMatchObject({ ok: false });
   });
   it("retains existing constraint checks after configured time validation", async () => {
     m.config.mockResolvedValue({ ...DEFAULT_TIMETABLE, mode: "DYNAMIC" });
@@ -55,6 +55,7 @@ describe("configured class saves", () => {
     expect(await checkClass(draft, { userId: "head" }, { overrideSoft: true })).toMatchObject({ ok: false, error: "Teaching hours: Required hours exceeded" });
   });
   it("accepts two 1.5-hour meetings or one 3-hour block and refuses overfilling or extending a split meeting", async () => {
+    m.config.mockResolvedValue({ ...DEFAULT_TIMETABLE, classSession: "SPLIT_90" });
     const meeting = { ...draft, startMin: 480, endMin: 570 };
     expect(await checkClass(meeting, { userId: "head" }, { overrideSoft: false })).toBeNull();
     m.meetings.mockResolvedValue([{ startMin: 480, endMin: 570 }]);
@@ -65,5 +66,12 @@ describe("configured class saves", () => {
     m.before.mockResolvedValue({ ...meeting, id: "first" });
     expect(await checkClass({ ...meeting, id: "first", endMin: 660 }, { userId: "head" }, { overrideSoft: true })).toMatchObject({ ok: false, error: expect.stringContaining("required 3 weekly hours") });
     expect(m.meetings).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: { not: "first" }, semesterId: "term", component: "LECTURE" }) }));
+  });
+  it("holds College meetings to 3 hours unless split meetings are chosen or it is the last meeting", async () => {
+    expect(await checkClass({ ...draft, startMin: 480, endMin: 570 }, { userId: "head" }, { overrideSoft: false })).toMatchObject({ ok: false, error: "College classes meet for 3 hours." });
+    m.subject.mockResolvedValue({ id: "it", archivedAt: null, lectureHours: 4.5, labHours: 3, level: "COLLEGE" });
+    m.meetings.mockResolvedValue([{ startMin: 480, endMin: 660 }]);
+    expect(await checkClass({ ...draft, dayOfWeek: "WEDNESDAY", startMin: 480, endMin: 570 }, { userId: "head" }, { overrideSoft: false })).toBeNull();
+    expect(await checkClass({ ...draft, dayOfWeek: "WEDNESDAY", startMin: 480, endMin: 540 }, { userId: "head" }, { overrideSoft: false })).toMatchObject({ ok: false, error: "Last meeting must be 1.5 h." });
   });
 });

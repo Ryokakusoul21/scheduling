@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { expandSessions, sessionOccupant, type Occupant, type PlanContext, type RoomInfo, type WeeklyClass } from "@/lib/occupancy/engine";
 import {
-  approvalDepartment, capStatus, DEFAULT_BOOKING_SETTINGS, lockKeys, maxPriority, planBooking, restorableAfterShortening, statusLabel, weeklyDates,
+  approvalDepartment, canManageBooking, canReviewOverride, capStatus, DEFAULT_BOOKING_SETTINGS, lockKeys, maxPriority, planBooking, restorableAfterShortening, statusLabel, weeklyDates,
   type BookingMeta, type BookingRequest, type PlanSnapshot,
 } from "@/lib/bookings/plan";
 
@@ -101,6 +101,17 @@ describe("displacement", () => {
 });
 
 describe("permissions, caps, and restore", () => {
+  it("lets the Registrar manage their own bookings in any room while heads retain approval authority", () => {
+    const actor = { role: "REGISTRAR", userId: "registrar", departmentIds: [] };
+    for (const departmentId of ["cs", "business", null]) {
+      for (const priority of ["REGULAR", "HIGH", "URGENT", "CRITICAL"]) {
+        expect(canManageBooking(actor, { bookedById: actor.userId, priority, departmentId })).toBe(true);
+        expect(canManageBooking(actor, { bookedById: "someone-else", priority, departmentId })).toBe(false);
+      }
+      expect(canReviewOverride(actor, departmentId)).toBe(false);
+    }
+  });
+
   it("maps roles to the highest priority they may use", () => {
     expect([maxPriority("FACULTY"), maxPriority("HEAD_OF_DEPARTMENT"), maxPriority("REGISTRAR")]).toEqual(["REGULAR", "URGENT", "CRITICAL"]);
   });

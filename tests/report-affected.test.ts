@@ -29,6 +29,13 @@ describe("activityApplies", () => {
     expect(activityApplies(act({ startMin: 600, endMin: 660 }), cls)).toBe(false);
     expect(activityApplies(act({ departmentId: "d1", startMin: 540, endMin: 600 }), cls)).toBe(true);
   });
+
+  it("respects department, level, and partial-day times for suspensions with no explicit sections", () => {
+    expect(activityApplies(act({ type: "CLASS_SUSPENSION", departmentId: "other" }), cls)).toBe(false);
+    expect(activityApplies(act({ type: "CLASS_SUSPENSION", level: "SENIOR_HIGH" }), cls)).toBe(false);
+    expect(activityApplies(act({ type: "CLASS_SUSPENSION", startMin: 600, endMin: 660 }), cls)).toBe(false);
+    expect(activityApplies(act({ type: "CLASS_SUSPENSION", departmentId: "d1", startMin: 540, endMin: 600 }), cls)).toBe(true);
+  });
 });
 
 describe("affectsOf", () => {

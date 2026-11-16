@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { can, scopeQuery, type PolicyResource, type PolicyUser } from "@/lib/permissions/policy";
+import { can, POLICY_ACTIONS, scopeQuery, type PolicyResource, type PolicyUser } from "@/lib/permissions/policy";
 
 const own: PolicyResource = { type: "subject", id: "own", departmentId: "computer" };
 const other: PolicyResource = { type: "subject", id: "other", departmentId: "business" };
@@ -7,6 +7,21 @@ const shared: PolicyResource = { type: "subject", id: "general-education", depar
 const hod: PolicyUser = { id: "hod", role: "HEAD_OF_DEPARTMENT", status: "ACTIVE", departmentIds: ["computer"] };
 
 describe("central permission policy", () => {
+  it("lets the Registrar book any department's rooms and shared rooms and manage their own bookings", () => {
+    const registrar: PolicyUser = { id: "registrar", role: "REGISTRAR", status: "ACTIVE", departmentIds: [] };
+    for (const departmentId of ["computer", "business", null]) {
+      const booking: PolicyResource = { type: "roomBooking", departmentId, ownerUserId: registrar.id };
+      for (const action of POLICY_ACTIONS) {
+        expect(can(registrar, action, booking), action).toBe(["view", "export", "create", "submit", "edit", "archive"].includes(action));
+        expect(can(registrar, action, { ...booking, ownerUserId: "someone-else" }), action).toBe(["view", "export"].includes(action));
+        expect(can({ ...registrar, status: "INACTIVE" }, action, booking), action).toBe(false);
+      }
+    }
+    expect(scopeQuery(registrar, "room")).toEqual({});
+    expect(scopeQuery(registrar, "roomBooking")).toEqual({});
+    expect(can({ ...registrar, id: undefined }, "create", { type: "roomBooking" })).toBe(false);
+  });
+
   it("denies unauthenticated and inactive users", () => {
     expect(can(null, "view", own)).toBe(false);
     expect(can({ role: "REGISTRAR", status: "ARCHIVED" }, "edit", own)).toBe(false);
@@ -36,11 +51,41 @@ describe("central permission policy", () => {
     expect(can({ role: "FACULTY", status: "ACTIVE" }, "reject", { type: "roomBooking" })).toBe(false);
   });
 
+  it("routes assignment proposal review through the proposed faculty department", () => {
+    const proposal = { type: "subjectAssignmentProposal", departmentId: "computer", ownerUserId: "requester" } as const;
+    expect(can(hod, "view", proposal)).toBe(true);
+    expect(can(hod, "approve", proposal)).toBe(true);
+    expect(can({ ...hod, id: "requester" }, "view", { ...proposal, departmentId: "business" })).toBe(true);
+    expect(can(hod, "reject", { ...proposal, departmentId: "business" })).toBe(false);
+    expect(can({ ...hod, id: "requester" }, "approve", proposal)).toBe(false);
+    expect(can({ ...hod, programIds: ["bsit"] }, "submit", { ...proposal, programId: "bsit" })).toBe(true);
+    expect(can({ ...hod, programIds: ["bsit"] }, "submit", { ...proposal, programId: "bsba" })).toBe(false);
+    expect(can({ role: "REGISTRAR", status: "ACTIVE" }, "approve", { ...proposal, departmentId: "business" })).toBe(true);
+    expect(scopeQuery(hod, "subjectAssignmentProposal")).toEqual({ reviewDepartmentId: { in: ["computer"] } });
+  });
+
+  it("keeps faculty information read-only for Heads of Department", () => {
+    const faculty: PolicyResource = { type: "faculty", departmentId: "computer" };
+    expect(can(hod, "view", faculty)).toBe(true);
+    expect(can(hod, "view", { ...faculty, departmentId: "business" })).toBe(false);
+    for (const action of ["create", "edit", "archive", "restore", "bulkImport"] as const) expect(can(hod, action, faculty)).toBe(false);
+  });
+
   it("limits Faculty to their own records", () => {
     const faculty = { id: "user-f", role: "FACULTY", status: "ACTIVE", facultyId: "faculty-f" };
     expect(can(faculty, "view", { type: "schedule", facultyId: "faculty-f" })).toBe(true);
     expect(can(faculty, "view", { type: "schedule", facultyId: "faculty-other" })).toBe(false);
     expect(can(faculty, "submit", { type: "scheduleRequest", ownerUserId: "user-f" })).toBe(true);
+  });
+
+  it("limits Faculty bookable rooms to their department and shared rooms, and bookings to their own", () => {
+    const faculty = { id: "user-f", role: "FACULTY", status: "ACTIVE", departmentIds: ["computer"] };
+    expect(scopeQuery(faculty, "room")).toEqual({ OR: [{ departmentId: { in: ["computer"] } }, { departmentId: null }] });
+    expect(scopeQuery({ ...faculty, departmentIds: [] }, "room")).toEqual({ OR: [{ departmentId: { in: [] } }, { departmentId: null }] });
+    expect(scopeQuery({ ...faculty, status: "INACTIVE" }, "room")).toEqual({ id: { equals: "__denied__" } });
+    expect(scopeQuery(faculty, "roomBooking")).toEqual({ bookedById: "user-f" });
+    expect(can(faculty, "view", { type: "roomBooking", ownerUserId: "other" })).toBe(false);
+    expect(can(faculty, "approve", { type: "roomBooking", ownerUserId: "user-f" })).toBe(false);
   });
 
   it("limits Students to their own section schedules and examinations", () => {
@@ -53,6 +98,22 @@ describe("central permission policy", () => {
     const administrator = { role: "SUPER_ADMINISTRATOR", status: "ACTIVE" };
     expect(can(administrator, "view", { type: "roomBooking" })).toBe(false);
     expect(scopeQuery(administrator, "roomBooking")).toEqual({ id: { equals: "__denied__" } });
+  });
+
+  it("lets only the Registrar and Head of Department suspend classes, each within scope", () => {
+    const own = { type: "classSuspension", departmentId: "computer" } as const;
+    const outside = { type: "classSuspension", departmentId: "business" } as const;
+    expect(can({ role: "REGISTRAR", status: "ACTIVE" }, "create", outside)).toBe(true);
+    expect(can(hod, "create", own)).toBe(true);
+    expect(can(hod, "edit", own)).toBe(true);
+    expect(can(hod, "create", outside)).toBe(false);
+    const administrator = { role: "SUPER_ADMINISTRATOR", status: "ACTIVE" };
+    expect(can(administrator, "create", own)).toBe(false);
+    expect(can(administrator, "view", own)).toBe(true);
+    const faculty = { id: "user-f", role: "FACULTY", status: "ACTIVE", facultyId: "faculty-f" };
+    expect(can(faculty, "create", own)).toBe(false);
+    expect(can(faculty, "view", own)).toBe(false);
+    expect(can({ role: "STUDENT", status: "ACTIVE", studentSectionId: "section-a" }, "create", { ...own, sectionId: "section-a" })).toBe(false);
   });
 
   it("builds database filters that exclude other departments", () => {

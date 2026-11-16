@@ -25,16 +25,41 @@ describe("applyChanges", () => {
 
 describe("projectedLoads", () => {
   it("moves a subject's load from the old teacher to the new one", () => {
-    const loads = projectedLoads([fac("a", 19), fac("b", 10)], [subject([{ facultyId: "a", sectionId: null }])], [{ sectionId: null, facultyId: "b" }], "HOURS");
+    const loads = projectedLoads([fac("a", 19), fac("b", 10)], [subject([{ facultyId: "a", sectionId: "s1" }])], [{ sectionId: "s1", facultyId: "b" }], "HOURS");
     expect(loads.get("a")).toMatchObject({ before: 19, after: 16 });
     expect(loads.get("b")).toMatchObject({ before: 10, after: 13 });
   });
-  it("counts a subject once for someone teaching several sections", () => {
+  it("counts each section's subject separately for the same teacher", () => {
     const loads = projectedLoads([fac("b", 10)], [subject([])], [{ sectionId: "s1", facultyId: "b" }, { sectionId: "s2", facultyId: "b" }], "HOURS");
-    expect(loads.get("b")?.after).toBe(13);
+    expect(loads.get("b")?.after).toBe(16);
   });
   it("leaves unaffected faculty out", () => {
-    expect(projectedLoads([fac("z", 5)], [subject([])], [{ sectionId: null, facultyId: "b" }], "HOURS").size).toBe(0);
+    expect(projectedLoads([fac("z", 5)], [subject([])], [{ sectionId: "s1", facultyId: "b" }], "HOURS").size).toBe(0);
+  });
+  it("assigns eight separate 3-hour offerings as 24 hours and 24 teaching units", () => {
+    const changes = Array.from({ length: 8 }, (_, i) => ({ sectionId: `s${i}`, facultyId: "a" }));
+    for (const measure of ["HOURS", "UNITS"] as const) {
+      expect(projectedLoads([fac("a", 0)], [subject([])], changes, measure).get("a")?.after).toBe(24);
+    }
+  });
+  it("removes only one of a teacher's section offerings", () => {
+    const s = subject([{ facultyId: "a", sectionId: "s1" }, { facultyId: "a", sectionId: "s2" }]);
+    expect(projectedLoads([fac("a", 6)], [s], [{ sectionId: "s1", facultyId: null }], "HOURS").get("a")?.after).toBe(3);
+  });
+  it("keeps already scheduled hours with the scheduled teacher when reassigning an offering", () => {
+    const s = { ...subject([{ facultyId: "a", sectionId: "s1" }]), progress: [{ sectionId: "s1", scheduledHours: 1.5 }] };
+    const loads = projectedLoads([fac("a", 3), fac("b", 0)], [s], [{ sectionId: "s1", facultyId: "b" }], "HOURS");
+    expect(loads.get("a")?.after).toBe(1.5);
+    expect(loads.get("b")?.after).toBe(1.5);
+  });
+  it("does not add hours when reassigning a fully scheduled offering", () => {
+    const s = { ...subject([{ facultyId: "a", sectionId: "s1" }]), progress: [{ sectionId: "s1", scheduledHours: 3 }] };
+    expect(projectedLoads([fac("a", 3), fac("b", 0)], [s], [{ sectionId: "s1", facultyId: "b" }], "HOURS").size).toBe(0);
+  });
+  it("does not add duplicate load for an unchanged assignment or repeated selection", () => {
+    const s = subject([{ facultyId: "a", sectionId: "s1" }]);
+    expect(projectedLoads([fac("a", 3)], [s], [{ sectionId: "s1", facultyId: "a" }], "HOURS").size).toBe(0);
+    expect(projectedLoads([fac("a", 0)], [subject([])], [{ sectionId: "s1", facultyId: "a" }, { sectionId: "s1", facultyId: "a" }], "HOURS").get("a")?.after).toBe(3);
   });
 });
 
@@ -48,8 +73,9 @@ describe("loadTone", () => {
 });
 
 describe("planSchema", () => {
-  it("turns a blank section into null and requires a change", () => {
-    expect(planSchema.parse({ subjectIds: ["s"], semesterId: "t", changes: [{ sectionId: "", facultyId: "f" }] }).changes[0].sectionId).toBeNull();
+  it("requires a specific section and at least one change", () => {
+    expect(planSchema.safeParse({ subjectIds: ["s"], semesterId: "t", changes: [{ sectionId: "", facultyId: "f" }] }).success).toBe(false);
+    expect(planSchema.safeParse({ subjectIds: ["s"], semesterId: "t", changes: [{ sectionId: null, facultyId: "f" }] }).success).toBe(false);
     expect(planSchema.safeParse({ subjectIds: ["s"], semesterId: "t", changes: [] }).success).toBe(false);
   });
 });
@@ -79,6 +105,12 @@ describe("subject status helpers", () => {
     expect(matchesStatus("ASSIGNED", row([]), people)).toBe(false);
     expect(matchesStatus("REQUEST", row(["ok"], { status: "PENDING" }), people)).toBe(true);
     expect(matchesStatus("REQUEST", row(["ok"], { status: "APPROVED" }), people)).toBe(false);
+  });
+  it("keeps partially covered subjects visible as needing a teacher", () => {
+    const partial = { assignments: [{ facultyId: "ok", sectionId: "s1" }], eligibleSectionIds: ["s1", "s2"], request: null };
+    expect(matchesStatus("ASSIGNED", partial, people)).toBe(false);
+    expect(matchesStatus("UNASSIGNED", partial, people)).toBe(true);
+    expect(attentionReason(partial, people)).toBe("1 of 2 sections still need a teacher");
   });
   it("quotes CSV cells", () => {
     expect(toCsv(["a", "b"], [['x "y"', 2]])).toBe('"a","b"\r\n"x ""y""","2"');

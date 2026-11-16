@@ -63,6 +63,7 @@ describe("workload optimizer", () => {
     const as = [asg("x", "idle", 0)];
     const { moves, flags } = optimize([fac("idle")], as, limits, busyOf(as), { unassigned: [orphan, stranded], inactiveNames: new Map([["gone", "Former"]]) });
     expect(moves).toEqual([expect.objectContaining({ key: "o", fromFacultyId: "gone", toFacultyId: "idle" })]);
+    expect(moves[0]).toMatchObject({ fromBefore: 6, fromAfter: 3 });
     expect(flags.find((f) => f.kind === "UNASSIGNED")?.explanation).toMatch(/Former is no longer active/);
   });
 
@@ -163,6 +164,38 @@ describe("approval-time validation", () => {
     expect(v.ok && v.moves[0]).toMatchObject({ fromBefore: 12, fromAfter: 9, toBefore: 3, toAfter: 6 });
   });
 
+  it("approves the optimizer's inactive-faculty suggestions without stale errors or negative loads", () => {
+    const unassigned = [asg("orphan-a", "gone", 0), asg("orphan-b", "gone", 1), asg("orphan-c", "gone", 2)];
+    const faculty = [fac("receiver")];
+    const inactiveNames = new Map([["gone", "Grace Mercado"]]);
+    const current = { faculty, assignments: [], unassigned, inactiveNames, limits, busy: busyOf(unassigned) };
+    const proposed = optimize(faculty, [], limits, current.busy, { unassigned, inactiveNames });
+    expect(proposed.moves.map((move) => [move.fromBefore, move.fromAfter])).toEqual([[9, 6], [6, 3], [3, 0]]);
+    const checked = validateRows(current, proposed.moves);
+    expect(checked.ok).toBe(true);
+    if (!checked.ok) return;
+    expect(checked.moves.map((move) => [move.fromBefore, move.fromAfter])).toEqual([[9, 6], [6, 3], [3, 0]]);
+    expect(checked.moves.map((move) => move.toAfter)).toEqual([3, 6, 9]);
+    expect(checked.moves.every((move) => move.fromDepartmentId === "d1" && move.reason.includes("Grace Mercado"))).toBe(true);
+  });
+
+  it("validates an unscheduled assignment from inactive faculty and preserves the assignment to transfer", () => {
+    const orphan = asg("plan|orphan", "gone", 0, { assignmentId: "orphan", meetings: [], plannedHours: 3 });
+    const checked = validateRows({ ...data, unassigned: [orphan] }, [{ key: orphan.key, fromFacultyId: "gone", toFacultyId: "idle" }]);
+    expect(checked.ok && checked.moves[0]).toMatchObject({ assignmentId: "orphan", scheduleIds: [], fromBefore: 3, fromAfter: 0, toBefore: 3, toAfter: 6 });
+  });
+
+  it("still blocks inactive-faculty transfers that exceed capacity or double-book the recipient", () => {
+    const orphan = asg("orphan", "gone", 4);
+    expect(validateRows({ ...data, unassigned: [orphan] }, [{ key: orphan.key, fromFacultyId: "gone", toFacultyId: "full" }]).ok).toBe(false);
+    expect(validateRows({ ...data, unassigned: [orphan] }, [{ key: orphan.key, fromFacultyId: "gone", toFacultyId: "idle" }]).ok).toBe(false);
+  });
+
+  it("rejects a transfer to the same teacher or the same assignment twice", () => {
+    expect(validateRows(data, [{ key: "e", fromFacultyId: "idle", toFacultyId: "idle" }]).ok).toBe(false);
+    expect(validateRows(data, [{ key: "a", fromFacultyId: "busy", toFacultyId: "idle" }, { key: "a", fromFacultyId: "busy", toFacultyId: "idle" }]).ok).toBe(false);
+  });
+
   it("refuses a stale row whose class changed hands", () => {
     const v = validateRows(data, [{ key: "a", fromFacultyId: "idle", toFacultyId: "busy" }]);
     expect(v.ok).toBe(false);
@@ -179,5 +212,19 @@ describe("approval-time validation", () => {
     const moved = as.map((a) => (a.key === "a" ? { ...a, facultyId: "idle" } : a));
     expect(basisOf(as, ["busy", "idle"], limits)).not.toBe(basisOf(moved, ["busy", "idle"], limits));
     expect(basisOf(as, ["busy", "idle"], limits)).toBe(basisOf([...as].reverse(), ["idle", "busy"], limits));
+  });
+
+  it("refreshes proposals when meetings, availability, eligibility or workload limits change", () => {
+    const ids = ["busy", "idle"];
+    const basis = basisOf(as, ids, limits, data);
+    const shifted = as.map((a) => a.key === "a" ? { ...a, meetings: a.meetings.map((m) => ({ ...m, startMin: m.startMin + 30, endMin: m.endMin + 30 })) } : a);
+    expect(basisOf(shifted, ids, limits, data)).not.toBe(basis);
+    expect(basisOf(as, ids, { ...limits, maximum: 12 }, data)).not.toBe(basis);
+    expect(basisOf(as, ids, limits, { ...data, faculty: data.faculty.map((f) => f.id === "idle" ? { ...f, availability: [{ dayOfWeek: "MONDAY", startMin: 800, endMin: 1000 }] } : f) })).not.toBe(basis);
+    expect(basisOf(as, ids, limits, { ...data, faculty: data.faculty.filter((f) => f.id !== "idle") })).not.toBe(basis);
+    const busy = new Map(data.busy);
+    busy.set("idle", [...(busy.get("idle") ?? []), { scheduleId: "another-term", dayOfWeek: "TUESDAY", startMin: 480, endMin: 540 }]);
+    expect(basisOf(as, ids, limits, { ...data, busy })).not.toBe(basis);
+    expect(basisOf([...as].reverse(), [...ids].reverse(), limits, { faculty: [...data.faculty].reverse(), busy: data.busy })).toBe(basis);
   });
 });
