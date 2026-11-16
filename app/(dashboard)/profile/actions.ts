@@ -35,6 +35,7 @@ export async function changePasswordAction(input: ChangePasswordInput): Promise<
     data: {
       passwordHash: await bcrypt.hash(parsed.data.password, AUTH.bcryptRounds),
       sessionVersion: { increment: 1 },
+      mustChangePassword: false,
     },
   });
   await audit(id, "Changed password");

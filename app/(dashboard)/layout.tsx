@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
 import { Sidebar } from "@/components/layout/sidebar";
 import { MobileNav } from "@/components/layout/mobile-nav";
@@ -14,6 +15,7 @@ import { AssistantWidget } from "@/components/assistant/assistant-widget";
 import { AppBreadcrumbs } from "@/components/ux/breadcrumbs";
 import { SectionTabs } from "@/components/layout/section-tabs";
 import { notificationVisibility } from "@/lib/permissions/notifications";
+import { IdleSession } from "@/components/auth/idle-session";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -21,13 +23,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   // Approved timetables whose publish time has passed go live on the next page load.
   await publishDueSubmissions();
-  const [unread, account] = await Promise.all([
+  const [unread, account, departments] = await Promise.all([
     prisma.notification.count({ where: { userId: user.id, isRead: false, ...notificationVisibility(role) } }),
-    prisma.user.findUnique({ where: { id: user.id }, select: { name: true, image: true, faculty: { select: { department: { select: { name: true } } } } } }),
+    prisma.user.findUnique({ where: { id: user.id }, select: { name: true, image: true, mustChangePassword: true, faculty: { select: { department: { select: { name: true } } } } } }),
+    // Registrar breadcrumbs resolve the department id in the URL to its name.
+    role === "SUPER_ADMINISTRATOR" || role === "REGISTRAR" ? prisma.department.findMany({ select: { id: true, name: true } }) : [],
   ]);
+  // Administrator-issued passwords must be replaced before the system can be used; view-as sessions are exempt.
+  if (account?.mustChangePassword && !user.realId) redirect("/change-password");
+  const departmentNames = Object.fromEntries(departments.map((d) => [d.id, d.name]));
 
   return (
     <ShortcutProvider allowedHrefs={allowedHrefsForRole(role)}>
+      <IdleSession sessionKey={user.sessionId ?? user.realId ?? user.id} />
       {user.realId && <ViewAsBanner name={user.name ?? user.email ?? "Account"} role={ROLE_LABELS[user.role as AppRole]} realName={user.realName ?? "Administrator"} />}
       <a
         href="#main-content"
@@ -36,7 +44,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         Skip to content
       </a>
       <div className={`fixed inset-x-0 bottom-0 ${user.realId ? "top-12" : "top-0"} flex overflow-clip bg-background print:static print:block print:overflow-visible`}>
-        <Sidebar role={role} name={account?.name ?? user.name ?? user.email ?? "User"} image={account?.image} />
+        <Sidebar role={role} />
         <div className="flex min-w-0 flex-1 flex-col overflow-clip print:block print:overflow-visible">
           <Topbar
             userId={user.id}
@@ -48,7 +56,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           />
           <main id="main-content" tabIndex={-1} className="mb-[calc(6.5rem+env(safe-area-inset-bottom))] min-h-0 flex-1 overflow-y-auto p-3 outline-none md:mb-0 print:m-0 print:overflow-visible print:p-0 lg:[&:has([data-viewport-lock])]:overflow-hidden md:p-4">
             <div className="space-y-3 lg:has-[[data-viewport-lock]]:h-full">
-              <Suspense fallback={<div className="h-5" aria-hidden />}><AppBreadcrumbs role={role} departmentName={account?.faculty?.department?.name} /></Suspense>
+              <Suspense fallback={<div className="h-5" aria-hidden />}><AppBreadcrumbs role={role} departmentName={account?.faculty?.department?.name} departmentNames={departmentNames} /></Suspense>
               <SectionTabs role={role} />
               {children}
             </div>

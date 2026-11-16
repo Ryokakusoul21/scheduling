@@ -1,6 +1,7 @@
 "use server";
 
 import bcrypt from "bcryptjs";
+import { Prisma } from "@prisma/client";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
 import { AUTH, SETTING_REQUIRE_APPROVAL } from "@/lib/auth/config";
@@ -66,22 +67,57 @@ export async function registerAction(
     return { ok: false, error: "CAPTCHA verification failed. Please try again." };
   }
 
-  const { name, email, password } = parsed.data;
+  const { name, email, password, employeeId, departmentId, employmentType } = parsed.data;
   if (await findUserByEmail(email)) {
     return { ok: false, fieldErrors: { email: "An account with this email already exists." } };
   }
 
+  const [department, existingEmployee] = await Promise.all([
+    prisma.department.findUnique({ where: { id: departmentId }, select: { id: true } }),
+    prisma.faculty.findFirst({
+      where: { OR: [{ employeeId: { equals: employeeId, mode: "insensitive" } }, { email: { equals: email, mode: "insensitive" } }] },
+      select: { id: true },
+    }),
+  ]);
+  if (!department) return { ok: false, fieldErrors: { departmentId: "This department is no longer available. Please choose another." } };
+  // Never attach a public registration to an existing employee record using a claimed ID.
+  if (existingEmployee) return { ok: false, fieldErrors: { employeeId: "An employee profile already uses this ID or email. Contact the school administrator to link your account." } };
+
   const needsApproval = await requiresAdminApproval();
-  const user = await prisma.user.create({
-    data: {
-      name,
-      email,
-      passwordHash: await bcrypt.hash(password, AUTH.bcryptRounds),
-      role: "FACULTY",
-      status: needsApproval ? "PENDING" : "ACTIVE",
-      termsAcceptedAt: new Date(),
-    },
-  });
+  let user;
+  try {
+    // Nested creation is atomic: neither record is left behind if the other fails.
+    user = await prisma.user.create({
+      data: {
+        name,
+        email,
+        passwordHash: await bcrypt.hash(password, AUTH.bcryptRounds),
+        role: "FACULTY",
+        status: needsApproval ? "PENDING" : "ACTIVE",
+        termsAcceptedAt: new Date(),
+        faculty: { create: {
+          fullName: name,
+          email,
+          employeeId,
+          department: { connect: { id: department.id } },
+          employmentType,
+          // Self-reported employees need staff review before scheduling eligibility.
+          status: "INACTIVE",
+        } },
+      },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2002") {
+        const target = String(error.meta?.target ?? "");
+        return { ok: false, fieldErrors: target.includes("employeeId")
+          ? { employeeId: "This employee ID is already registered. Contact the school administrator." }
+          : { email: "An account or employee profile with this email already exists." } };
+      }
+      if (error.code === "P2025") return { ok: false, fieldErrors: { departmentId: "This department is no longer available. Please choose another." } };
+    }
+    throw error;
+  }
   await prisma.auditLog.create({
     data: { userId: user.id, action: "Registered account", entity: "User", entityId: user.id },
   });
@@ -189,6 +225,7 @@ export async function resetPasswordAction(
     where: { id: record.userId },
     data: {
       passwordHash: await bcrypt.hash(parsed.data.password, AUTH.bcryptRounds),
+      mustChangePassword: false,
       // Invalidates every existing session for this account.
       sessionVersion: { increment: 1 },
       failedLoginAttempts: 0,

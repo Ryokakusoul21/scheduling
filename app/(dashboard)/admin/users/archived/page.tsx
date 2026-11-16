@@ -9,10 +9,10 @@ export default async function ArchivedPage() {
   await requireRole("SUPER_ADMINISTRATOR");
   const rows = await listArchived();
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">User Management</h1>
-        <p className="text-sm text-muted-foreground">Archived accounts, faculty records, subjects, rooms, and sections. Restore brings back the record with all of its past data.</p>
+    <div className="space-y-6">
+      <div className="space-y-1.5">
+        <h1 className="text-2xl font-semibold tracking-tight">Archived records</h1>
+        <p className="text-sm text-muted-foreground">Review archived accounts and academic records. Restore a record to make it available again.</p>
       </div>
       <UserTabs current="archived" archivedCount={rows.length} />
       <ArchivedList rows={rows} />

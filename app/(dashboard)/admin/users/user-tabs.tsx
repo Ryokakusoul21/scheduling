@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 /** Switches between active accounts and the Archived list in User Management. */
 export function UserTabs({ current, archivedCount }: { current: "active" | "archived"; archivedCount: number }) {
   const tabs = [
-    { key: "active", label: "Active", href: "/admin/users" },
-    { key: "archived", label: `Archived (${archivedCount})`, href: "/admin/users/archived" },
+    { key: "active", label: "Accounts", href: "/admin/users" },
+    { key: "archived", label: `Archived records (${archivedCount})`, href: "/admin/users/archived" },
   ];
   return (
     <nav aria-label="User Management sections" className="flex gap-1 border-b">

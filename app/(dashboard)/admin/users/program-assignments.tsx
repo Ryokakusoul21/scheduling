@@ -44,7 +44,7 @@ export function ProgramAssignments({ userId, name, options, rows, onClose }: { u
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader><DialogTitle>Program Assignments for {name}</DialogTitle></DialogHeader>
-        <p className="text-sm text-muted-foreground">With no active assignment, the Head of Department handles every program of their department. Active assignments limit access to only those programs.</p>
+        <p className="text-sm text-muted-foreground">With no active assignment, the head handles every program.</p>
         <ul className="space-y-1.5">
           {rows.length === 0 && <li className="text-sm text-muted-foreground">No assignments: whole department.</li>}
           {rows.map((r) => (

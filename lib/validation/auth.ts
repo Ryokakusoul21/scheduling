@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { employeeIdSchema } from "@/lib/faculty/employee-id";
 
 export const loginSchema = z.object({
   email: z.string().min(1, "Email is required").email("Enter a valid email address"),
@@ -31,6 +32,9 @@ export function passwordScore(pw: string) {
 export const registerSchema = z
   .object({
     name: z.string().trim().min(2, "Enter your full name").max(100),
+    employeeId: employeeIdSchema.max(40, "Employee ID must be at most 40 characters"),
+    departmentId: z.string().trim().min(1, "Select the department you are applying to").max(100),
+    employmentType: z.enum(["FULL_TIME", "PART_TIME"], { error: "Select your employment type" }),
     email: z.string().trim().toLowerCase().min(1, "Email is required").email("Enter a valid email address"),
     password: passwordSchema,
     confirmPassword: z.string().min(1, "Confirm your password"),
@@ -51,9 +55,9 @@ export const studentRegisterSchema = z
     studentNumber: z
       .string()
       .trim()
-      .min(4, "Enter your student number or Learner Reference Number")
-      .max(20)
-      .regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers, and dashes only"),
+      .min(4, "Enter your student ID after GC-")
+      .max(20, "Student ID must be at most 20 characters, including GC-")
+      .regex(/^GC-[A-Za-z0-9-]+$/, 'Student ID must start with "GC-" and use letters, numbers, and dashes only'),
     name: z.string().trim().min(2, "Enter your full name").max(100),
     email: z.string().trim().toLowerCase().min(1, "Email is required").email("Enter a valid email address"),
     /** NO_PROGRAM_OPTION for Elementary and Junior High sections. */
