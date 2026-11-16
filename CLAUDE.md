@@ -69,6 +69,17 @@ Guidance for Claude Code working with code in this repo.
    - Auto-regenerate affected schedules when a faculty member becomes unavailable, classes are suspended (single day, multiple days, specific sections), or a room becomes unavailable.
    - Show before-and-after comparison, list every affected class, offer make-up class options for suspensions, notify everyone affected.
 
+## Light Text Rule (Strict)
+
+- Every screen must be light on text: scannable at a glance, never paragraphs or repeated wording.
+- Show a value once; never repeat the same label, section, or name across rows or lines.
+- Hide defaults and empty values ("All levels", "Not set", "None"); show only what is specific.
+- Prefer chips, badges, icons, counts, and short labels over sentences; one-line descriptions and helper text at most.
+- Put detail behind a click (collapsible card, drawer, dialog); summarize first, expand on demand.
+- Group and collapse long lists (by month, section, or status); show past or low-priority items collapsed.
+- Use one consistent format for dates, times, and ranges.
+- Applies to new pages, redesigns, dialogs, empty states, and error messages.
+
 ## Design and Technical Requirements
 
 - Clean, modern, responsive interface; sidebar navigation; "GRANBY COLLEGES OF SCIENCE AND TECHNOLOGY" in header; light and dark modes.
@@ -95,3 +106,4 @@ Guidance for Claude Code working with code in this repo.
 
 - No customer personal data - names, contacts, account numbers, transactions (unless approved exemption).
 - No credentials - passwords, API keys, tokens, connection strings.
+  - Approved exemption: fictional demo and seed account logins (local development only) may be read and shared with the user.

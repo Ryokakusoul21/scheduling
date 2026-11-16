@@ -24,11 +24,10 @@ Test in Chrome and one other browser, at desktop and phone width (≤ 400 px).
 - [ ] Drag a subject onto the timetable → the Add class dialog opens with section, subject, day, and time pre-filled and the best faculty/room pre-selected.
 - [ ] Save → the item's progress updates; when fully placed it disappears from the list.
 
-### Reorderable lists
-- [ ] Programs & Strands: drag a course card by its handle to a new position; reload → order kept.
-- [ ] Subjects (any level/grade list), Sections (card grid), Rooms (buildings and rooms within a floor): drag to reorder; reload → order kept.
-- [ ] While searching Rooms, drag handles are hidden (reordering a filtered list is disabled).
-- [ ] Simulate a failure (e.g. stop the server mid-drag) → order rolls back and an error toast appears.
+### Record lists
+- [ ] Programs & Strands, Subjects, Sections, Buildings, and Rooms: card and table views have no drag handles or reorder columns.
+- [ ] Sections and Buildings: the available sort options work in both layouts, with no custom-order option.
+- [ ] Search, filters, navigation, and permitted edit/archive actions still work in each record list.
 
 ### Permissions
 - [ ] Faculty/Student: Scheduler is read-only (no drag, no Add class, clicking a block does nothing harmful).
@@ -48,7 +47,7 @@ Test in Chrome and one other browser, at desktop and phone width (≤ 400 px).
 ### Tables and card grids
 - [ ] Subjects list / Faculty table / Scheduler table view / Rooms tables: `Tab` into the table, `↑`/`↓` move rows, `Home`/`End` jump, `Enter` opens the edit dialog.
 - [ ] Card grids (levels, grades, programs, sections, faculty cards, quick actions): arrow keys move in 2D following the visible columns; `Enter` opens.
-- [ ] Reorder by keyboard: focus a drag handle, `Space` picks up (screen reader announces position), `↑`/`↓` move, `Space` drops, `Esc` cancels.
+- [ ] Record lists have no reorder controls in the tab order, and the shortcuts dialog has no row-reordering instruction.
 
 ### Timetable
 - [ ] `Tab` into the timetable focuses the first class; arrows move between classes (↑↓ same day, ←→ nearest class on the adjacent day).
